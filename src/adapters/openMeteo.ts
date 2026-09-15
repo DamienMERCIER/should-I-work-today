@@ -1,0 +1,129 @@
+import type { DailySun, LatLon, SwellHour, WindHour } from '../types';
+import { sleep as defaultSleep, type FetchLike } from './http';
+
+export type { FetchLike };
+
+export class OpenMeteoError extends Error {
+  constructor(message: string, readonly status?: number) {
+    super(message);
+    this.name = 'OpenMeteoError';
+  }
+}
+
+const MARINE_BASE = 'https://marine-api.open-meteo.com/v1/marine';
+const FORECAST_BASE = 'https://api.open-meteo.com/v1/forecast';
+const TIMEZONE = 'Africa/Johannesburg';
+const MARINE_HOURLY = [
+  'swell_wave_height', 'swell_wave_period', 'swell_wave_direction',
+  'secondary_swell_wave_height', 'secondary_swell_wave_period', 'secondary_swell_wave_direction',
+  'wind_wave_height', 'wave_height', 'sea_level_height_msl',
+];
+const FORECAST_HOURLY = ['wind_speed_10m', 'wind_direction_10m', 'wind_gusts_10m', 'temperature_2m', 'precipitation', 'weather_code'];
+const FORECAST_DAILY = ['sunrise', 'sunset', 'temperature_2m_max', 'temperature_2m_min', 'precipitation_sum'];
+
+const coords = (points: LatLon[], key: keyof LatLon): string => points.map((p) => p[key].toFixed(4)).join(',');
+
+export function marineUrl(points: LatLon[], forecastDays = 3): string {
+  const q = new URLSearchParams({
+    latitude: coords(points, 'lat'), longitude: coords(points, 'lon'),
+    hourly: MARINE_HOURLY.join(','), timezone: TIMEZONE, forecast_days: String(forecastDays),
+  });
+  return `${MARINE_BASE}?${q.toString()}`;
+}
+
+export function forecastUrl(points: LatLon[], forecastDays = 3): string {
+  const q = new URLSearchParams({
+    latitude: coords(points, 'lat'), longitude: coords(points, 'lon'),
+    hourly: FORECAST_HOURLY.join(','), daily: FORECAST_DAILY.join(','),
+    wind_speed_unit: 'kn', cell_selection: 'sea', timezone: TIMEZONE, forecast_days: String(forecastDays),
+  });
+  return `${FORECAST_BASE}?${q.toString()}`;
+}
+
+export interface RetryOptions { retries?: number; delayMs?: number; sleep?: (ms: number) => Promise<void> }
+
+/** 1 retry après 2 s par défaut (§10.1). */
+export async function fetchJsonWithRetry(url: string, fetchFn: FetchLike, opts: RetryOptions = {}): Promise<unknown> {
+  const retries = opts.retries ?? 1;
+  const delayMs = opts.delayMs ?? 2000;
+  const sleep = opts.sleep ?? defaultSleep;
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetchFn(url, { headers: { accept: 'application/json' } });
+      if (!res.ok) throw new OpenMeteoError(`HTTP ${res.status} for ${url}`, res.status);
+      return await res.json();
+    } catch (err) {
+      lastError = err;
+      if (attempt < retries) await sleep(delayMs);
+    }
+  }
+  throw lastError instanceof OpenMeteoError ? lastError : new OpenMeteoError(String(lastError));
+}
+
+type Num = number | null | undefined;
+const num = (v: Num): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+const asList = (json: unknown): unknown[] => (Array.isArray(json) ? json : [json]);
+
+interface MarineJson { hourly?: { time?: string[] } & Record<string, Num[] | string[] | undefined> }
+interface ForecastJson {
+  hourly?: { time?: string[] } & Record<string, Num[] | string[] | undefined>;
+  daily?: { time?: string[]; sunrise?: string[]; sunset?: string[] } & Record<string, Num[] | string[] | undefined>;
+}
+
+const column = (block: Record<string, Num[] | string[] | undefined>, key: string, i: number): Num => {
+  const col = block[key];
+  const v = col?.[i];
+  return typeof v === 'number' || v === null ? v : undefined;
+};
+
+export function parseMarine(json: unknown): SwellHour[][] {
+  return asList(json).map((loc) => {
+    const h = (loc as MarineJson)?.hourly;
+    if (!h || !Array.isArray(h.time)) throw new OpenMeteoError('Malformed marine response');
+    return h.time.map((time, i) => ({
+      time,
+      primary: { heightM: num(column(h, 'swell_wave_height', i)), periodS: num(column(h, 'swell_wave_period', i)), directionDeg: num(column(h, 'swell_wave_direction', i)) },
+      secondary: { heightM: num(column(h, 'secondary_swell_wave_height', i)), periodS: num(column(h, 'secondary_swell_wave_period', i)), directionDeg: num(column(h, 'secondary_swell_wave_direction', i)) },
+      seaLevelM: num(column(h, 'sea_level_height_msl', i)),
+    }));
+  });
+}
+
+export interface ForecastSeries { wind: WindHour[]; daily: DailySun[] }
+
+export function parseForecast(json: unknown): ForecastSeries[] {
+  return asList(json).map((loc) => {
+    const f = loc as ForecastJson;
+    const h = f?.hourly;
+    const d = f?.daily;
+    if (!h || !Array.isArray(h.time) || !d || !Array.isArray(d.time)) throw new OpenMeteoError('Malformed forecast response');
+    const wind: WindHour[] = h.time.map((time, i) => ({
+      time,
+      windKt: num(column(h, 'wind_speed_10m', i)), windDirDeg: num(column(h, 'wind_direction_10m', i)), gustKt: num(column(h, 'wind_gusts_10m', i)),
+      tempC: num(column(h, 'temperature_2m', i)), precipMm: num(column(h, 'precipitation', i)), weatherCode: num(column(h, 'weather_code', i)),
+    }));
+    const daily: DailySun[] = d.time.map((date, i) => ({
+      date,
+      sunrise: String(d.sunrise?.[i] ?? `${date}T06:00`),
+      sunset: String(d.sunset?.[i] ?? `${date}T18:00`),
+      tempMaxC: num(column(d, 'temperature_2m_max', i)), tempMinC: num(column(d, 'temperature_2m_min', i)), precipMm: num(column(d, 'precipitation_sum', i)),
+    }));
+    return { wind, daily };
+  });
+}
+
+function assertCount<T>(list: T[], points: LatLon[]): T[] {
+  if (list.length !== points.length) throw new OpenMeteoError(`expected ${points.length} locations, got ${list.length}`);
+  return list;
+}
+
+export interface FetchOptions extends RetryOptions { forecastDays?: number }
+
+export async function fetchMarine(points: LatLon[], fetchFn: FetchLike, opts: FetchOptions = {}): Promise<SwellHour[][]> {
+  return assertCount(parseMarine(await fetchJsonWithRetry(marineUrl(points, opts.forecastDays), fetchFn, opts)), points);
+}
+
+export async function fetchForecast(points: LatLon[], fetchFn: FetchLike, opts: FetchOptions = {}): Promise<ForecastSeries[]> {
+  return assertCount(parseForecast(await fetchJsonWithRetry(forecastUrl(points, opts.forecastDays), fetchFn, opts)), points);
+}
