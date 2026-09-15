@@ -50,8 +50,8 @@ export interface Strings {
   shortVerdict: { green: string; dawn: string; dusk: string; red: string };
   /** title: {date} · closed: {spots} · tides: {list} · sun: {temp} {sunrise} {sunset} */
   details: { title: string; closed: string; tides: string; sun: string; license: string; noWindow: string; tooOld: string };
-  /** none: {radius} · raw: {swell} {s} {dir} {kt} {windDir} · nearest: {list} · farFromCoast: {km} */
-  coverage: { none: string; raw: string; nearest: string; farFromCoast: string };
+  /** none: {radius} · raw: {swell} {s} {dir} {kt} {windDir} · nearest: {list} · nearestItem: {spot} {km} · farFromCoast: {km} */
+  coverage: { none: string; raw: string; nearest: string; nearestItem: string; farFromCoast: string };
   noData: string;
   error: string;
 }

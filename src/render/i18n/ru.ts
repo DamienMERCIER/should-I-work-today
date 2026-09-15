@@ -77,6 +77,7 @@ export const ru: Strings = {
     none: '📍 В радиусе {radius} км нет известных спотов.',
     raw: 'Условия здесь: волна {swell} м {s} с {dir} · ветер {kt} kt {windDir}',
     nearest: 'Ближайшие известные споты: {list}',
+    nearestItem: '{spot} ({km} км)',
     farFromCoast: 'Ты далеко от океана — ближайший известный спот дальше {km} км.',
   },
   noData: '⚠️ Нет данных (Open-Meteo недоступен). Попробуй /now позже.',

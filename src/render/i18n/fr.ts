@@ -77,6 +77,7 @@ export const fr: Strings = {
     none: '📍 Aucun spot connu à moins de {radius} km.',
     raw: 'Conditions brutes ici : houle {swell} m {s} s {dir} · vent {kt} kt {windDir}',
     nearest: 'Spots connus les plus proches : {list}',
+    nearestItem: '{spot} ({km} km)',
     farFromCoast: "Tu es loin de l'océan — le spot connu le plus proche est à plus de {km} km.",
   },
   noData: '⚠️ Pas de données (Open-Meteo injoignable). Réessaie /now plus tard.',
