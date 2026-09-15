@@ -1,0 +1,129 @@
+import { sleep as defaultSleep, type FetchLike } from '../adapters/http';
+import type { RunKind, Store } from '../adapters/kv';
+import type { Telegram } from '../adapters/telegram';
+import { MAX_SUBREQUEST_BUDGET, RADIUS_KM } from '../config';
+import { compareReports } from '../engine/delta';
+import { addDays, dateOf } from '../engine/time';
+import { detailsButton, esc, renderEvening, renderMorning, type RenderCtx } from '../render/messages';
+import type { Lang, Profile, Region, Report, Spot } from '../types';
+import { buildReports, nearbySpots, type EvalRequest } from './collect';
+
+export interface JobDeps {
+  store: Store;
+  telegram: Telegram;
+  spots: Spot[];
+  regions: Region[];
+  fetchFn: FetchLike;
+  radiusKm?: number;
+  adminChatId?: number;
+  /** heure locale 'YYYY-MM-DDTHH:mm' */
+  now: () => string;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+export interface JobResult { skipped: boolean; sent: number; failed: number; date: string }
+
+const KV_SAME_KEY_INTERVAL_MS = 1100;
+
+export async function notifyAdmin(deps: Pick<JobDeps, 'telegram' | 'adminChatId'>, text: string): Promise<void> {
+  if (deps.adminChatId === undefined) return;
+  await deps.telegram.sendMessage(deps.adminChatId, `⚙️ ${esc(text)}`);
+}
+
+/** Sous-requêtes prévues : verrou (2) + profils (1) [+ rapports veille (1)] + 2×régions + 2×hors-couverture + 2 écritures + N envois. */
+export function estimateBudget(profiles: Profile[], deps: JobDeps, kind: RunKind): number {
+  const radiusKm = deps.radiusKm ?? RADIUS_KM;
+  const regions = new Set<string>();
+  let raw = 0;
+  for (const p of profiles) {
+    const near = nearbySpots(deps.spots, p.location, radiusKm);
+    if (near.length === 0) raw += 2;
+    for (const n of near) regions.add(n.spot.region);
+  }
+  return 3 + (kind === 'morning' ? 1 : 0) + 2 * regions.size + raw + 2 + profiles.length;
+}
+
+export async function runEvening(deps: JobDeps): Promise<JobResult> {
+  return runJob('evening', addDays(dateOf(deps.now()), 1), deps);
+}
+
+export async function runMorning(deps: JobDeps): Promise<JobResult> {
+  return runJob('morning', dateOf(deps.now()), deps);
+}
+
+const renderCtx = (lang: Lang, deps: JobDeps): RenderCtx => ({ lang, spots: new Map(deps.spots.map((s) => [s.id, s])) });
+
+async function runJob(kind: RunKind, date: string, deps: JobDeps): Promise<JobResult> {
+  const now = deps.now();
+  const sleep = deps.sleep ?? defaultSleep;
+  if (!(await deps.store.acquireLock(date, kind, now))) return { skipped: true, sent: 0, failed: 0, date };
+
+  const profiles = Object.values(await deps.store.getProfiles()).filter((p) => p.active && !p.onboarding);
+  const budget = estimateBudget(profiles, deps, kind);
+  if (budget > MAX_SUBREQUEST_BUDGET) {
+    const text = `${kind} ${date}: ${budget} sous-requêtes prévues > ${MAX_SUBREQUEST_BUDGET} — fan-out nécessaire`;
+    console.warn(text);
+    await notifyAdmin(deps, text);
+  }
+
+  const previous = kind === 'morning' ? await deps.store.getReports(date) : {};
+  const reqs: EvalRequest[] = profiles.map((profile) => ({ profile, date, mode: kind }));
+  const reports = await buildReports(reqs, { spots: deps.spots, regions: deps.regions, fetchFn: deps.fetchFn, radiusKm: deps.radiusKm, now });
+
+  // 1. décider quoi envoyer et quoi stocker
+  const toStore: Record<string, Report> = { ...previous };
+  const outbox: { profile: Profile; text: string }[] = [];
+  for (const profile of profiles) {
+    const report = reports.get(profile.chatId);
+    if (!report) continue;
+    const key = String(profile.chatId);
+    const ctx = renderCtx(profile.lang, deps);
+    if (kind === 'evening') {
+      toStore[key] = report;
+      outbox.push({ profile, text: renderEvening(report, ctx) });
+      continue;
+    }
+    const evening = previous[key];
+    const delta = compareReports(evening, report);
+    // un matin sans données garde le rapport du soir (§7.6)
+    if (!(report.verdict.kind === 'noData' && evening)) toStore[key] = report;
+    if (delta.send) outbox.push({ profile, text: renderMorning(report, delta, evening, ctx) });
+  }
+
+  // 2. première écriture : le bouton 📋 fonctionne dès la réception
+  const firstWriteAt = Date.now();
+  await deps.store.putReports(date, toStore);
+
+  // 3. envois
+  let sent = 0;
+  let failed = 0;
+  const blocked: number[] = [];
+  for (const { profile, text } of outbox) {
+    const res = await deps.telegram.sendMessage(profile.chatId, text, detailsButton(date, profile.lang));
+    if (res.ok) {
+      sent++;
+      const entry = toStore[String(profile.chatId)];
+      if (entry) entry.sentAt = now;
+    } else {
+      failed++;
+      if (res.blocked) blocked.push(profile.chatId);
+      console.error(`[${kind} ${date}] envoi à ${profile.chatId} échoué — ${res.description}`);
+      await notifyAdmin(deps, `${kind} ${date}: envoi à ${profile.chatId} échoué — ${res.description}`);
+    }
+  }
+
+  // 4. seconde écriture (sentAt), en respectant 1 écriture/s/clé
+  const elapsed = Date.now() - firstWriteAt;
+  if (elapsed < KV_SAME_KEY_INTERVAL_MS) await sleep(KV_SAME_KEY_INTERVAL_MS - elapsed);
+  await deps.store.putReports(date, toStore);
+
+  if (blocked.length > 0) {
+    const all = await deps.store.getProfiles();
+    for (const chatId of blocked) {
+      const p = all[String(chatId)];
+      if (p) p.active = false;
+    }
+    await deps.store.putProfiles(all);
+  }
+  return { skipped: false, sent, failed, date };
+}
