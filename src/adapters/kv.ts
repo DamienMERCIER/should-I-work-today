@@ -1,5 +1,20 @@
-import { LOCK_TTL_S, REPORT_TTL_S } from '../config';
+import { BOARDS, LANGS, LEVELS, LOCK_TTL_S, REPORT_TTL_S } from '../config';
 import type { Profile, Report } from '../types';
+
+/**
+ * Les champs fermés du profil viennent de KV, pas du code : une valeur retirée (le français,
+ * le 2026-09-16) ou abîmée indexerait `STRINGS`/`Strings.levels` sur `undefined`, ce que `fill`
+ * transforme en exception — donc un rendu impossible plutôt qu'une simple dégradation.
+ * Une entrée qui n'est pas un objet passe telle quelle : les consommateurs la gèrent déjà,
+ * et la faire échouer ici priverait tous les autres profils de leur run.
+ */
+function withSupportedFields(p: Profile): Profile {
+  if (!p || typeof p !== 'object') return p;
+  const lang = LANGS.includes(p.lang) ? p.lang : 'en';
+  const level = LEVELS.includes(p.level) ? p.level : 'intermediate';
+  const board = BOARDS.includes(p.board) ? p.board : 'both';
+  return lang === p.lang && level === p.level && board === p.board ? p : { ...p, lang, level, board };
+}
 
 /** Sous-ensemble de KVNamespace utilisé par l'application (facile à simuler en test). */
 export interface KVStore {
@@ -13,7 +28,8 @@ export class Store {
   constructor(private readonly kv: KVStore) {}
 
   async getProfiles(): Promise<Record<string, Profile>> {
-    return ((await this.kv.get('profiles', 'json')) as Record<string, Profile> | null) ?? {};
+    const stored = ((await this.kv.get('profiles', 'json')) as Record<string, Profile> | null) ?? {};
+    return Object.fromEntries(Object.entries(stored).map(([id, p]) => [id, withSupportedFields(p)]));
   }
 
   async putProfiles(profiles: Record<string, Profile>): Promise<void> {

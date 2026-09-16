@@ -29,6 +29,33 @@ describe('Store profiles', () => {
     expect((await store.getProfiles())['7'].level).toBe('advanced');
     expect(kv.writes).toEqual(['profiles', 'profiles']);
   });
+
+  it('coerces a language that no longer exists to English instead of crashing the renderer', async () => {
+    const kv = new MemoryKV();
+    const store = new Store(kv);
+    // profil écrit par une version antérieure (locale FR retirée le 2026-09-16)
+    await kv.put('profiles', JSON.stringify({ '7': { ...profile(7), lang: 'fr' } }));
+    expect(await store.getProfile(7)).toEqual({ ...profile(7), lang: 'en' });
+    expect((await store.getProfiles())['7'].lang).toBe('en');
+  });
+  it('leaves a supported language untouched', async () => {
+    const kv = new MemoryKV();
+    const store = new Store(kv);
+    await kv.put('profiles', JSON.stringify({ '8': { ...profile(8), lang: 'ru' } }));
+    expect((await store.getProfile(8))?.lang).toBe('ru');
+  });
+  it('coerces a retired level or board to the onboarding defaults', async () => {
+    const kv = new MemoryKV();
+    const store = new Store(kv);
+    await kv.put('profiles', JSON.stringify({ '9': { ...profile(9), level: 'pro', board: 'fish' } }));
+    expect(await store.getProfile(9)).toEqual({ ...profile(9), level: 'intermediate', board: 'both' });
+  });
+  it('lets a malformed entry through untouched instead of breaking the whole map', async () => {
+    const kv = new MemoryKV();
+    const store = new Store(kv);
+    await kv.put('profiles', JSON.stringify({ '10': null, '11': profile(11) }));
+    await expect(store.getProfiles()).resolves.toEqual({ '10': null, '11': profile(11) });
+  });
 });
 
 describe('Store reports and locks', () => {

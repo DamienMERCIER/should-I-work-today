@@ -1,3 +1,5 @@
+import type { Board, Lang, Level } from './types';
+
 export const DEFAULT_LOCATION = { lat: -34.1085, lon: 18.4715 } as const;
 export const DEFAULT_LOCATION_NAME = 'Muizenberg';
 export const RADIUS_KM = 20;
@@ -43,3 +45,9 @@ export const CRON = { evening: '0 17 * * *', morning: '0 4 * * *' } as const;
 export const REPORT_TTL_S = 48 * 3600;
 export const LOCK_TTL_S = 6 * 3600;
 export const MAX_SUBREQUEST_BUDGET = 45;
+
+// Valeurs admises des champs fermés du profil : une seule source, lue par le routeur
+// (validation des callbacks) et par le Store (données KV écrites par une version antérieure).
+export const LANGS: readonly Lang[] = ['en', 'ru'];
+export const LEVELS: readonly Level[] = ['beginner', 'intermediate', 'advanced'];
+export const BOARDS: readonly Board[] = ['longboard', 'shortboard', 'both'];

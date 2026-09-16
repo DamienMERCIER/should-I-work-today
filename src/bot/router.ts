@@ -1,7 +1,7 @@
 import { safeEqual, type FetchLike } from '../adapters/http';
 import type { Store } from '../adapters/kv';
 import type { Telegram, TgCallbackQuery, TgMessage, TgUpdate } from '../adapters/telegram';
-import { DEFAULT_LOCATION } from '../config';
+import { BOARDS, LANGS, LEVELS, DEFAULT_LOCATION } from '../config';
 import { addDays, dateOf, floorHour } from '../engine/time';
 import { buildReport, type CollectDeps } from '../jobs/collect';
 import { detectLang, STRINGS } from '../render/i18n';
@@ -21,10 +21,6 @@ export interface BotDeps {
   /** heure locale 'YYYY-MM-DDTHH:mm' */
   now: () => string;
 }
-
-const LEVELS: readonly Level[] = ['beginner', 'intermediate', 'advanced'];
-const BOARDS: readonly Board[] = ['longboard', 'shortboard', 'both'];
-const LANGS: readonly Lang[] = ['en', 'ru'];
 
 const isButton = (text: string, key: 'backHome' | 'now'): boolean =>
   text === STRINGS.en.buttons[key] || text === STRINGS.ru.buttons[key];
