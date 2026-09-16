@@ -134,9 +134,15 @@ describe('renderEvening — golden 🟢', () => {
         "🟢 <b>DON'T GO TO WORK TOMORROW</b> (Wed 16 Sept) — it's firing",
         `🏄 ${KOM} · 7:00–12:00 · 10.0/10`,
         '   5 ft · SW 13 s · offshore SE 8 kt · incoming tide, high 9:00',
+        // le graphe du jour sous chaque spot : le verdict dit quand y aller, la courbe montre à quoi
+        // ressemble le reste de la journée sans avoir à ouvrir 📋
+        '<code>6  9  12 15 18</code>',
+        '<code>·████▇▄▁▁▁▁▁·</code>',
         '   ☀️ 22° · sunrise 6:44',
         `🥈 ${MUIZ} · 7:00–10:00 · 6.1/10`,
         '   3 ft · onshore SE 8 kt',
+        '<code>6  9  12 15 18</code>',
+        '<code>·▅▅▅▃········</code>',
       ].join('\n'),
     );
   });
@@ -160,7 +166,8 @@ describe('renderEvening — golden 🟢', () => {
   });
   it('mentions rain when ≥ 1 mm', () => {
     const r = goldenReport({ weather: { tempMaxC: 17.6, tempMinC: 12, precipMm: 4.6, code: 61 } });
-    expect(renderEvening(r, EN).split('\n')[3]).toBe('   ☀️ 18° · sunrise 6:44 · rain 5 mm');
+    // par contenu et non par index : le graphe du spot s'intercale avant cette ligne
+    expect(renderEvening(r, EN).split('\n')).toContain('   ☀️ 18° · sunrise 6:44 · rain 5 mm');
   });
   it('shows a 🥈 runner-up when another open spot has a window', () => {
     const r = goldenReport();
@@ -168,8 +175,12 @@ describe('renderEvening — golden 🟢', () => {
     muiz.windows = [W('07:00', '09:00', 6.5)];
     muiz.best = muiz.windows[0];
     const lines = renderEvening(r, EN).split('\n');
-    expect(lines[4]).toBe(`🥈 ${MUIZ} · 7:00–9:00 · 6.5/10`);
-    expect(lines[5]).toBe('   3 ft · onshore SE 8 kt');
+    const i = lines.indexOf(`🥈 ${MUIZ} · 7:00–9:00 · 6.5/10`);
+    expect(i).toBeGreaterThan(-1);
+    expect(lines[i + 1]).toBe('   3 ft · onshore SE 8 kt');
+    // et son propre graphe juste dessous — c'est le second spot du message
+    expect(lines[i + 2]).toBe('<code>6  9  12 15 18</code>');
+    expect(lines[i + 3]).toBe('<code>·▅▅▅▃········</code>');
   });
   it('mentions the wind change at the end of the window', () => {
     const r = goldenReport();
@@ -194,6 +205,25 @@ describe('renderEvening — other verdicts', () => {
     expect(lines[0]).toBe('🌅 <b>DAWN PATROL, THEN WORK</b> (Wed 16 Sept)');
     expect(lines[1]).toBe(`🏄 ${MUIZ} · 7:00–9:00 · 7.2/10`);
     expect(lines[2]).toBe('   3 ft · SW 13 s · onshore SE 8 kt · incoming tide, high 9:00');
+  });
+  it('🌅 a dawn+dusk 🟡 on one spot draws its day chart once, not twice', () => {
+    // Le graphe couvre toute la journée : le redessiner sous « après le travail » répéterait à
+    // l'identique la courbe déjà affichée sous « dawn patrol ».
+    const pick = { spotId: 'muizenberg', window: W('07:00', '09:00', 7.2) };
+    const r = goldenReport({ verdict: { kind: 'yellow', dawn: pick, dusk: { spotId: 'muizenberg', window: W('17:00', '18:00', 7.0) } } });
+    const lines = renderEvening(r, EN).split('\n');
+    expect(lines.filter((l) => l.startsWith('<code>') && l.includes('▅')).length).toBe(1);
+  });
+  it('🌅 a dawn+dusk 🟡 on two different spots draws one chart each', () => {
+    const r = goldenReport({
+      verdict: {
+        kind: 'yellow',
+        dawn: { spotId: 'muizenberg', window: W('07:00', '09:00', 7.2) },
+        dusk: { spotId: 'kommetjie-long-beach', window: W('17:00', '18:00', 7.0) },
+      },
+    });
+    const lines = renderEvening(r, EN).split('\n');
+    expect(lines.filter((l) => l === '<code>6  9  12 15 18</code>').length).toBe(2);
   });
   it('out of coverage with raw conditions and nearest spots', () => {
     const r = goldenReport({

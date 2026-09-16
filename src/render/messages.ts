@@ -94,10 +94,30 @@ function sunLine(report: Report, s: Strings): string {
   return report.weather.precipMm >= 1 ? `${base} · ${fill(s.rain, { mm: Math.round(report.weather.precipMm) })}` : base;
 }
 
-function primaryBlock(pick: SpotPick, report: Report, ctx: RenderCtx, s: Strings): string[] {
+/**
+ * Les deux lignes de graphe d'un spot : règle des heures, puis une note par heure. Une seule
+ * définition pour le verdict et pour la vue 📋 — les deux doivent tracer exactement la même journée.
+ * `<code>` ligne à ligne plutôt qu'un bloc `<pre>` : sur téléphone, Telegram enferme un `<pre>` dans
+ * un conteneur défilant avec bouton copier qui rognait la dernière colonne de la règle.
+ * Sans indentation, comme le titre du spot : les 3 espaces des lignes de conditions sont en police
+ * proportionnelle et n'alignent rien ici, et chaque caractère gagné éloigne le rognage sur mobile.
+ */
+function spotChart(report: Report, spotId: string): string[] {
+  const r = report.spots.find((x) => x.spotId === spotId);
+  const hours = chartHours(report);
+  const aligned = r ? alignedHours(r, report.date, hours) : hours.map(() => undefined);
+  return [`<code>${hourRuler(hours)}</code>`, `<code>${sparkline(aligned.map((h) => h?.score ?? 0))}</code>`];
+}
+
+/**
+ * `chart: false` pour le second créneau d'un 🟡 sur le même spot : le graphe couvre toute la journée,
+ * donc le redessiner sous « après le travail » répéterait la ligne du dessus à l'identique.
+ */
+function primaryBlock(pick: SpotPick, report: Report, ctx: RenderCtx, s: Strings, opts: { chart?: boolean } = {}): string[] {
   const r = report.spots.find((x) => x.spotId === pick.spotId);
   const lines = [`🏄 ${spotName(pick.spotId, ctx, s)} · ${fmtWindow(pick.window)} · ${score1(pick.window.peak)}/10`];
   if (r) lines.push(`   ${conditionsLine(r, pick.window, report, s)}`);
+  if (opts.chart !== false) lines.push(...spotChart(report, pick.spotId));
   lines.push(`   ${sunLine(report, s)}`);
   return lines;
 }
@@ -110,6 +130,7 @@ function runnerUp(report: Report, excludeId: string, ctx: RenderCtx, s: Strings)
   return [
     `🥈 ${spotName(r.spotId, ctx, s)} · ${fmtWindow(r.best)} · ${score1(r.best.peak)}/10`,
     `   ${ftRange(hoursIn(r, r.best))} ft · ${windSummary(r, r.best, s)}`,
+    ...spotChart(report, r.spotId),
   ];
 }
 
@@ -159,7 +180,7 @@ export function renderEvening(report: Report, ctx: RenderCtx): string {
       break;
     case 'yellow':
       if (v.dawn) lines.push(fill(s.verdict.dawn, dateVars(report, ctx)), ...primaryBlock(v.dawn, report, ctx, s));
-      if (v.dusk) lines.push(fill(s.verdict.dusk, dateVars(report, ctx)), ...primaryBlock(v.dusk, report, ctx, s));
+      if (v.dusk) lines.push(fill(s.verdict.dusk, dateVars(report, ctx)), ...primaryBlock(v.dusk, report, ctx, s, { chart: v.dusk.spotId !== v.dawn?.spotId }));
       break;
     case 'red': {
       lines.push(redTitle(report, ctx, s), fill(s.verdict.redBody, { radius: report.radiusKm }));
@@ -310,11 +331,8 @@ export function renderSpotDay(report: Report, spotId: string, ctx: RenderCtx): s
   const s = STRINGS[ctx.lang];
   const r = report.spots.find((x) => x.spotId === spotId);
   const name = spotName(spotId, ctx, s);
-  const hours = chartHours(report);
-  const aligned = r ? alignedHours(r, report.date, hours) : hours.map(() => undefined);
-  // `<code>` ligne à ligne plutôt qu'un bloc `<pre>` : sur téléphone, Telegram enferme un `<pre>`
-  // dans un conteneur défilant avec bouton copier qui rognait la dernière colonne de la règle.
-  const chart = [`<code>${hourRuler(hours)}</code>`, `<code>${sparkline(aligned.map((h) => h?.score ?? 0))}</code>`].join('\n');
+  const chart = spotChart(report, spotId).join('\n');
+  const aligned = r ? alignedHours(r, report.date, chartHours(report)) : [];
   // avec une fenêtre, le créneau ; sans fenêtre, la note du jour — sinon l'en-tête ne chiffrait rien
   const headline = r?.best ? fmtWindow(r.best) : r ? `${r.maxScore.toFixed(1)}/10` : '';
   const title = `🏄 ${name}${headline ? ` · ${headline}` : ''}`;
