@@ -6,7 +6,7 @@ import { SCORING } from '../../src/config';
 import type { Spot } from '../../src/types';
 
 const spot = (levels: Spot['levels']): Spot => ({
-  id: 's', name: 'S', region: 'r', lat: 0, lon: 0, facing: 300, swellWindow: [200, 290], exposure: 1,
+  id: 's', name: 'S', short: 'S', region: 'r', lat: 0, lon: 0, facing: 300, swellWindow: [200, 290], exposure: 1,
   tide: { best: [], forbidden: [] }, levels, character: 'mellow', verified: true,
 });
 

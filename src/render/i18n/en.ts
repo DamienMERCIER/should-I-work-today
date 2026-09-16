@@ -20,7 +20,8 @@ export const en: Strings = {
     welcome:
       'All set. Every evening at 19:00 I tell you whether to work tomorrow.\n' +
       'Location: {home} · work {start}–{end}.\n' +
-      '📍 send your location if you move · 🔎 conditions right now · /profile to change level, board or hours',
+      '📍 send your location if you move · 🔎 conditions right now · /profile to change level, board or hours\n' +
+      'Data: Open-Meteo.com (CC-BY 4.0)',
   },
   privateBot: 'Private bot — you need the invite link.',
   help: 'Commands:\n/now — the rest of the day\n/profile — level, board, work hours\n/lang — language\n/stop — no more messages\n📍 the button sends your location',
@@ -68,10 +69,26 @@ export const en: Strings = {
     title: '📋 <b>All spots</b> ({date})',
     closed: 'closed for your level: {spots}',
     tides: 'tide: {list}',
-    sun: '☀️ {temp}° · sunrise {sunrise} · sunset {sunset}',
-    license: 'Data: Open-Meteo.com (CC-BY 4.0)',
-    noWindow: '—',
     tooOld: 'Too old — run /now.',
+  },
+  dayView: {
+    title: '📋 <b>Your day</b> ({date})',
+    peak: 'peak {score} at {time}',
+    bestAt: 'best at {time} — {reasons}',
+    fadesFrom: 'fades from {time} — {reasons}',
+    flatSpots: '{n} spots flat all day',
+    sun: '🌅 {sunrise} · 🌇 {sunset}',
+    closedSpot: 'closed for your level',
+    reasons: {
+      windDrops: 'wind drops to {kt} kt',
+      windBuilds: 'wind builds to {kt} kt',
+      tideStillHigh: 'tide still high',
+      tideMid: 'mid tide',
+      tideLow: 'low tide',
+      sizePeaks: 'size peaks at {ft} ft',
+      groundswell: '{s} s groundswell',
+      getsDark: 'gets dark',
+    },
   },
   coverage: {
     none: '📍 No known spot within {radius} km.',

@@ -43,6 +43,20 @@ describe('validateSpots', () => {
     expect(bad({ exposure: 0 })).toEqual(['spots[0].exposure: expected number in (0, 1.5]']);
     expect(bad({ lat: -95 })).toEqual(['spots[0].lat: expected number in [-90, 90]']);
   });
+  it('rejects a bad short label', () => {
+    expect(bad({ short: '' })).toEqual(['spots[0].short: expected non-empty string']);
+    expect(bad({ short: 'Way Too Long Label' })).toEqual(['spots[0].short: expected ≤ 13 characters']);
+  });
+  it('rejects a short label duplicated within the same region', () => {
+    const a = { ...good, id: 'spot-a', short: 'Dup' };
+    const b = { ...good, id: 'spot-b', short: 'Dup' };
+    expect(validateSpots([a, b], regions)).toEqual(['spots[1].short: duplicate "Dup" in region "cape-peninsula"']);
+  });
+  it('allows the same short label reused in a different region', () => {
+    const a = { ...good, id: 'spot-a', short: 'Dup' };
+    const b = { ...good, id: 'spot-b', region: 'west-coast', short: 'Dup' };
+    expect(validateSpots([a, b], regions)).toEqual([]);
+  });
   it('rejects malformed windows, tides and levels', () => {
     expect(bad({ swellWindow: [200] })).toEqual(['spots[0].swellWindow: expected [from, to] in [0, 360]']);
     expect(bad({ tide: { best: ['mid'], forbidden: ['mid'] } })).toEqual(['spots[0].tide: best and forbidden overlap']);
@@ -53,8 +67,15 @@ describe('validateSpots', () => {
     expect(bad({ character: 'gnarly' })).toEqual(['spots[0].character: expected mellow | punchy | heavy']);
     expect(bad({ verified: 'yes' })).toEqual(['spots[0].verified: expected boolean']);
   });
+  it('rejects a short label too long for an unverified spot (the ≈ prefix costs 2 columns)', () => {
+    expect(bad({ short: 'Twelve chars', verified: false })).toEqual(['spots[0].short: expected ≤ 11 characters for an unverified spot (the ≈ prefix costs 2)']);
+    expect(bad({ short: 'Twelve chars', verified: true })).toEqual([]);
+  });
+
   it('rejects duplicate ids and non-array input', () => {
-    expect(validateSpots([good, good], regions)).toEqual(['spots[1].id: duplicate "muizenberg"']);
+    // short differs on the second copy so this isolates id-duplicate detection from short-duplicate
+    // detection (covered on its own above).
+    expect(validateSpots([good, { ...good, short: 'Other' }], regions)).toEqual(['spots[1].id: duplicate "muizenberg"']);
     expect(validateSpots({}, regions)).toEqual(['spots: expected an array']);
   });
   it('loadSpots throws with all errors joined', () => {

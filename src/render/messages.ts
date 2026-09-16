@@ -5,6 +5,7 @@ import { cardinal8 } from '../engine/geo';
 import { isWeekend, toMs } from '../engine/time';
 import { primaryPick } from '../engine/verdict';
 import type { HourFactors, Lang, Report, Spot, SpotHour, SpotPick, SpotResult, Window } from '../types';
+import { chartHours, hourRuler, sparkline } from './chart';
 import { fill, STRINGS, type Strings } from './i18n';
 
 export interface RenderCtx { lang: Lang; spots: Map<string, Spot> }
@@ -33,6 +34,13 @@ function spotName(id: string, ctx: RenderCtx, s: Strings): string {
   const spot = ctx.spots.get(id);
   if (!spot) return esc(id);
   return spot.verified ? esc(spot.name) : `${s.approx} ${esc(spot.name)}`;
+}
+
+/** Same `≈` rule as `spotName`, but the short (≤ 13 char) label used on the day view's secondary rows. */
+function spotShort(id: string, ctx: RenderCtx, s: Strings): string {
+  const spot = ctx.spots.get(id);
+  if (!spot) return esc(id);
+  return spot.verified ? esc(spot.short) : `${s.approx} ${esc(spot.short)}`;
 }
 
 const hoursIn = (r: SpotResult, w: Window): SpotHour[] => r.hours.filter((h) => h.time >= w.start && h.time < w.end);
@@ -72,7 +80,7 @@ function tideText(report: Report, h: SpotHour, s: Strings): string {
   return next ? `${trend}, ${fill(s.tideNext[next.kind], { time: fmtTime(next.time) })}` : trend;
 }
 
-function conditionsLine(r: SpotResult, w: Window, report: Report, ctx: RenderCtx, s: Strings): string {
+function conditionsLine(r: SpotResult, w: Window, report: Report, s: Strings): string {
   const peak = peakHour(r, w);
   if (!peak) return '';
   return fill(s.spotLine.conditions, {
@@ -89,7 +97,7 @@ function sunLine(report: Report, s: Strings): string {
 function primaryBlock(pick: SpotPick, report: Report, ctx: RenderCtx, s: Strings): string[] {
   const r = report.spots.find((x) => x.spotId === pick.spotId);
   const lines = [`🏄 ${spotName(pick.spotId, ctx, s)} · ${fmtWindow(pick.window)} · ${score1(pick.window.peak)}/10`];
-  if (r) lines.push(`   ${conditionsLine(r, pick.window, report, ctx, s)}`);
+  if (r) lines.push(`   ${conditionsLine(r, pick.window, report, s)}`);
   lines.push(`   ${sunLine(report, s)}`);
   return lines;
 }
@@ -203,35 +211,182 @@ export function renderMorning(morning: Report, delta: Delta, evening: Report | u
   const lines = [fill(s.morning.changed, { from: renderShortVerdict(evening, ctx), to: renderShortVerdict(morning, ctx) })];
   const pick = primaryPick(morning.verdict);
   const r = pick ? morning.spots.find((x) => x.spotId === pick.spotId) : undefined;
-  if (pick && r) lines.push(conditionsLine(r, pick.window, morning, ctx, s));
+  if (pick && r) lines.push(conditionsLine(r, pick.window, morning, s));
   if (delta.cause) lines.push(fill(s.morning.cause, { cause: s.causes[delta.cause] }));
   return lines.join('\n');
 }
 
-export function renderDetails(report: Report, ctx: RenderCtx): string {
+// ---- 📋 day view: a chart of the day per spot, replacing the old flat one-snapshot-per-row list ----
+// Full rationale, glyph/ruler rules and worked examples: .superpowers/sdd/day-view.md
+
+/** This spot's hours, indexed by the report date, one slot per plotted hour (undefined = no data that hour). */
+function alignedHours(r: SpotResult, date: string, hours: number[]): (SpotHour | undefined)[] {
+  const byTime = new Map(r.hours.map((h) => [h.time, h] as const));
+  return hours.map((h) => byTime.get(`${date}T${String(h).padStart(2, '0')}:00`));
+}
+
+/** Wind for the day view: relation/direction from the peak hour, kt as a range across every plotted hour. */
+function windRangeText(plotted: SpotHour[], peak: SpotHour, s: Strings): string {
+  if (peak.windKt < 5) return s.glassy;
+  const kts = plotted.length > 0 ? plotted.map((h) => h.windKt) : [peak.windKt];
+  const lo = Math.round(Math.min(...kts));
+  const hi = Math.round(Math.max(...kts));
+  const base = `${s.relations[peak.windRelation]} ${cardinal(peak.windDirDeg, s)}`;
+  return lo === hi ? `${base} ${lo} kt` : `${base} ${lo}→${hi} kt`;
+}
+
+type ExplainKey = 'wind' | 'tide' | 'size' | 'period' | 'day';
+/** best-at: factors that can be favourable *or* not — size/period rarely swing, but wind & tide do. */
+const BEST_KEYS: readonly ExplainKey[] = ['wind', 'tide', 'size', 'period'];
+/** fades-from: no "size drops"/"period shortens" phrase exists, so only wind, tide and daylight explain a fade. */
+const FADE_KEYS: readonly ExplainKey[] = ['wind', 'tide', 'day'];
+
+function spreadOf(hours: SpotHour[], key: ExplainKey): number {
+  if (hours.length === 0) return 0;
+  const values = hours.map((h) => h.factors[key]);
+  return Math.max(...values) - Math.min(...values);
+}
+
+function phraseFor(key: ExplainKey, h: SpotHour, direction: 'best' | 'fade', s: Strings): string {
+  const r = s.dayView.reasons;
+  switch (key) {
+    case 'wind':
+      if (h.windKt < 5) return s.glassy;
+      return fill(direction === 'best' ? r.windDrops : r.windBuilds, { kt: Math.round(h.windKt) });
+    case 'tide':
+      return h.tide.state === 'high' ? r.tideStillHigh : h.tide.state === 'low' ? r.tideLow : r.tideMid;
+    case 'size':
+      return fill(r.sizePeaks, { ft: Math.round(h.faceFt) });
+    case 'period':
+      return fill(r.groundswell, { s: Math.round(h.periodS) });
+    case 'day':
+      return r.getsDark;
+  }
+}
+
+/** Factors at the peak hour that are favourable (≥ 0.9) *and* meaningfully lower elsewhere (spread ≥ 0.15). */
+function bestReasons(peak: SpotHour, plotted: SpotHour[], s: Strings): string[] {
+  return BEST_KEYS.filter((k) => peak.factors[k] >= 0.9 && spreadOf(plotted, k) >= 0.15)
+    .sort((a, b) => spreadOf(plotted, b) - spreadOf(plotted, a))
+    .slice(0, 2)
+    .map((k) => phraseFor(k, peak, 'best', s));
+}
+
+/** First hour after the peak (anywhere in the spot's day, not just the plotted range — dusk included) below 60 % of it. */
+function fadeHourAfter(hours: SpotHour[], peak: SpotHour): SpotHour | undefined {
+  const threshold = 0.6 * peak.score;
+  return hours.find((h) => h.time > peak.time && h.score < threshold);
+}
+
+/** Factors that dropped the most from the peak to the fade hour, phrased from their value at the fade hour. */
+function fadeReasons(peak: SpotHour, fade: SpotHour, s: Strings): string[] {
+  return FADE_KEYS.map((k) => ({ k, drop: peak.factors[k] - fade.factors[k] }))
+    .filter((x) => x.drop > 0)
+    .sort((a, b) => b.drop - a.drop)
+    .slice(0, 2)
+    .map((x) => phraseFor(x.k, fade, 'fade', s));
+}
+
+/** The two explanation lines (§3 day-view.md) — silent (returns []) on a flat day rather than inventing a story. */
+function explanationLines(r: SpotResult, peak: SpotHour, plotted: SpotHour[], s: Strings): string[] {
+  const lines: string[] = [];
+  const best = bestReasons(peak, plotted, s);
+  if (best.length > 0) lines.push(fill(s.dayView.bestAt, { time: fmtTime(peak.time), reasons: best.join(', ') }));
+  const fade = fadeHourAfter(r.hours, peak);
+  if (fade) {
+    const reasons = fadeReasons(peak, fade, s);
+    if (reasons.length > 0) lines.push(fill(s.dayView.fadesFrom, { time: fmtTime(fade.time), reasons: reasons.join(', ') }));
+  }
+  return lines;
+}
+
+/**
+ * The detailed chart block for one spot: title (+ its best window, if any), ruler + sparkline in a `<pre>`
+ * block, then the peak/conditions/explanation lines. Works with no window (skips peak/best-at/fades-from,
+ * keeps the chart and conditions) and for a spot closed at the user's level (chart of zeros, says so) —
+ * also called directly by the follow-up `/spot` command.
+ */
+export function renderSpotDay(report: Report, spotId: string, ctx: RenderCtx): string {
   const s = STRINGS[ctx.lang];
-  const lines = [fill(s.details.title, { date: report.mode === 'now' ? s.today : fmtDate(report.date, ctx.lang) })];
-  const open = report.spots
-    .filter((r) => r.open)
-    .sort((a, b) => (b.best?.peak ?? 0) - (a.best?.peak ?? 0) || b.maxScore - a.maxScore);
-  for (const r of open) {
-    const h = peakHour(r, r.best);
-    if (!h) continue;
-    const arrow = h.tide.trend === 'rising' ? '↑' : '↓';
-    const win = r.best ? fmtWindow(r.best) : s.details.noWindow;
-    const ft = r.best ? ftRange(hoursIn(r, r.best)) : String(Math.round(h.faceFt));
-    lines.push(`${spotName(r.spotId, ctx, s)} · ${win} · ${score1(r.best?.peak ?? r.maxScore)} · ${ft} ft · ${windText(h, s)} ${arrow}`);
+  const r = report.spots.find((x) => x.spotId === spotId);
+  const name = spotName(spotId, ctx, s);
+  const hours = chartHours(report);
+  const aligned = r ? alignedHours(r, report.date, hours) : hours.map(() => undefined);
+  const chart = `<pre>${hourRuler(hours)}\n${sparkline(aligned.map((h) => h?.score ?? 0))}</pre>`;
+  const title = `🏄 ${name}${r?.best ? ` · ${fmtWindow(r.best)}` : ''}`;
+
+  if (!r || !r.open) return [title, chart, s.dayView.closedSpot].join('\n\n');
+
+  const peak = r.best ? peakHour(r, r.best) : peakHour(r);
+  const rest: string[] = [];
+  if (peak) {
+    if (r.best) rest.push(fill(s.dayView.peak, { score: score1(r.best.peak), time: fmtTime(peak.time) }));
+    const ftHours = r.best ? hoursIn(r, r.best) : [peak];
+    const plotted = aligned.filter((h): h is SpotHour => h !== undefined);
+    rest.push(fill(s.spotLine.conditions, {
+      ft: ftRange(ftHours), dir: cardinal(peak.swellDirDeg, s), s: Math.round(peak.periodS),
+      wind: windRangeText(plotted, peak, s), tide: tideText(report, peak, s),
+    }));
+    if (r.best) rest.push(...explanationLines(r, peak, plotted, s));
+  }
+  return rest.length > 0 ? [title, chart, rest.join('\n')].join('\n\n') : [title, chart].join('\n\n');
+}
+
+/**
+ * One compact row: short label (≤ 13 chars, own field — no truncation heuristics, § defect 2) · sparkline
+ * (1 char/hour) · maxScore. Width budget for a 14-hour day (§ day-view.md "Width and naming fix"):
+ * label 13 + 1 space + spark 14 + 2 spaces + score ≤ 4 ("10.0") = 34.
+ */
+function spotRow(r: SpotResult, hours: number[], date: string, ctx: RenderCtx, s: Strings): string {
+  const label = spotShort(r.spotId, ctx, s);
+  const aligned = alignedHours(r, date, hours);
+  return `${label.padEnd(13, ' ')} ${sparkline(aligned.map((h) => h?.score ?? 0))}  ${score1(r.maxScore)}`;
+}
+
+/**
+ * The 📋 day view: the primary spot's full chart, one sparkline row per other open spot scoring ≥ 2.5
+ * (sorted best first; below that they collapse into a count unless `opts.all`), the closed-spots line,
+ * the tide line and a sun line. No Open-Meteo attribution — that now lives in the welcome message.
+ */
+export function renderDayView(report: Report, ctx: RenderCtx, opts: { all?: boolean } = {}): string {
+  const s = STRINGS[ctx.lang];
+  const pick = primaryPick(report.verdict);
+  const primaryId = pick?.spotId ?? [...report.spots].filter((r) => r.open).sort((a, b) => b.maxScore - a.maxScore)[0]?.spotId;
+
+  const blocks: string[] = [];
+  if (primaryId) blocks.push(renderSpotDay(report, primaryId, ctx));
+
+  const others = report.spots.filter((r) => r.open && r.spotId !== primaryId).sort((a, b) => b.maxScore - a.maxScore);
+  const shown = opts.all ? others : others.filter((r) => r.maxScore >= 2.5);
+  const hours = chartHours(report);
+  if (shown.length > 0) blocks.push(`<pre>${shown.map((r) => spotRow(r, hours, report.date, ctx, s)).join('\n')}</pre>`);
+
+  const tail: string[] = [];
+  if (!opts.all) {
+    const hidden = others.length - shown.length;
+    if (hidden > 0) tail.push(fill(s.dayView.flatSpots, { n: hidden }));
   }
   const closed = report.spots.filter((r) => !r.open).map((r) => spotName(r.spotId, ctx, s));
-  if (closed.length > 0) lines.push(fill(s.details.closed, { spots: closed.join(', ') }));
+  if (closed.length > 0) tail.push(fill(s.details.closed, { spots: closed.join(', ') }));
   if (report.tides.length > 0) {
-    lines.push(fill(s.details.tides, { list: report.tides.map((e) => fill(s.tideNext[e.kind], { time: fmtTime(e.time) })).join(' · ') }));
+    tail.push(fill(s.details.tides, { list: report.tides.map((e) => fill(s.tideNext[e.kind], { time: fmtTime(e.time) })).join(' · ') }));
   }
-  lines.push(
-    fill(s.details.sun, { temp: Math.round(report.weather.tempMaxC), sunrise: fmtTime(report.sun.sunrise), sunset: fmtTime(report.sun.sunset) }),
-    s.details.license,
-  );
-  return lines.join('\n');
+  tail.push(fill(s.dayView.sun, { sunrise: fmtTime(report.sun.sunrise), sunset: fmtTime(report.sun.sunset) }));
+  blocks.push(tail.join('\n'));
+
+  return blocks.join('\n\n');
+}
+
+/**
+ * Thin alias: title line (still used by the 📋 callback handler in `src/bot/router.ts`) + the day view
+ * body. Default title ("Your day") describes the day-chart-plus-collapsed-rows body this renders today;
+ * `opts.all` switches to the "All spots" title reserved for the future genuinely-everything `/all` view.
+ */
+export function renderDetails(report: Report, ctx: RenderCtx, opts: { all?: boolean } = {}): string {
+  const s = STRINGS[ctx.lang];
+  const titleTemplate = opts.all ? s.details.title : s.dayView.title;
+  const title = fill(titleTemplate, { date: report.mode === 'now' ? s.today : fmtDate(report.date, ctx.lang) });
+  return `${title}\n${renderDayView(report, ctx, opts)}`;
 }
 
 export const detailsButton = (date: string, lang: Lang): ReplyMarkup => ({

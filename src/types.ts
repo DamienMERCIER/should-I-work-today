@@ -29,6 +29,8 @@ export interface Region { id: string; name: string; tz: 'Africa/Johannesburg'; s
 export interface Spot {
   id: string;
   name: string;
+  /** libellé court pour les tableaux (≤ 13 caractères) */
+  short: string;
   region: string;
   lat: number;
   lon: number;

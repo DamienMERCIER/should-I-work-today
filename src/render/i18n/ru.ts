@@ -20,7 +20,8 @@ export const ru: Strings = {
     welcome:
       'Готово. Каждый вечер в 19:00 я скажу, идти ли завтра на работу.\n' +
       'Позиция: {home} · работа {start}–{end}.\n' +
-      '📍 отправь позицию, если переехал · 🔎 условия сейчас · /profil — уровень, доска, часы',
+      '📍 отправь позицию, если переехал · 🔎 условия сейчас · /profil — уровень, доска, часы\n' +
+      'Данные: Open-Meteo.com (CC-BY 4.0)',
   },
   privateBot: 'Приватный бот — нужна ссылка-приглашение.',
   help: 'Команды:\n/now — остаток дня\n/profil — уровень, доска, рабочие часы\n/lang — язык\n/stop — больше не писать\n📍 кнопка отправляет твою позицию',
@@ -68,10 +69,26 @@ export const ru: Strings = {
     title: '📋 <b>Все споты</b> ({date})',
     closed: 'закрыто для твоего уровня: {spots}',
     tides: 'вода: {list}',
-    sun: '☀️ {temp}° · восход {sunrise} · закат {sunset}',
-    license: 'Данные: Open-Meteo.com (CC-BY 4.0)',
-    noWindow: '—',
     tooOld: 'Слишком старое — набери /now.',
+  },
+  dayView: {
+    title: '📋 <b>Твой день</b> ({date})',
+    peak: 'пик {score} в {time}',
+    bestAt: 'лучшее в {time} — {reasons}',
+    fadesFrom: 'спадает после {time} — {reasons}',
+    flatSpots: '{n} спотов без волны весь день',
+    sun: '🌅 {sunrise} · 🌇 {sunset}',
+    closedSpot: 'закрыто для твоего уровня',
+    reasons: {
+      windDrops: 'ветер стихает до {kt} kt',
+      windBuilds: 'ветер усиливается до {kt} kt',
+      tideStillHigh: 'вода всё ещё полная',
+      tideMid: 'средняя вода',
+      tideLow: 'малая вода',
+      sizePeaks: 'пик размера {ft} ft',
+      groundswell: '{s} с зыбь',
+      getsDark: 'темнеет',
+    },
   },
   coverage: {
     none: '📍 В радиусе {radius} км нет известных спотов.',

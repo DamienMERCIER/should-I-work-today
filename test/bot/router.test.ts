@@ -220,9 +220,9 @@ describe('📋 details callback', () => {
     await store.putProfiles({ '1': ready() });
     await store.putReports('2026-09-16', { '1': goldenReport() });
     await handleUpdate(cb('rep:2026-09-16'), deps);
-    expect(sent()[0].text.startsWith('📋 <b>All spots</b> (Wed 16 Sept)')).toBe(true);
+    expect(sent()[0].text.startsWith('📋 <b>Your day</b> (Wed 16 Sept)')).toBe(true);
     await handleUpdate(cb('rep:2026-09-17'), deps);
-    expect(sent()[1].text.startsWith('📋 <b>All spots</b> (Thu 17 Sept)')).toBe(true);
+    expect(sent()[1].text.startsWith('📋 <b>Your day</b> (Thu 17 Sept)')).toBe(true);
     await handleUpdate(cb('rep:2020-01-01'), deps);
     expect(sent()[2].text).toBe('Too old — run /now.');
     expect(answered()).toBe(3);

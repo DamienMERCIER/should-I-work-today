@@ -48,8 +48,33 @@ export interface Strings {
   causes: { wind: string; size: string; period: string; tide: string };
   /** green/dawn/dusk: {spot} {window} */
   shortVerdict: { green: string; dawn: string; dusk: string; red: string };
-  /** title: {date} · closed: {spots} · tides: {list} · sun: {temp} {sunrise} {sunset} */
-  details: { title: string; closed: string; tides: string; sun: string; license: string; noWindow: string; tooOld: string };
+  /** title: {date}, the "All spots" title — reserved for the future `/all` (`opts.all`) view; the day view's own default title is `dayView.title` · closed: {spots} · tides: {list} */
+  details: { title: string; closed: string; tides: string; tooOld: string };
+  /**
+   * The 📋 day-view chart (`renderSpotDay` / `renderDayView`), § day-view.md.
+   * title: {date} (the default, non-`all` title — `details.title` "All spots" is used when `opts.all`)
+   * peak: {score} {time} · bestAt/fadesFrom: {time} {reasons} · flatSpots: {n} · sun: {sunrise} {sunset}
+   * reasons.windDrops/windBuilds: {kt} · reasons.sizePeaks: {ft} · reasons.groundswell: {s}
+   */
+  dayView: {
+    title: string;
+    peak: string;
+    bestAt: string;
+    fadesFrom: string;
+    flatSpots: string;
+    sun: string;
+    closedSpot: string;
+    reasons: {
+      windDrops: string;
+      windBuilds: string;
+      tideStillHigh: string;
+      tideMid: string;
+      tideLow: string;
+      sizePeaks: string;
+      groundswell: string;
+      getsDark: string;
+    };
+  };
   /** none: {radius} · raw: {swell} {s} {dir} {kt} {windDir} · nearest: {list} · nearestItem: {spot} {km} · farFromCoast: {km} */
   coverage: { none: string; raw: string; nearest: string; nearestItem: string; farFromCoast: string };
   noData: string;
