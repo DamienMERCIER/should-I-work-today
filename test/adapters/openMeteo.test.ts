@@ -48,11 +48,14 @@ describe('urls', () => {
     expect(u).toContain('forecast_days=3');
     expect(u).not.toContain('wind_wave_height');
   });
-  it('forecastUrl asks knots, sea cells and daily sun', () => {
+  it('forecastUrl asks knots, the nearest cell and daily sun', () => {
     const u = forecastUrl([MUIZ], 2);
     expect(u.startsWith('https://api.open-meteo.com/v1/forecast?')).toBe(true);
     expect(u).toContain('wind_speed_unit=kn');
-    expect(u).toContain('cell_selection=sea');
+    // `nearest` et pas `sea` : une cellule forcée en pleine mer lisait le vent jusqu'à 10 km du
+    // spot, et sous-estimait surtout les rafales (45 contre 58 km/h à Kommetjie).
+    expect(u).toContain('cell_selection=nearest');
+    expect(u).not.toContain('cell_selection=sea');
     expect(u).toContain('daily=sunrise%2Csunset%2Ctemperature_2m_max%2Ctemperature_2m_min%2Cprecipitation_sum');
     expect(u).toContain('forecast_days=2');
   });

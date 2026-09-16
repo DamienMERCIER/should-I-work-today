@@ -31,11 +31,20 @@ export function marineUrl(points: LatLon[], forecastDays = 3): string {
   return `${MARINE_BASE}?${q.toString()}`;
 }
 
+/**
+ * `cell_selection=nearest` et non `sea` : forcer une cellule en pleine mer eloignait le point de vent
+ * du spot de 4,8 km en mediane et jusqu'a 10,1 km sur les 35 spots, 16 d'entre eux au-dela de 5 km
+ * (Long Beach tombait 8,2 km au nord, vers Hout Bay). `nearest` ramene la mediane a 3,5 km, le
+ * maximum a 5,1 km, et seuls 3 spots restent au-dela de 5 km. L'ecart portait surtout sur les
+ * rafales, que le score lit depuis le correctif du vent : 45 km/h au large contre 58 km/h au bord
+ * pour la meme heure a Kommetjie. L'appel houle, lui, ne fixe pas de `cell_selection` : sa grille
+ * est deja oceanique.
+ */
 export function forecastUrl(points: LatLon[], forecastDays = 3): string {
   const q = new URLSearchParams({
     latitude: coords(points, 'lat'), longitude: coords(points, 'lon'),
     hourly: FORECAST_HOURLY.join(','), daily: FORECAST_DAILY.join(','),
-    wind_speed_unit: 'kn', cell_selection: 'sea', timezone: TIMEZONE, forecast_days: String(forecastDays),
+    wind_speed_unit: 'kn', cell_selection: 'nearest', timezone: TIMEZONE, forecast_days: String(forecastDays),
   });
   return `${FORECAST_BASE}?${q.toString()}`;
 }
