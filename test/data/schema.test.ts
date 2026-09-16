@@ -67,9 +67,11 @@ describe('validateSpots', () => {
     expect(bad({ character: 'gnarly' })).toEqual(['spots[0].character: expected mellow | punchy | heavy']);
     expect(bad({ verified: 'yes' })).toEqual(['spots[0].verified: expected boolean']);
   });
-  it('rejects a short label too long for an unverified spot (the ≈ prefix costs 2 columns)', () => {
-    expect(bad({ short: 'Twelve chars', verified: false })).toEqual(['spots[0].short: expected ≤ 11 characters for an unverified spot (the ≈ prefix costs 2)']);
-    expect(bad({ short: 'Twelve chars', verified: true })).toEqual([]);
+  it('accepts a 13-character short label whether the spot is verified or not', () => {
+    // la limite de 11 n'existait que pour laisser place au préfixe ≈, qui ne s'affiche plus
+    expect(bad({ short: 'Thirteen char', verified: false })).toEqual([]);
+    expect(bad({ short: 'Thirteen char', verified: true })).toEqual([]);
+    expect(bad({ short: 'Fourteen chars', verified: false })).toEqual(['spots[0].short: expected ≤ 13 characters']);
   });
 
   it('rejects duplicate ids and non-array input', () => {

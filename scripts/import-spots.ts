@@ -59,7 +59,7 @@ const DEFAULT_PROGRESS_PATH = '.superpowers/import-spots-progress.json';
 const DEDUPE_THRESHOLD_M = 500;
 const WORLD_DEDUPE_THRESHOLD_M = 200; // world-vs-world (§scripts/lib/dedupe.ts dedupeAdjacentWorld)
 const CHUNK_SIZE = 200; // slugs per stage-2+3 batch, between which progress is saved (§resume grain)
-const UNVERIFIED_SHORT_MAX_LEN = 11; // schema.ts: short ≤ 11 chars when verified: false (every world spot)
+const WORLD_SHORT_MAX_LEN = 13; // schema.ts: short ≤ 13 chars ; le préfixe ≈ ne s'affiche plus depuis e2ef7b1
 
 export interface ImportArgs {
   limit?: number;
@@ -161,7 +161,7 @@ function writeOutput(out: string, progress: ImportProgress, curated: Spot[], log
 
   const usedShortSlugs = new Set(curated.map((s) => shortSlug(s.short)));
   const tuples: SpotTuple[] = kept.map((spot) => {
-    const short = deriveShort(spot.name, usedShortSlugs, UNVERIFIED_SHORT_MAX_LEN);
+    const short = deriveShort(spot.name, usedShortSlugs, WORLD_SHORT_MAX_LEN);
     return toTuple({ name: spot.name, short, lat: spot.lat, lon: spot.lon, facing: spot.facing, type: spot.type });
   });
 

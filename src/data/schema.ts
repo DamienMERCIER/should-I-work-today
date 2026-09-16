@@ -44,8 +44,6 @@ export function validateSpots(input: unknown, regions: Region[]): string[] {
     if (typeof s.name !== 'string' || s.name.length === 0) errors.push(`${p}.name: expected non-empty string`);
     if (typeof s.short !== 'string' || s.short.length === 0) errors.push(`${p}.short: expected non-empty string`);
     else if (s.short.length > 13) errors.push(`${p}.short: expected ≤ 13 characters`);
-    // le préfixe « ≈ » des spots non vérifiés consomme 2 colonnes du budget de largeur du tableau
-    else if (s.verified === false && s.short.length > 11) errors.push(`${p}.short: expected ≤ 11 characters for an unverified spot (the ≈ prefix costs 2)`);
     else if (typeof s.region === 'string') {
       const inRegion = seenShortByRegion.get(s.region) ?? new Set<string>();
       if (inRegion.has(s.short)) errors.push(`${p}.short: duplicate "${s.short}" in region "${s.region}"`);

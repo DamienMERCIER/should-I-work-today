@@ -16,11 +16,21 @@ export function shortSlug(short: string): string {
 }
 
 const stripDiacritics = (s: string): string => s.normalize('NFKD').replace(/[̀-ͯ]/g, '');
-const truncate = (s: string, maxLen: number): string => s.slice(0, Math.max(0, maxLen)).trimEnd();
+/**
+ * Coupe en préférant une frontière de mot : « Aberwystwyth Beach » donne « Aberwystwyth », pas
+ * « Aberwystwyt ». On ne recule jusqu'au séparateur que s'il reste au moins 4 caractères, sinon
+ * un nom dont le premier mot est très court deviendrait illisible.
+ */
+const truncate = (s: string, maxLen: number): string => {
+  const hard = s.slice(0, Math.max(0, maxLen)).trimEnd();
+  if (hard.length === s.trimEnd().length) return hard;
+  const cut = Math.max(hard.lastIndexOf(' '), hard.lastIndexOf('-'), hard.lastIndexOf('\u2013'), hard.lastIndexOf('/'));
+  // on retire aussi le séparateur resté en queue : « Kommetjie – » plutôt que « Kommetjie »
+  return (cut >= 4 ? hard.slice(0, cut) : hard).replace(/[\s\-\u2013/]+$/, '');
+};
 
 /**
- * Derives a `short` label (schema-validated ≤ 13 chars, ≤ 11 for an unverified spot — every world
- * spot is unverified, so the importer calls this with `maxLen: 11`) from a spot's name, truncating to
+ * Derives a `short` label (schema-validated ≤ 13 chars) from a spot's name, truncating to
  * fit and appending a numeric suffix (shrinking the base further if needed) until the resulting
  * label's slug (§`shortSlug`) is not in `used`. `used` must be seeded by the caller with the slugs of
  * every label already claimed — curated spots' `short` included — so a world spot can never collide
