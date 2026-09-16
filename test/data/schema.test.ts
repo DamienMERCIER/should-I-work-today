@@ -12,19 +12,22 @@ describe('bundled data', () => {
     const { regions } = loadSpots(spotsJson, regionsJson);
     expect(validateSpots(spotsJson, regions)).toEqual([]);
   });
-  it('exposes 32 spots and 7 regions with unique ids', () => {
-    expect(SPOTS).toHaveLength(32);
+  it('exposes 35 spots and 7 regions with unique ids', () => {
+    expect(SPOTS).toHaveLength(35);
     expect(REGIONS).toHaveLength(7);
-    expect(new Set(SPOTS.map((s) => s.id)).size).toBe(32);
+    expect(new Set(SPOTS.map((s) => s.id)).size).toBe(35);
   });
-  it('has exactly 11 spots within 20 km of Muizenberg (Glen Beach is at 20.7 km), Dungeons excluded', () => {
+  it('has exactly 15 spots within 20 km of Muizenberg (glen-beach\'s corrected coordinate, plus fish-hoek, glencairn and witsands, now qualify), Dungeons excluded', () => {
     const near = SPOTS.filter((s) => haversineKm(DEFAULT_LOCATION, s) <= RADIUS_KM).map((s) => s.id).sort();
     expect(near).toEqual([
-      'clovelly', 'crayfish-factory', 'inner-kom', 'kalk-bay-reef', 'kommetjie-long-beach',
-      'llandudno', 'muizenberg', 'noordhoek', 'outer-kom', 'scarborough', 'strandfontein',
+      'clovelly', 'crayfish-factory', 'fish-hoek', 'glen-beach', 'glencairn', 'inner-kom', 'kalk-bay-reef',
+      'kommetjie-long-beach', 'llandudno', 'muizenberg', 'noordhoek', 'outer-kom', 'scarborough', 'strandfontein', 'witsands',
     ].sort());
-    expect(haversineKm(DEFAULT_LOCATION, SPOTS.find((s) => s.id === 'glen-beach')!)).toBeCloseTo(20.7, 0);
     expect(SPOTS.find((s) => s.id === 'dungeons')).toBeUndefined();
+  });
+  it('glen-beach\'s corrected coordinate sits inside the 20 km radius (regression pin: a 780 m coordinate error used to place it at 20.66 km, outside RADIUS_KM)', () => {
+    const glenBeach = SPOTS.find((s) => s.id === 'glen-beach')!;
+    expect(haversineKm(DEFAULT_LOCATION, glenBeach)).toBeLessThan(RADIUS_KM);
   });
 });
 

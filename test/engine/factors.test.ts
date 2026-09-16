@@ -70,7 +70,7 @@ describe('windRelation (spot facing 300 → offshore = 120)', () => {
     expect(windRelation(200, 300)).toBe('cross');
     expect(windRelation(230, 300)).toBe('onshore');
   });
-  it('SE wind is onshore at Muizenberg (facing 170)', () => {
+  it('SE wind is onshore on a south-facing beach (facing 170)', () => {
     expect(windRelation(120, 170)).toBe('onshore');
     expect(windRelation(340, 170)).toBe('offshore');
   });

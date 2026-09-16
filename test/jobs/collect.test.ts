@@ -18,7 +18,7 @@ describe('geo helpers', () => {
   it('nearbySpots sorts by distance within the radius', () => {
     const near = nearbySpots(SPOTS, { lat: -34.1085, lon: 18.4715 }, 20);
     expect(near[0].spot.id).toBe('muizenberg');
-    expect(near).toHaveLength(11);
+    expect(near).toHaveLength(15);
   });
   it('nearestSpots returns the 3 closest anywhere', () => {
     const ids = nearestSpots(SPOTS, { lat: -33.9, lon: 18.87 }).map((x) => x.spot.id);
