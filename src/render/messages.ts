@@ -33,14 +33,14 @@ const cardinal = (deg: number, s: Strings): string => s.cardinal[cardinal8(deg)]
 export function spotName(id: string, ctx: RenderCtx, s: Strings): string {
   const spot = ctx.spots.get(id);
   if (!spot) return esc(id);
-  return spot.verified ? esc(spot.name) : `${s.approx} ${esc(spot.name)}`;
+  return esc(spot.name);
 }
 
 /** Same `≈` rule as `spotName`, but the short (≤ 13 char) label used on the day view's secondary rows. */
 function spotShort(id: string, ctx: RenderCtx, s: Strings): string {
   const spot = ctx.spots.get(id);
   if (!spot) return esc(id);
-  return spot.verified ? esc(spot.short) : `${s.approx} ${esc(spot.short)}`;
+  return esc(spot.short);
 }
 
 const hoursIn = (r: SpotResult, w: Window): SpotHour[] => r.hours.filter((h) => h.time >= w.start && h.time < w.end);

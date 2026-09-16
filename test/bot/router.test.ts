@@ -330,7 +330,7 @@ describe('/all, /<spot> and /about', () => {
     await store.putProfiles({ '1': ready() });
     await handleUpdate(msg('/vic_bay'), deps);
     expect(sent()).toHaveLength(1);
-    expect(sent()[0].text).toBe('≈ Victoria Bay is a known spot, but it is 376 km away — outside your 20 km radius.');
+    expect(sent()[0].text).toBe('Victoria Bay is a known spot, but it is 376 km away — outside your 20 km radius.');
     expect(omCalls).toHaveLength(0);
   });
 
@@ -362,6 +362,6 @@ describe('/all, /<spot> and /about', () => {
       'Should I Work каждый вечер проверяет 35 известных спотов и подсказывает: завтра сёрфить или работать.\nДанные: Open-Meteo.com (CC-BY 4.0)',
     );
     await handleUpdate(msg('/vic_bay'), deps);
-    expect(sent()[1].text).toBe('≈ Victoria Bay — известный спот, но он в 376 км от тебя — за пределами радиуса 20 км.');
+    expect(sent()[1].text).toBe('Victoria Bay — известный спот, но он в 376 км от тебя — за пределами радиуса 20 км.');
   });
 });

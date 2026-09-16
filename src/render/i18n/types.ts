@@ -11,7 +11,6 @@ export interface Strings {
   relations: Record<WindRelation, string>;
   glassy: string;
   then: string;
-  approx: string;
   today: string;
   tideStates: Record<TideState, string>;
   tideTrends: Record<TideTrend, string>;

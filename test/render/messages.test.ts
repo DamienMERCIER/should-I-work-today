@@ -72,9 +72,9 @@ describe('go buttons (📍 "go to this spot" map link)', () => {
     expect(goButtons(r, EN, { spotId: 'muizenberg' })).toEqual([[{ text: '📍 Go to Muizenberg', url: 'https://www.google.com/maps/search/?api=1&query=-34.1085%2C18.4715' }]]);
   });
 
-  it('uses the ≈ prefix on the short label for an unverified spot, same rule as spotName', () => {
+  it('uses the prefix on the short label for an unverified spot, same rule as spotName', () => {
     expect(goButtons(goldenReport(), EN, { spotId: 'victoria-bay' })).toEqual([
-      [{ text: '📍 Go to ≈ Vic Bay', url: 'https://www.google.com/maps/search/?api=1&query=-34.005%2C22.548' }],
+      [{ text: '📍 Go to Vic Bay', url: 'https://www.google.com/maps/search/?api=1&query=-34.005%2C22.548' }],
     ]);
   });
 
@@ -201,7 +201,7 @@ describe('renderEvening — other verdicts', () => {
       verdict: { kind: 'outOfCoverage', raw: { swellHeightM: 1.8, periodS: 12, swellDirDeg: 225, windKt: 14, windDirDeg: 315 }, nearest: [{ spotId: 'victoria-bay', distanceKm: 38.2 }] },
     });
     expect(renderEvening(r, EN)).toBe(
-      ['📍 No known spot within 20 km.', 'Raw conditions here: swell 1.8 m 12 s SW · wind 14 kt NW', 'Nearest known spots: ≈ Victoria Bay (38 km)'].join('\n'),
+      ['📍 No known spot within 20 km.', 'Raw conditions here: swell 1.8 m 12 s SW · wind 14 kt NW', 'Nearest known spots: Victoria Bay (38 km)'].join('\n'),
     );
   });
   it('far from the coast: no raw conditions', () => {
@@ -216,7 +216,7 @@ describe('renderEvening — other verdicts', () => {
       spots: [], tides: [],
       verdict: { kind: 'outOfCoverage', raw: { swellHeightM: 1.8, periodS: 12, swellDirDeg: 225, windKt: 14, windDirDeg: 315 }, nearest: [{ spotId: 'victoria-bay', distanceKm: 38.2 }] },
     });
-    expect(renderEvening(r, RU).split('\n')[2]).toBe('Ближайшие известные споты: ≈ Victoria Bay (38 км)');
+    expect(renderEvening(r, RU).split('\n')[2]).toBe('Ближайшие известные споты: Victoria Bay (38 км)');
   });
 });
 
@@ -424,7 +424,7 @@ const DEAD_11 = '·'.repeat(11);
  */
 function expectedRow(id: string, score: number): string {
   const spot = SPOTS.find((sp) => sp.id === id)!;
-  const label = spot.verified ? spot.short : `≈ ${spot.short}`;
+  const label = spot.verified ? spot.short : `${spot.short}`;
   return `${label.padEnd(13, ' ')} ${DEAD_11}  ${score.toFixed(1)}`;
 }
 const DAY_VIEW_TIDES = [

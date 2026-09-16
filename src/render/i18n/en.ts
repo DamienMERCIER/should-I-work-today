@@ -9,7 +9,6 @@ export const en: Strings = {
   relations: { offshore: 'offshore', cross: 'cross', onshore: 'onshore' },
   glassy: 'glassy',
   then: 'then',
-  approx: '≈',
   today: 'today',
   tideStates: { low: 'low', mid: 'mid', high: 'high' },
   tideTrends: { rising: 'incoming tide', falling: 'outgoing tide' },

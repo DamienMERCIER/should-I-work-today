@@ -9,7 +9,6 @@ export const ru: Strings = {
   relations: { offshore: 'оффшор', cross: 'кросс', onshore: 'оншор' },
   glassy: 'штиль',
   then: 'затем',
-  approx: '≈',
   today: 'сегодня',
   tideStates: { low: 'малая вода', mid: 'половина', high: 'полная вода' },
   tideTrends: { rising: 'прилив', falling: 'отлив' },
