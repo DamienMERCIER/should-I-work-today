@@ -24,7 +24,10 @@ export const en: Strings = {
       'Data: Open-Meteo.com (CC-BY 4.0)',
   },
   privateBot: 'Private bot — you need the invite link.',
-  help: 'Commands:\n/now — the rest of the day\n/profile — level, board, work hours\n/lang — language\n/stop — no more messages\n📍 the button sends your location',
+  help:
+    'Commands:\n/now — the rest of the day\n/all — every spot\n/about — about this bot\n' +
+    '/profile — level, board, work hours\n/lang — language\n/stop — no more messages\n📍 the button sends your location\n' +
+    'Each spot has its own command too — e.g. /long_beach shows its day',
   profile: {
     summary: 'Profile\nLevel: {level}\nBoard: {board}\nWork: {start}–{end}\nLocation: {location}',
     askHours: 'Send your work hours, e.g. 9-18',
@@ -99,4 +102,11 @@ export const en: Strings = {
   },
   noData: '⚠️ No data (Open-Meteo unreachable). Try /now later.',
   error: '⚠️ Error, try again.',
+  spotCommand: {
+    ambiguous: 'Multiple matches: {list} — be more specific.',
+    outOfRadius: '{spot} is a known spot, but it is {km} km away — outside your {radius} km radius.',
+  },
+  about: {
+    text: 'Should I Work checks {count} known surf spots every evening and tells you whether to work tomorrow or go surf.\nData: Open-Meteo.com (CC-BY 4.0)',
+  },
 };

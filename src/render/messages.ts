@@ -30,7 +30,7 @@ export const fmtWindow = (w: Window): string => `${fmtTime(w.start)}–${fmtTime
 const score1 = (x: number): string => x.toFixed(1);
 const cardinal = (deg: number, s: Strings): string => s.cardinal[cardinal8(deg)];
 
-function spotName(id: string, ctx: RenderCtx, s: Strings): string {
+export function spotName(id: string, ctx: RenderCtx, s: Strings): string {
   const spot = ctx.spots.get(id);
   if (!spot) return esc(id);
   return spot.verified ? esc(spot.name) : `${s.approx} ${esc(spot.name)}`;
@@ -348,10 +348,22 @@ function spotRow(r: SpotResult, hours: number[], date: string, ctx: RenderCtx, s
  * (sorted best first; below that they collapse into a count unless `opts.all`), the closed-spots line,
  * the tide line and a sun line. No Open-Meteo attribution — that now lives in the welcome message.
  */
+/**
+ * Spot du verdict d'abord, puis les autres spots ouverts du meilleur au moins bon. C'est l'ordre
+ * des lignes de `renderDayView` ; le routeur s'en sert pour que la liste de commandes de `/all`
+ * suive exactement les lignes affichées au-dessus (une seule définition, pas deux qui dérivent).
+ */
+export function openSpotOrder(report: Report): string[] {
+  const pick = primaryPick(report.verdict);
+  const byScore = (a: SpotResult, b: SpotResult): number => b.maxScore - a.maxScore;
+  const primaryId = pick?.spotId ?? [...report.spots].filter((r) => r.open).sort(byScore)[0]?.spotId;
+  const others = report.spots.filter((r) => r.open && r.spotId !== primaryId).sort(byScore).map((r) => r.spotId);
+  return primaryId ? [primaryId, ...others] : others;
+}
+
 export function renderDayView(report: Report, ctx: RenderCtx, opts: { all?: boolean } = {}): string {
   const s = STRINGS[ctx.lang];
-  const pick = primaryPick(report.verdict);
-  const primaryId = pick?.spotId ?? [...report.spots].filter((r) => r.open).sort((a, b) => b.maxScore - a.maxScore)[0]?.spotId;
+  const primaryId = openSpotOrder(report)[0];
 
   const blocks: string[] = [];
   if (primaryId) blocks.push(renderSpotDay(report, primaryId, ctx));

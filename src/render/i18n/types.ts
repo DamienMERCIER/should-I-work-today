@@ -79,4 +79,8 @@ export interface Strings {
   coverage: { none: string; raw: string; nearest: string; nearestItem: string; farFromCoast: string };
   noData: string;
   error: string;
+  /** `/all` and `/<spot>` router commands (`src/bot/spotMatch.ts`). ambiguous: {list} · outOfRadius: {spot} {km} {radius} */
+  spotCommand: { ambiguous: string; outOfRadius: string };
+  /** `/about` : one sentence + licence + spot count. text: {count} */
+  about: { text: string };
 }

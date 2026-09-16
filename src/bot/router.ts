@@ -1,14 +1,17 @@
 import { safeEqual, type FetchLike } from '../adapters/http';
 import type { Store } from '../adapters/kv';
 import type { Telegram, TgCallbackQuery, TgMessage, TgUpdate } from '../adapters/telegram';
-import { BOARDS, LANGS, LEVELS, DEFAULT_LOCATION } from '../config';
+import { BOARDS, LANGS, LEVELS, DEFAULT_LOCATION, RADIUS_KM } from '../config';
+import { haversineKm } from '../engine/geo';
 import { addDays, dateOf, floorHour } from '../engine/time';
+import { primaryPick } from '../engine/verdict';
 import { buildReport, type CollectDeps } from '../jobs/collect';
-import { detectLang, STRINGS } from '../render/i18n';
-import { detailsMarkupFor, renderDetails, renderEvening, type RenderCtx } from '../render/messages';
+import { detectLang, fill, STRINGS } from '../render/i18n';
+import { detailsMarkupFor, renderDetails, renderEvening, renderSpotDay, spotName, type RenderCtx, openSpotOrder } from '../render/messages';
 import type { Board, Lang, Level, Profile, Region, Report, Spot } from '../types';
 import { boardKeyboard, langKeyboard, levelKeyboard, persistentKeyboard, profileKeyboard } from './keyboards';
 import { newProfile, parseHours, profileSummary, welcomeText } from './profile';
+import { matchSpot, spotSlug } from './spotMatch';
 
 export interface BotDeps {
   telegram: Telegram;
@@ -39,6 +42,62 @@ const collectDeps = (deps: BotDeps, now: string): CollectDeps =>
 async function nowReport(profile: Profile, deps: BotDeps): Promise<Report> {
   const now = deps.now();
   return buildReport({ profile, date: dateOf(now), mode: 'now', fromTime: floorHour(now) }, collectDeps(deps, now));
+}
+
+/**
+ * The report `/all`, `/<spot>` and the `rep:<today>` callback all show: today's report from KV if a
+ * run already stored one, otherwise a fresh `now`-mode computation (same fallback `handleDetails`
+ * already used for `date === today`, factored out here rather than duplicated).
+ */
+async function todayReport(chatId: number, profile: Profile, deps: BotDeps): Promise<Report> {
+  const today = dateOf(deps.now());
+  const stored = (await deps.store.getReports(today))[String(chatId)];
+  return stored ?? nowReport(profile, deps);
+}
+
+/**
+ * Telegram does not linkify a command inside a `<pre>` block, so `/all`'s per-spot sparkline rows
+ * are not tappable there — this plain-text line after the block repeats them as `/slug` commands,
+ * in the same order, so they are.
+ */
+function allSpotsCommandLine(report: Report, ctx: RenderCtx): string {
+  return openSpotOrder(report)
+    .map((id) => ctx.spots.get(id))
+    .filter((spot): spot is Spot => spot !== undefined)
+    .map((spot) => `/${spotSlug(spot)}`)
+    .join(' · ');
+}
+
+/**
+ * `/<spot>`: resolve the text after `/` against the whole spot database (`deps.spots`, not just
+ * today's report — a spot can be known but outside the user's radius). Returns `false` when nothing
+ * matched, so the caller falls back to the help text like any other unrecognised command.
+ */
+async function handleSpotCommand(chatId: number, query: string, profile: Profile, deps: BotDeps): Promise<boolean> {
+  const s = STRINGS[profile.lang];
+  const match = matchSpot(query, deps.spots);
+  if (match.kind === 'none') return false;
+
+  const ctx = renderCtx(profile.lang, deps);
+  if (match.kind === 'ambiguous') {
+    const list = match.spots.map((spot) => `/${spotSlug(spot)}`).join(', ');
+    await deps.telegram.sendMessage(chatId, fill(s.spotCommand.ambiguous, { list }));
+    return true;
+  }
+
+  const { spot } = match;
+  const radiusKm = deps.radiusKm ?? RADIUS_KM;
+  const distanceKm = haversineKm(profile.location, spot);
+  if (distanceKm > radiusKm) {
+    await deps.telegram.sendMessage(chatId, fill(s.spotCommand.outOfRadius, {
+      spot: spotName(spot.id, ctx, s), km: Math.round(distanceKm), radius: radiusKm,
+    }));
+    return true;
+  }
+
+  const report = await todayReport(chatId, profile, deps);
+  await deps.telegram.sendMessage(chatId, renderSpotDay(report, spot.id, ctx));
+  return true;
 }
 
 export async function handleUpdate(update: TgUpdate, deps: BotDeps): Promise<void> {
@@ -97,6 +156,22 @@ export async function handleUpdate(update: TgUpdate, deps: BotDeps): Promise<voi
     await store.updateProfile(chatId, (cur) => ({ ...(cur ?? profile!), active: false }));
     await telegram.sendMessage(chatId, s.stopped);
     return;
+  }
+  if (text.startsWith('/all')) {
+    const report = await todayReport(chatId, profile, deps);
+    const ctx = renderCtx(profile.lang, deps);
+    const body = renderDetails(report, ctx, { all: true });
+    const commandLine = allSpotsCommandLine(report, ctx);
+    await telegram.sendMessage(chatId, commandLine ? `${body}\n\n${commandLine}` : body);
+    return;
+  }
+  if (text.startsWith('/about')) {
+    await telegram.sendMessage(chatId, fill(s.about.text, { count: deps.spots.length }));
+    return;
+  }
+  if (text.startsWith('/')) {
+    const query = text.slice(1).split(/[\s@]/)[0];
+    if (await handleSpotCommand(chatId, query, profile, deps)) return;
   }
   await telegram.sendMessage(chatId, s.help);
 }
@@ -199,12 +274,13 @@ async function handleCallback(cb: TgCallbackQuery, deps: BotDeps): Promise<void>
 async function handleDetails(chatId: number, date: string, profile: Profile, deps: BotDeps): Promise<void> {
   const s = STRINGS[profile.lang];
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
-  let report: Report | undefined = (await deps.store.getReports(date))[String(chatId)];
-  if (!report) {
-    const now = deps.now();
-    const today = dateOf(now);
-    if (date === today) report = await nowReport(profile, deps);
-    else if (date === addDays(today, 1)) report = await buildReport({ profile, date, mode: 'evening' }, collectDeps(deps, now));
+  const now = deps.now();
+  const today = dateOf(now);
+  let report: Report | undefined = date === today
+    ? await todayReport(chatId, profile, deps)
+    : (await deps.store.getReports(date))[String(chatId)];
+  if (!report && date === addDays(today, 1)) {
+    report = await buildReport({ profile, date, mode: 'evening' }, collectDeps(deps, now));
   }
   if (!report) {
     await deps.telegram.sendMessage(chatId, s.details.tooOld);

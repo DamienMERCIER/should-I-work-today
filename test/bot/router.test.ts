@@ -3,8 +3,8 @@ import { Store } from '../../src/adapters/kv';
 import { Telegram, type TgMessage, type TgUpdate } from '../../src/adapters/telegram';
 import { handleUpdate, type BotDeps } from '../../src/bot/router';
 import { parseHours } from '../../src/bot/profile';
-import { REGIONS } from '../../src/data/index';
-import type { Profile } from '../../src/types';
+import { REGIONS, SPOTS } from '../../src/data/index';
+import type { Profile, Spot } from '../../src/types';
 import { fakeFetch, jsonResponse } from '../helpers/fakeFetch';
 import { GOLDEN_DAILY, GOLDEN_SPOTS, goldenReport, goldenSwell, goldenWind } from '../helpers/golden';
 import { MemoryKV } from '../helpers/memoryKv';
@@ -12,12 +12,12 @@ import { openMeteoServer } from '../helpers/openMeteoServer';
 
 const NOW = '2026-09-16T08:30';
 
-function setup(opts: { inviteCode?: string } = {}) {
+function setup(opts: { inviteCode?: string; spots?: Spot[] } = {}) {
   const store = new Store(new MemoryKV());
   const tg = fakeFetch(() => jsonResponse({ ok: true }));
   const om = fakeFetch(openMeteoServer({ swell: goldenSwell(), wind: goldenWind(), daily: GOLDEN_DAILY }));
   const deps: BotDeps = {
-    telegram: new Telegram('t', tg.fn), store, spots: GOLDEN_SPOTS, regions: REGIONS, fetchFn: om.fn,
+    telegram: new Telegram('t', tg.fn), store, spots: opts.spots ?? GOLDEN_SPOTS, regions: REGIONS, fetchFn: om.fn,
     inviteCode: opts.inviteCode, now: () => NOW,
   };
   const sent = () => tg.calls.filter((c) => c.url.endsWith('/sendMessage')).map((c) => JSON.parse(String(c.init?.body)) as { chat_id: number; text: string; reply_markup?: any });
@@ -226,5 +226,95 @@ describe('📋 details callback', () => {
     await handleUpdate(cb('rep:2020-01-01'), deps);
     expect(sent()[2].text).toBe('Too old — run /now.');
     expect(answered()).toBe(3);
+  });
+});
+
+describe('/all, /<spot> and /about', () => {
+  it('/all uses the stored report, titles "All spots", shows every open spot and ends with a tappable command line ordered like the rows above', async () => {
+    const { deps, store, sent } = setup();
+    await store.putProfiles({ '1': ready() });
+    await store.putReports('2026-09-16', { '1': goldenReport() });
+    await handleUpdate(msg('/all'), deps);
+    expect(sent()).toHaveLength(1);
+    const text = sent()[0].text;
+    expect(text.startsWith('📋 <b>All spots</b> (Wed 16 Sept)')).toBe(true);
+    expect(text).toContain('🏄 Kommetjie – Long Beach');
+    expect(text.trim().endsWith('/long_beach · /muizenberg')).toBe(true);
+  });
+
+  it('/<spot> renders that spot\'s day for a spot with a window (fresh now-mode computation, nothing stored)', async () => {
+    const { deps, store, sent, omCalls } = setup();
+    await store.putProfiles({ '1': ready() });
+    await handleUpdate(msg('/long_beach'), deps);
+    expect(sent()).toHaveLength(1);
+    expect(sent()[0].text.startsWith('🏄 Kommetjie – Long Beach · 8:00–12:00')).toBe(true);
+    expect(omCalls.length).toBeGreaterThan(0);
+  });
+
+  it('matches by exact slug, exact id, unique prefix and unique substring', async () => {
+    const { deps, store, sent } = setup();
+    await store.putProfiles({ '1': ready() });
+    await store.putReports('2026-09-16', { '1': goldenReport() });
+    for (const cmd of ['/long_beach', '/kommetjie_long_beach', '/kommetjie', '/beach']) {
+      await handleUpdate(msg(cmd), deps);
+    }
+    expect(sent()).toHaveLength(4);
+    for (const m of sent()) expect(m.text.startsWith('🏄 Kommetjie – Long Beach')).toBe(true);
+  });
+
+  it('an ambiguous spot query lists the candidate commands and sends nothing else (no report fetch)', async () => {
+    const { deps, store, sent, omCalls } = setup({ spots: SPOTS });
+    await store.putProfiles({ '1': ready() });
+    await handleUpdate(msg('/reef'), deps);
+    expect(sent()).toHaveLength(1);
+    expect(sent()[0].text).toBe('Multiple matches: /kalk_bay, /nahoon_reef — be more specific.');
+    expect(omCalls).toHaveLength(0);
+  });
+
+  it('an unknown spot query falls back to the help text', async () => {
+    const { deps, store, sent } = setup();
+    await store.putProfiles({ '1': ready() });
+    await handleUpdate(msg('/zzznotaspot'), deps);
+    expect(sent()[0].text.startsWith('Commands:')).toBe(true);
+  });
+
+  it('a known but out-of-radius spot replies with its distance and fetches no forecast', async () => {
+    const { deps, store, sent, omCalls } = setup({ spots: SPOTS });
+    await store.putProfiles({ '1': ready() });
+    await handleUpdate(msg('/vic_bay'), deps);
+    expect(sent()).toHaveLength(1);
+    expect(sent()[0].text).toBe('≈ Victoria Bay is a known spot, but it is 376 km away — outside your 20 km radius.');
+    expect(omCalls).toHaveLength(0);
+  });
+
+  it('/about states what the bot does, the licence and the spot count', async () => {
+    const { deps, store, sent } = setup();
+    await store.putProfiles({ '1': ready() });
+    await handleUpdate(msg('/about'), deps);
+    expect(sent()[0].text).toBe(
+      'Should I Work checks 2 known surf spots every evening and tells you whether to work tomorrow or go surf.\nData: Open-Meteo.com (CC-BY 4.0)',
+    );
+  });
+
+  it('help gains /all, /about and a real spot-command example', async () => {
+    const { deps, store, sent } = setup();
+    await store.putProfiles({ '1': ready() });
+    await handleUpdate(msg('hello'), deps);
+    const text = sent()[0].text;
+    expect(text.startsWith('Commands:')).toBe(true);
+    expect(text).toContain('/all');
+    expect(text).toContain('/about');
+    expect(text).toContain('/long_beach');
+  });
+
+  it('Russian: /about and the out-of-radius reply', async () => {
+    const { deps, store, sent } = setup({ spots: SPOTS });
+    await store.putProfiles({ '1': ready({ lang: 'ru' }) });
+    await handleUpdate(msg('/about'), deps);
+    expect(sent()[0].text).toBe(
+      'Should I Work каждый вечер проверяет 35 известных спотов и подсказывает: завтра сёрфить или работать.\nДанные: Open-Meteo.com (CC-BY 4.0)',
+    );
+    await handleUpdate(msg('/vic_bay'), deps);
+    expect(sent()[1].text).toBe('≈ Victoria Bay — известный спот, но он в 376 км от тебя — за пределами радиуса 20 км.');
   });
 });

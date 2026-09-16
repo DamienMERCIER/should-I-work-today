@@ -4,7 +4,7 @@ Bot Telegram qui dit chaque soir à 19h (SAST) s'il faut aller travailler le len
 
 ## Commandes du bot
 
-`/start <code>` · `📍 Use my location` · `🏠 Back to Muizenberg` · `🔎 Right now` / `/now` · `/profil` · `/lang` · `/stop` · bouton `📋 All spots`.
+`/start <code>` · `📍 Use my location` · `🏠 Back to Muizenberg` · `🔎 Right now` / `/now` · `/all` · `/about` · `/profil` · `/lang` · `/stop` · bouton `📋 All spots` · `/<spot>` (commande par spot dérivée du `short`, ex. `/long_beach` — voir `/about` et `src/bot/spotMatch.ts`).
 
 ## Développement
 
@@ -22,7 +22,7 @@ Variables locales dans `.dev.vars` (ignoré par git) : `TELEGRAM_BOT_TOKEN`, `WE
 
 ## Mise en production (une fois)
 
-1. BotFather → `/newbot` → token. `/setcommands` : `now - the rest of the day`, `profil - level, board, hours`, `lang - language`, `stop - no more messages`.
+1. BotFather → `/newbot` → token. `/setcommands` : `now - the rest of the day`, `all - every spot, hour by hour`, `profile - level, board, hours`, `lang - language`, `about - data and licence`, `stop - no more messages`.
 2. `npx wrangler login`, puis `npx wrangler kv namespace create KV` → coller l'`id` dans `wrangler.toml`.
 3. Secrets : `npx wrangler secret put TELEGRAM_BOT_TOKEN`, `WEBHOOK_SECRET` (chaîne aléatoire, ex. `openssl rand -hex 24`), `INVITE_CODE` (**obligatoire** — le bot refuse tout `/start` sans lui ; ex. `openssl rand -hex 8`), `ADMIN_CHAT_ID` (ton `chat_id` — envoie `/start` au bot, lis `wrangler tail`, ou utilise @userinfobot).
 4. `npm run deploy` → URL `https://should-i-work.<sous-domaine>.workers.dev`.
