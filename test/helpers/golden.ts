@@ -2,6 +2,7 @@ import { evaluateSpot } from '../../src/engine/score';
 import { computeTide } from '../../src/engine/tide';
 import { decideVerdict } from '../../src/engine/verdict';
 import type { DailySun, Report, Spot, SwellHour, WindHour } from '../../src/types';
+import { addDays } from '../../src/engine/time';
 import { cosineTide, swellSeries, windSeries, NO_SWELL } from './fixtures';
 import { KOMMETJIE_LONG_BEACH, MUIZENBERG, SUN_SEPT } from './spots';
 
@@ -55,3 +56,28 @@ export function goldenReport(overrides: Partial<Report> = {}): Report {
     ...overrides,
   };
 }
+
+/**
+ * Plusieurs jours de données pour la vue semaine : houle 225° d'une hauteur par jour (`heightByDay(i)`,
+ * i = 0 le jour `start`), vent de SE régulier à 8 kt — offshore propre à Kommetjie, cross-onshore à
+ * Muizenberg. Le verdict d'un jour ne dépend donc que de sa hauteur : 3,5 m → 6★, 2,3 m → 4★,
+ * 1,2 m → 3★, 0,2 m → 0★ à Kommetjie. Couvre la veille de `start` (marée J−3 h) et `days` jours.
+ */
+export function weekData(start = GOLDEN_DATE, days = 9, heightByDay: (i: number) => number = () => 3.5): { swell: SwellHour[]; wind: WindHour[]; daily: DailySun[] } {
+  const from = `${addDays(start, -1)}T00:00`;
+  const to = `${addDays(start, days - 1)}T23:00`;
+  const tide = cosineTide(start);
+  const dayIndex = (time: string): number => Math.round(daysBetween(start, time.slice(0, 10)));
+  const swell = swellSeries(from, to, (time) => ({
+    primary: { heightM: heightByDay(Math.max(0, dayIndex(time))), periodS: 10.2, directionDeg: 225 },
+    secondary: NO_SWELL, seaLevelM: tide(time), peakPeriodS: 13,
+  }));
+  const wind = windSeries(from, to, () => ({ windKt: 8, windDirDeg: 120, gustKt: 12 }));
+  const daily: DailySun[] = Array.from({ length: days + 1 }, (_, i) => {
+    const date = addDays(start, i - 1);
+    return { date, sunrise: `${date}T06:44`, sunset: `${date}T18:38`, tempMaxC: 20, tempMinC: 13, precipMm: 0 };
+  });
+  return { swell, wind, daily };
+}
+
+const daysBetween = (a: string, b: string): number => (Date.parse(`${b}T00:00Z`) - Date.parse(`${a}T00:00Z`)) / 86_400_000;

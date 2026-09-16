@@ -2,7 +2,7 @@ import type { InlineButton, ReplyMarkup } from '../adapters/telegram';
 import { FAR_FROM_COAST_KM, SCORING } from '../config';
 import type { Delta } from '../engine/delta';
 import { cardinal8 } from '../engine/geo';
-import { isWeekend, toMs } from '../engine/time';
+import { addDays, isWeekend, toMs } from '../engine/time';
 import { rawStars, starGlyphs } from '../engine/rating';
 import { primaryPick } from '../engine/verdict';
 import type { Lang, Report, Spot, SpotHour, SpotPick, SpotResult, Window } from '../types';
@@ -23,6 +23,12 @@ export function fmtTime(t: string): string {
 
 export function fmtDate(date: string, lang: Lang): string {
   return new Intl.DateTimeFormat(STRINGS[lang].locale, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
+    .format(new Date(toMs(`${date}T00:00`)));
+}
+
+/** Jour court pour une ligne de semaine : « Tue 22 », « вт, 22 ». */
+export function fmtDay(date: string, lang: Lang): string {
+  return new Intl.DateTimeFormat(STRINGS[lang].locale, { weekday: 'short', day: 'numeric', timeZone: 'UTC' })
     .format(new Date(toMs(`${date}T00:00`)));
 }
 
@@ -273,6 +279,70 @@ export function renderMorning(morning: Report, delta: Delta, evening: Report | u
   if (pick && r) lines.push(conditionsLine(r, pick.window, morning, s));
   if (delta.cause) lines.push(fill(s.morning.cause, { cause: s.causes[delta.cause] }));
   return lines.join('\n');
+}
+
+// ---- 📅 la semaine à venir ----------------------------------------------------------------------
+
+/** À partir de combien de jours après aujourd'hui une prévision n'est plus qu'une tendance. */
+export const WEEK_TREND_FROM_DAYS = 4;
+
+export interface WeekOptions { today: string }
+
+/** Ce qu'un jour a de mieux : le créneau du verdict s'il y en a un, sinon le spot le mieux noté. */
+interface DayBest { spotId: string; stars: number; clean: boolean; window?: Window; emoji: string }
+
+function dayBest(report: Report): DayBest | undefined {
+  const v = report.verdict;
+  if (v.kind === 'green' || v.kind === 'yellow') {
+    const pick = primaryPick(v);
+    if (!pick) return undefined;
+    const r = report.spots.find((x) => x.spotId === pick.spotId);
+    const peak = r ? peakHour(r, pick.window) : undefined;
+    const emoji = v.kind === 'green' ? '🟢' : v.dawn ? '🌅' : '🌇';
+    return { spotId: pick.spotId, stars: pick.window.peak, clean: peak?.clean ?? true, window: pick.window, emoji };
+  }
+  if (v.kind !== 'red') return undefined;
+  // le verdict a déjà choisi le meilleur spot : une seule règle de départage, pas deux qui divergent
+  const top = v.bestSpotId ? report.spots.find((x) => x.spotId === v.bestSpotId) : undefined;
+  if (!top || top.maxScore === 0) return undefined;
+  return { spotId: top.spotId, stars: top.maxScore, clean: peakHour(top)?.clean ?? true, emoji: '🔴' };
+}
+
+/**
+ * La semaine en une ligne par jour, le meilleur jour en tête. Chaque jour porte le verdict que le soir
+ * donnerait (heures de travail, règle du week-end), avec le libellé court du spot pour tenir sur une
+ * ligne de téléphone ; le meilleur jour, lui, nomme le spot en entier. Au-delà de quelques jours ce
+ * n'est qu'une tendance : une ligne de pied le dit plutôt que de laisser croire à la même précision.
+ */
+export function renderWeek(reports: Report[], ctx: RenderCtx, opts: WeekOptions): string {
+  const s = STRINGS[ctx.lang];
+  if (reports.length === 0 || reports.every((r) => r.verdict.kind === 'noData')) return s.noData;
+  const label = (date: string): string => (date === opts.today ? s.week.today : fmtDay(date, ctx.lang));
+
+  const lines = reports.map((report) => {
+    const day = `<b>${label(report.date)}</b>`;
+    if (report.verdict.kind === 'noData' || report.verdict.kind === 'outOfCoverage') return `⚠️ ${day} · ${s.week.noData}`;
+    const best = dayBest(report);
+    if (!best) return `🔴 ${day} · ${s.week.nothing}`;
+    const window = best.window ? ` · ${fmtWindow(best.window)}` : '';
+    return `${best.emoji} ${day} · ${spotShort(best.spotId, ctx, s)} ${starsText(best.stars, best.clean)}${window}`;
+  });
+
+  const blocks = [s.week.title];
+  // le plus d'étoiles, le plus tôt à égalité : un tri stable garde l'ordre des jours
+  const top = reports
+    .map((report) => ({ report, best: dayBest(report) }))
+    .filter((x): x is { report: Report; best: DayBest } => x.best !== undefined)
+    .sort((a, b) => b.best.stars - a.best.stars)[0];
+  if (top) {
+    const window = top.best.window ? ` · ${fmtWindow(top.best.window)}` : '';
+    blocks.push(`${fill(s.week.best, { day: label(top.report.date), spot: spotName(top.best.spotId, ctx, s), stars: starsText(top.best.stars, top.best.clean) })}${window}`);
+  }
+  blocks.push(lines.join('\n'));
+
+  const trendFrom = reports.find((r) => r.date >= addDays(opts.today, WEEK_TREND_FROM_DAYS));
+  if (trendFrom) blocks.push(fill(s.week.trend, { day: label(trendFrom.date) }));
+  return blocks.join('\n\n');
 }
 
 // ---- 📋 day view: a chart of the day per spot, replacing the old flat one-snapshot-per-row list ----

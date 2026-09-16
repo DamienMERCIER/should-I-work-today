@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
-  esc, fmtTime, fmtDate, renderEvening, renderShortVerdict, renderMorning, renderDetails, renderSpotDay, renderDayView,
+  esc, fmtTime, fmtDate, fmtDay, renderEvening, renderShortVerdict, renderMorning, renderDetails, renderSpotDay, renderDayView, renderWeek,
   detailsMarkupFor, goButtons, goButtonsMarkup, openSpotOrder, allSpotOrder, ALL_SPOTS_CAP, type RenderCtx,
 } from '../../src/render/messages';
 import { SPOTS } from '../../src/data/index';
 import type { Report, SpotHour, SpotResult, TideTrend, Verdict, Window } from '../../src/types';
 import { rawStars, starBase } from '../../src/engine/rating';
 import { GOLDEN_DATE, goldenReport } from '../helpers/golden';
-import { makeReport } from '../helpers/reports';
+import { makeHour, makeReport } from '../helpers/reports';
 
 const spots = new Map(SPOTS.map((s) => [s.id, s]));
 const EN: RenderCtx = { lang: 'en', spots };
@@ -649,5 +649,81 @@ describe('renderDayView — row width budget (≤ 34 chars, § day-view.md "Widt
     const monoLines = [...out.matchAll(/<code>([\s\S]*?)<\/code>/g)].flatMap((m) => m[1].split('\n'));
     expect(monoLines.length).toBeGreaterThan(0);
     monoLines.forEach((line) => expect(line.length).toBeLessThanOrEqual(34));
+  });
+});
+
+describe('renderWeek — the week ahead, best day first', () => {
+  const Wd = (date: string, s: string, e: string, peak: number): Window => ({ start: `${date}T${s}`, end: `${date}T${e}`, peak, mean: peak });
+  /** Un spot sur une journée : une heure à `stars` au début de la fenêtre, or ou blanche. */
+  const spotOn = (spotId: string, date: string, stars: number, w?: Window, clean = true): SpotResult => ({
+    spotId, distanceKm: 5, windows: w ? [w] : [], best: w, maxScore: stars,
+    hours: [{ ...makeHour(w?.start ?? `${date}T08:00`, stars), clean }],
+  });
+  const day = (date: string, verdict: Verdict, spots: SpotResult[] = []): Report => makeReport({ date, verdict, spots });
+
+  const WEEK: Report[] = [
+    day('2026-09-16', { kind: 'green', spotId: 'kommetjie-long-beach', window: Wd('2026-09-16', '08:00', '12:00', 6), epic: true },
+      [spotOn('kommetjie-long-beach', '2026-09-16', 6, Wd('2026-09-16', '08:00', '12:00', 6))]),
+    day('2026-09-17', { kind: 'yellow', dawn: { spotId: 'muizenberg', window: Wd('2026-09-17', '07:00', '09:00', 4) } },
+      [spotOn('muizenberg', '2026-09-17', 4, Wd('2026-09-17', '07:00', '09:00', 4), false)]),
+    day('2026-09-18', { kind: 'red', bestSpotId: 'kommetjie-long-beach' },
+      [spotOn('kommetjie-long-beach', '2026-09-18', 3), spotOn('muizenberg', '2026-09-18', 1)]),
+    day('2026-09-19', { kind: 'red', bestSpotId: 'muizenberg' }, [spotOn('muizenberg', '2026-09-19', 0)]),
+    day('2026-09-20', { kind: 'noData', reason: 'marine 500' }),
+    day('2026-09-21', { kind: 'yellow', dusk: { spotId: 'llandudno', window: Wd('2026-09-21', '16:00', '18:00', 5) } },
+      [spotOn('llandudno', '2026-09-21', 5, Wd('2026-09-21', '16:00', '18:00', 5))]),
+    day('2026-09-22', { kind: 'green', spotId: 'kommetjie-long-beach', window: Wd('2026-09-22', '07:00', '11:00', 7), epic: true },
+      [spotOn('kommetjie-long-beach', '2026-09-22', 7, Wd('2026-09-22', '07:00', '11:00', 7))]),
+  ];
+
+  it('EN: best day on top, one line per day, the trend from the fourth day after today', () => {
+    expect(renderWeek(WEEK, EN, { today: '2026-09-16' })).toBe(
+      [
+        '📅 <b>THE WEEK AHEAD</b>',
+        `⭐ Best: Tue 22 · ${KOM} ★★★★★★★ · 7:00–11:00`,
+        [
+          '🟢 <b>Today</b> · Long Beach ★★★★★★ · 8:00–12:00',
+          '🌅 <b>Thu 17</b> · Muizenberg ☆☆☆☆ · 7:00–9:00',
+          '🔴 <b>Fri 18</b> · Long Beach ★★★',
+          '🔴 <b>Sat 19</b> · 0★ everywhere',
+          '⚠️ <b>Sun 20</b> · no data',
+          '🌇 <b>Mon 21</b> · Llandudno ★★★★★ · 16:00–18:00',
+          '🟢 <b>Tue 22</b> · Long Beach ★★★★★★★ · 7:00–11:00',
+        ].join('\n'),
+        'From Sun 20 on, a trend only: check again closer to the day.',
+      ].join('\n\n'),
+    );
+  });
+
+  it('RU: the same week in Russian', () => {
+    const out = renderWeek(WEEK, RU, { today: '2026-09-16' });
+    expect(out.startsWith('📅 <b>НЕДЕЛЯ ВПЕРЕДИ</b>')).toBe(true);
+    expect(out).toContain(`⭐ Лучший день: ${fmtDay('2026-09-22', 'ru')} · ${KOM} ★★★★★★★ · 7:00–11:00`);
+    expect(out).toContain('🟢 <b>Сегодня</b> · Long Beach ★★★★★★ · 8:00–12:00');
+    expect(out).toContain(`🔴 <b>${fmtDay('2026-09-19', 'ru')}</b> · везде 0★`);
+    expect(out).toContain(`⚠️ <b>${fmtDay('2026-09-20', 'ru')}</b> · нет данных`);
+  });
+
+  it('fmtDay is a short weekday and the day of the month', () => {
+    expect(fmtDay('2026-09-22', 'en')).toBe('Tue 22');
+    expect(fmtDay('2026-09-22', 'ru')).toContain('22');
+  });
+
+  it('names the earliest of equally good days, and a red day can be the best the week offers', () => {
+    const flat = [
+      day('2026-09-17', { kind: 'red', bestSpotId: 'muizenberg' }, [spotOn('muizenberg', '2026-09-17', 3)]),
+      day('2026-09-18', { kind: 'red', bestSpotId: 'llandudno' }, [spotOn('llandudno', '2026-09-18', 3)]),
+    ];
+    expect(renderWeek(flat, EN, { today: '2026-09-16' }).split('\n\n')[1]).toBe(`⭐ Best: Thu 17 · ${MUIZ} ★★★`);
+  });
+
+  it('no best line when the whole week is at 0★, and no trend line when every day is close', () => {
+    const nothing = [day('2026-09-17', { kind: 'red' }, [spotOn('muizenberg', '2026-09-17', 0)])];
+    expect(renderWeek(nothing, EN, { today: '2026-09-16' })).toBe(['📅 <b>THE WEEK AHEAD</b>', '🔴 <b>Thu 17</b> · 0★ everywhere'].join('\n\n'));
+  });
+
+  it('says there is no data at all rather than seven « no data » lines when Open-Meteo is down', () => {
+    const down = Array.from({ length: 7 }, (_, i) => day(`2026-09-${17 + i}`, { kind: 'noData', reason: 'marine 500' }));
+    expect(renderWeek(down, EN, { today: '2026-09-16' })).toBe('⚠️ No data (Open-Meteo unreachable). Try /now later.');
   });
 });

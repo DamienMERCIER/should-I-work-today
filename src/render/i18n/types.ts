@@ -75,6 +75,8 @@ export interface Strings {
       getsDark: string;
     };
   };
+  /** La semaine à venir (`/week`, envoi du dimanche). best: {day} {spot} {stars} · trend: {day} */
+  week: { title: string; best: string; today: string; nothing: string; noData: string; trend: string };
   /** none: {radius} · raw: {swell} {s} {dir} {kt} {windDir} · nearest: {list} · nearestItem: {spot} {km} · farFromCoast: {km} */
   coverage: { none: string; raw: string; nearest: string; nearestItem: string; farFromCoast: string };
   noData: string;

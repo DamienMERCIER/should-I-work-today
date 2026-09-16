@@ -4,7 +4,8 @@ import { nearestWorldSpots, worldSpots, type SpotTuple } from '../data/world';
 import { haversineKm } from '../engine/geo';
 import { evaluateSpot } from '../engine/score';
 import { computeTide, type TideInfo } from '../engine/tide';
-import { floorHour } from '../engine/time';
+import { hasDaylightLeft } from '../engine/factors';
+import { addDays, dateOf, floorHour } from '../engine/time';
 import { decideVerdict } from '../engine/verdict';
 import type { DailySun, LatLon, Profile, RawConditions, Region, Report, ReportMode, Spot, SpotResult, SwellHour } from '../types';
 
@@ -82,19 +83,24 @@ export function spotSwellSeries(atSpot: SwellHour[] | undefined, regional: Swell
   });
 }
 
-async function loadRegion(region: Region, spots: Spot[], fetchFn: FetchLike): Promise<RegionData> {
-  // marée : J−3 h .. J+27 h → 3 jours ; vent/météo : seul le jour J est lu → 2 jours suffisent ;
+/** Jours de prévision demandés par appel. Sans option, ceux qu'il faut au verdict d'un seul jour. */
+export interface LoadOptions { forecastDays?: number }
+
+async function loadRegion(region: Region, spots: Spot[], fetchFn: FetchLike, opts: LoadOptions = {}): Promise<RegionData> {
+  // Un verdict d'un jour : marée J−3 h .. J+27 h → 3 jours ; vent/météo, seul le jour J est lu → 2 jours
+  // suffisent. La semaine à venir demande `forecastDays` pour les trois appels : les réponses grossissent,
+  // pas leur nombre.
   // période pic (gwam, §adapters/openMeteo) : 3e appel séparé, best-effort — une panne ne doit pas priver
   // la région de verdict (§10.1), juste la ramener au repli période moyenne déjà géré par effectiveSwell.
   // Houle : le point régional (marée) ET la cellule de chaque spot (étoiles), dans le même appel —
   // Open-Meteo accepte plusieurs points par requête, donc zéro sous-requête de plus (§ RAPPORT 1.2).
   const [[regional, ...atSpots], forecasts, peakSeries] = await Promise.all([
-    fetchMarine([region.swellRef, ...spots], fetchFn),
-    fetchForecast(spots, fetchFn, { forecastDays: 2 }),
+    fetchMarine([region.swellRef, ...spots], fetchFn, { forecastDays: opts.forecastDays ?? 3 }),
+    fetchForecast(spots, fetchFn, { forecastDays: opts.forecastDays ?? 2 }),
     // retries: 0 — best-effort : le Promise.all attend cette 3e requête comme les deux autres, donc la
     // faire re-essayer (2 s de délai par défaut) retarderait toute la région pour un gain marginal ;
     // en cas d'échec on retombe simplement sur la période moyenne.
-    fetchPeakPeriod([region.swellRef], fetchFn, { retries: 0 }).catch((err) => {
+    fetchPeakPeriod([region.swellRef], fetchFn, { retries: 0, forecastDays: opts.forecastDays ?? 3 }).catch((err) => {
       console.warn(`[collect] peak period unavailable for region ${region.id}, falling back to mean period: ${String(err)}`);
       return null;
     }),
@@ -118,7 +124,25 @@ const tideFor = (data: RegionData, date: string): TideInfo => {
   return t;
 };
 
+/**
+ * Évaluations déjà faites dans cet appel, par spot, date et heure de départ. Les étoiles ne dépendent
+ * plus du profil (ni niveau ni planche) : des amis au même endroit, ou les sept jours d'une semaine
+ * demandés par plusieurs profils, réutilisent la même évaluation au lieu de refaire le CPU pour chacun.
+ * Seule la distance, propre à chaque profil, est recopiée.
+ */
+type EvalCache = Map<string, SpotResult>;
+
+/** Un verdict par profil, pour le jour demandé. Enveloppe de `buildReportList` indexée par chat. */
 export async function buildReports(reqs: EvalRequest[], deps: CollectDeps): Promise<Map<number, Report>> {
+  const list = await buildReportList(reqs, deps);
+  return new Map(list.map((report, i) => [reqs[i].profile.chatId, report]));
+}
+
+/**
+ * Un rapport par requête, dans l'ordre des requêtes — plusieurs dates par profil sont permises (semaine
+ * à venir). Chaque région n'est chargée qu'une fois pour toutes les requêtes et toutes les dates.
+ */
+export async function buildReportList(reqs: EvalRequest[], deps: CollectDeps, opts: LoadOptions = {}): Promise<Report[]> {
   const radiusKm = deps.radiusKm ?? RADIUS_KM;
   const regionsById = new Map(deps.regions.map((r) => [r.id, r]));
   const perRequest = reqs.map((req) => ({ req, nearby: nearbySpots(deps.spots, req.profile.location, radiusKm) }));
@@ -143,20 +167,40 @@ export async function buildReports(reqs: EvalRequest[], deps: CollectDeps): Prom
         return;
       }
       try {
-        regionData.set(regionId, await loadRegion(region, [...spotMap.values()], deps.fetchFn));
+        regionData.set(regionId, await loadRegion(region, [...spotMap.values()], deps.fetchFn, opts));
       } catch (err) {
         regionData.set(regionId, toError(err));
       }
     }),
   );
 
-  // 3. un rapport par profil (les profils hors couverture font leurs appels en parallèle)
-  const reports = await Promise.all(
+  // 3. un rapport par requête (les profils hors couverture font leurs appels en parallèle)
+  const cache: EvalCache = new Map();
+  return Promise.all(
     perRequest.map(async ({ req, nearby }) =>
-      [req.profile.chatId, nearby.length === 0 ? await outOfCoverage(req, deps, radiusKm) : assembleSafely(req, nearby, regionData, deps, radiusKm)] as const,
+      (nearby.length === 0 ? outOfCoverage(req, deps, radiusKm) : assembleSafely(req, nearby, regionData, deps, radiusKm, cache)),
     ),
   );
-  return new Map(reports);
+}
+
+/** Jours de la semaine à venir, pour `/week` comme pour l'envoi du dimanche. */
+export const WEEK_DAYS = 7;
+
+/**
+ * La semaine à venir d'un profil : aujourd'hui s'il reste une heure surfable (le reste de la journée,
+ * comme /now), sinon demain, puis les jours suivants jusqu'à sept — une seule charge par région pour
+ * les huit dates demandées.
+ */
+export async function buildWeek(profile: Profile, deps: CollectDeps): Promise<Report[]> {
+  const today = dateOf(deps.now);
+  const fromTime = floorHour(deps.now);
+  const reqs: EvalRequest[] = [
+    { profile, date: today, mode: 'now', fromTime },
+    ...Array.from({ length: WEEK_DAYS }, (_, i): EvalRequest => ({ profile, date: addDays(today, i + 1), mode: 'evening' })),
+  ];
+  const [first, ...rest] = await buildReportList(reqs, deps, { forecastDays: WEEK_DAYS + 1 });
+  const todayCounts = first.spots.length > 0 && hasDaylightLeft(fromTime, first.sun.sunrise, first.sun.sunset);
+  return (todayCounts ? [first, ...rest] : rest).slice(0, WEEK_DAYS);
 }
 
 export async function buildReport(req: EvalRequest, deps: CollectDeps): Promise<Report> {
@@ -176,16 +220,16 @@ function baseReport(req: EvalRequest, deps: CollectDeps, radiusKm: number): Omit
 }
 
 /** Une exception du moteur ne doit priver que ce profil de verdict (§10.1), jamais tout le run. */
-function assembleSafely(req: EvalRequest, nearby: Near[], regionData: Map<string, RegionData | OpenMeteoError>, deps: CollectDeps, radiusKm: number): Report {
+function assembleSafely(req: EvalRequest, nearby: Near[], regionData: Map<string, RegionData | OpenMeteoError>, deps: CollectDeps, radiusKm: number, cache: EvalCache): Report {
   try {
-    return assemble(req, nearby, regionData, deps, radiusKm);
+    return assemble(req, nearby, regionData, deps, radiusKm, cache);
   } catch (err) {
     console.error(`[collect] ${req.profile.chatId} ${req.date}: ${String(err)}`); // défaut du moteur, pas une absence de données
     return { ...baseReport(req, deps, radiusKm), verdict: { kind: 'noData', reason: `engine: ${String(err)}` } };
   }
 }
 
-function assemble(req: EvalRequest, nearby: Near[], regionData: Map<string, RegionData | OpenMeteoError>, deps: CollectDeps, radiusKm: number): Report {
+function assemble(req: EvalRequest, nearby: Near[], regionData: Map<string, RegionData | OpenMeteoError>, deps: CollectDeps, radiusKm: number, cache: EvalCache): Report {
   const base = baseReport(req, deps, radiusKm);
   const results: SpotResult[] = [];
   const errors: string[] = [];
@@ -206,11 +250,17 @@ function assemble(req: EvalRequest, nearby: Near[], regionData: Map<string, Regi
       continue;
     }
     closest ??= { data, forecast, daily };
-    results.push(evaluateSpot({
-      spot, date: req.date,
-      swell, wind: forecast.wind, sun: { sunrise: daily.sunrise, sunset: daily.sunset },
-      tide: tideFor(data, req.date), distanceKm, fromTime: req.fromTime,
-    }));
+    const key = `${spot.id}|${req.date}|${req.fromTime ?? ''}`;
+    let evaluated = cache.get(key);
+    if (!evaluated) {
+      evaluated = evaluateSpot({
+        spot, date: req.date,
+        swell, wind: forecast.wind, sun: { sunrise: daily.sunrise, sunset: daily.sunset },
+        tide: tideFor(data, req.date), distanceKm, fromTime: req.fromTime,
+      });
+      cache.set(key, evaluated);
+    }
+    results.push(evaluated.distanceKm === distanceKm ? evaluated : { ...evaluated, distanceKm });
   }
 
   if (results.length === 0 || !closest) {

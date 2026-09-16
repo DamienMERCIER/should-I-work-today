@@ -32,7 +32,8 @@ export const SCORING = {
   deltaWindowShiftH: 1,
 } as const;
 
-export const CRON = { evening: '0 17 * * *', morning: '0 4 * * *' } as const;
+/** UTC. evening = 19:00 SAST, morning = 06:00 SAST, week = dimanche 19:05 SAST — après le verdict de 19:00, dans sa propre invocation. */
+export const CRON = { evening: '0 17 * * *', morning: '0 4 * * *', week: '5 17 * * 0' } as const;
 export const REPORT_TTL_S = 48 * 3600;
 export const LOCK_TTL_S = 6 * 3600;
 export const MAX_SUBREQUEST_BUDGET = 45;

@@ -4,9 +4,9 @@ import type { ReplyMarkup, Telegram } from '../adapters/telegram';
 import { MAX_SUBREQUEST_BUDGET, RADIUS_KM } from '../config';
 import { compareReports } from '../engine/delta';
 import { addDays, dateOf } from '../engine/time';
-import { detailsMarkupFor, esc, renderEvening, renderMorning, type RenderCtx } from '../render/messages';
+import { detailsMarkupFor, esc, renderEvening, renderMorning, renderWeek, type RenderCtx } from '../render/messages';
 import type { Lang, Profile, Region, Report, Spot } from '../types';
-import { buildReports, nearbySpots, type EvalRequest } from './collect';
+import { buildReportList, buildReports, nearbySpots, WEEK_DAYS, type EvalRequest } from './collect';
 
 export interface JobDeps {
   store: Store;
@@ -36,7 +36,11 @@ export async function notifyAdmin(deps: Pick<JobDeps, 'telegram' | 'adminChatId'
   await deps.telegram.sendMessage(deps.adminChatId, `⚙️ ${esc(text)}`);
 }
 
-/** Sous-requêtes prévues : verrou (2) + profils (1) [+ rapports veille (1)] + 3×régions (marine + forecast + période pic) + 2×hors-couverture + 2 écritures + N envois. */
+/**
+ * Sous-requêtes prévues : verrou (2) + profils (1) [+ rapports veille (1)] + 3×régions (marine + forecast +
+ * période pic) + 2×hors-couverture + 2 écritures + N envois. La semaine n'écrit pas de rapport : l'estimation
+ * la surévalue de 2, ce qui ne fait que la rendre prudente.
+ */
 export function estimateBudget(profiles: Profile[], deps: JobDeps, kind: RunKind): number {
   const radiusKm = deps.radiusKm ?? RADIUS_KM;
   const regions = new Set<string>();
@@ -59,26 +63,12 @@ export async function runMorning(deps: JobDeps): Promise<JobResult> {
 
 const renderCtx = (lang: Lang, deps: JobDeps): RenderCtx => ({ lang, spots: new Map(deps.spots.map((s) => [s.id, s])) });
 
-async function runJob(kind: RunKind, date: string, deps: JobDeps): Promise<JobResult> {
+async function runJob(kind: Exclude<RunKind, 'week'>, date: string, deps: JobDeps): Promise<JobResult> {
   const now = deps.now();
   const sleep = deps.sleep ?? defaultSleep;
   if (!(await deps.store.acquireLock(date, kind, now))) return { skipped: true, sent: 0, failed: 0, date };
 
-  const profiles = Object.values(await deps.store.getProfiles())
-    .filter((p) => p.active)
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-
-  // Budget dépassé (§10.1) : reporter les profils les plus récents jusqu'à rentrer dans le budget.
-  let deferred = 0;
-  while (profiles.length > 0 && estimateBudget(profiles, deps, kind) > MAX_SUBREQUEST_BUDGET) {
-    profiles.pop();
-    deferred++;
-  }
-  if (deferred > 0) {
-    const text = `${kind} ${date}: budget dépassé — ${deferred} profil(s) reportés, fan-out nécessaire`;
-    console.warn(text);
-    await notifyAdmin(deps, text);
-  }
+  const profiles = await withinBudget(activeProfiles(await deps.store.getProfiles()), deps, kind, date);
 
   const previous = kind === 'morning' ? await deps.store.getReports(date) : {};
   const reqs: EvalRequest[] = profiles.map((profile) => ({ profile, date, mode: kind }));
@@ -133,13 +123,75 @@ async function runJob(kind: RunKind, date: string, deps: JobDeps): Promise<JobRe
     await deps.store.putReports(date, toStore);
   }
 
-  if (blocked.length > 0) {
-    const all = await deps.store.getProfiles();
-    for (const chatId of blocked) {
-      const p = all[String(chatId)];
-      if (p) p.active = false;
-    }
-    await deps.store.putProfiles(all);
-  }
+  await deactivateBlocked(blocked, deps);
   return { skipped: false, sent, failed, date };
+}
+
+const activeProfiles = (all: Record<string, Profile>): Profile[] =>
+  Object.values(all).filter((p) => p.active).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+/** Budget dépassé (§10.1) : reporter les profils les plus récents jusqu'à rentrer dans le budget. */
+async function withinBudget(profiles: Profile[], deps: JobDeps, kind: RunKind, date: string): Promise<Profile[]> {
+  const kept = [...profiles];
+  let deferred = 0;
+  while (kept.length > 0 && estimateBudget(kept, deps, kind) > MAX_SUBREQUEST_BUDGET) {
+    kept.pop();
+    deferred++;
+  }
+  if (deferred > 0) {
+    const text = `${kind} ${date}: budget dépassé — ${deferred} profil(s) reportés, fan-out nécessaire`;
+    console.warn(text);
+    await notifyAdmin(deps, text);
+  }
+  return kept;
+}
+
+/** Un utilisateur qui a bloqué le bot ne reçoit plus rien : on le désactive plutôt que d'échouer à chaque envoi. */
+async function deactivateBlocked(blocked: number[], deps: JobDeps): Promise<void> {
+  if (blocked.length === 0) return;
+  const all = await deps.store.getProfiles();
+  for (const chatId of blocked) {
+    const p = all[String(chatId)];
+    if (p) p.active = false;
+  }
+  await deps.store.putProfiles(all);
+}
+
+/**
+ * Le dimanche soir, la semaine à venir, lundi → dimanche, à chaque profil actif proche d'un spot : les
+ * profils loin de tout recevraient sept lignes vides, on les saute. Une seule charge par région pour
+ * tous les profils et tous les jours ; les étoiles, identiques d'un profil à l'autre, ne sont évaluées
+ * qu'une fois (`buildReportList`). Rien n'est stocké : la semaine se recalcule à la demande avec /week.
+ */
+export async function runWeek(deps: JobDeps): Promise<JobResult> {
+  const now = deps.now();
+  const today = dateOf(now);
+  const monday = addDays(today, 1);
+  if (!(await deps.store.acquireLock(monday, 'week', now))) return { skipped: true, sent: 0, failed: 0, date: monday };
+
+  const radiusKm = deps.radiusKm ?? RADIUS_KM;
+  const nearSpots = (p: Profile): boolean => nearbySpots(deps.spots, p.location, radiusKm).length > 0;
+  const profiles = await withinBudget(activeProfiles(await deps.store.getProfiles()).filter(nearSpots), deps, 'week', monday);
+
+  const dates = Array.from({ length: WEEK_DAYS }, (_, i) => addDays(monday, i));
+  const reqs: EvalRequest[] = profiles.flatMap((profile) => dates.map((date): EvalRequest => ({ profile, date, mode: 'evening' })));
+  const reports = await buildReportList(reqs, { spots: deps.spots, regions: deps.regions, fetchFn: deps.fetchFn, radiusKm: deps.radiusKm, now }, { forecastDays: WEEK_DAYS + 1 });
+
+  let sent = 0;
+  let failed = 0;
+  const blocked: number[] = [];
+  for (const [i, profile] of profiles.entries()) {
+    const week = reports.slice(i * WEEK_DAYS, (i + 1) * WEEK_DAYS);
+    const res = await deps.telegram.sendMessage(profile.chatId, renderWeek(week, renderCtx(profile.lang, deps), { today }));
+    if (res.ok) {
+      sent++;
+    } else {
+      failed++;
+      if (res.blocked) blocked.push(profile.chatId);
+      console.error(`[week ${monday}] envoi à ${profile.chatId} échoué — ${res.description}`);
+      await notifyAdmin(deps, `week ${monday}: envoi à ${profile.chatId} échoué — ${res.description}`);
+    }
+  }
+  await deactivateBlocked(blocked, deps);
+  return { skipped: false, sent, failed, date: monday };
 }

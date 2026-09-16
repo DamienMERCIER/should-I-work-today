@@ -1,12 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
-import { buildReports, buildReport, mergePeakPeriod, nearbySpots, nearestSpots, spotSwellSeries } from '../../src/jobs/collect';
+import { buildReportList, buildReports, buildReport, buildWeek, mergePeakPeriod, nearbySpots, nearestSpots, spotSwellSeries } from '../../src/jobs/collect';
 import { SPOTS, REGIONS } from '../../src/data/index';
 import type { SpotTuple } from '../../src/data/world';
-import { addHours } from '../../src/engine/time';
-import type { Profile, SwellHour } from '../../src/types';
+import { addDays, addHours } from '../../src/engine/time';
+import type { Profile, Report, SwellHour } from '../../src/types';
 import { fakeFetch, jsonResponse } from '../helpers/fakeFetch';
 import { forecastJson, marineJson, openMeteoServer, peakJson } from '../helpers/openMeteoServer';
-import { GOLDEN_DAILY, GOLDEN_DATE, GOLDEN_SPOTS, goldenSwell, goldenWind } from '../helpers/golden';
+import { GOLDEN_DAILY, GOLDEN_DATE, GOLDEN_SPOTS, goldenSwell, goldenWind, weekData } from '../helpers/golden';
 
 const profile = (over: Partial<Profile> = {}): Profile => ({
   chatId: 1, lang: 'en', workHours: { start: '09:00', end: '18:00' },
@@ -191,6 +191,60 @@ describe('buildReports', () => {
     } finally {
       warnSpy.mockRestore();
     }
+  });
+});
+
+describe('buildReportList — several dates per profile (week ahead)', () => {
+  const kom = (r: Report) => r.spots.find((s) => s.spotId === 'kommetjie-long-beach')!;
+
+  it('returns one report per request, in request order, loading each region once for every date', async () => {
+    // mer 16 → mar 22 : 3,5 / 2,3 / 1,2 / 0,2 m, puis on recommence
+    const { fn, calls } = fakeFetch(openMeteoServer(weekData(GOLDEN_DATE, 9, (i) => [3.5, 2.3, 1.2, 0.2][i % 4])));
+    const dates = Array.from({ length: 7 }, (_, i) => addDays(GOLDEN_DATE, i));
+    const reports = await buildReportList(dates.map((date) => ({ profile: profile(), date, mode: 'evening' as const })), deps(fn), { forecastDays: 8 });
+    expect(reports.map((r) => r.date)).toEqual(dates);
+    expect(calls).toHaveLength(3);
+    expect(calls.every((c) => c.url.includes('forecast_days=8'))).toBe(true);
+    // 6★ et 4★ font un 🟢 (le dimanche aussi, règle du week-end) ; 3★ et 0★ restent 🔴
+    expect(reports.map((r) => r.verdict.kind)).toEqual(['green', 'green', 'red', 'red', 'green', 'green', 'red']);
+    expect(reports.map((r) => kom(r).maxScore)).toEqual([6, 4, 3, 0, 6, 4, 3]);
+  });
+
+  it('evaluates a spot once per date for friends at the same place, each keeping their own distance', async () => {
+    const { fn } = fakeFetch(openMeteoServer(weekData()));
+    const [a, b] = await buildReportList([
+      { profile: profile({ chatId: 1 }), date: GOLDEN_DATE, mode: 'evening' },
+      { profile: profile({ chatId: 2, location: { lat: -34.12, lon: 18.46, source: 'custom' } }), date: GOLDEN_DATE, mode: 'evening' },
+    ], deps(fn));
+    // les étoiles ne dépendent plus du profil : même évaluation, pas une seconde passe CPU
+    expect(kom(b).hours).toBe(kom(a).hours);
+    expect(kom(b).distanceKm).not.toBe(kom(a).distanceKm);
+  });
+
+  it('never shares an evaluation across different start hours', async () => {
+    const { fn } = fakeFetch(openMeteoServer(weekData()));
+    const [whole, rest] = await buildReportList([
+      { profile: profile({ chatId: 1 }), date: GOLDEN_DATE, mode: 'evening' },
+      { profile: profile({ chatId: 2 }), date: GOLDEN_DATE, mode: 'now', fromTime: `${GOLDEN_DATE}T12:00` },
+    ], deps(fn));
+    expect(kom(rest).hours[0].time).toBe(`${GOLDEN_DATE}T12:00`);
+    expect(kom(whole).hours[0].time).toBe(`${GOLDEN_DATE}T00:00`);
+  });
+
+  it('buildWeek starts tomorrow when today has no usable data, and still returns seven days', async () => {
+    const data = weekData(GOLDEN_DATE, 10);
+    // pas de lever/coucher pour aujourd'hui : le rapport du jour est noData, sans spot évalué
+    const { fn } = fakeFetch(openMeteoServer({ ...data, daily: data.daily.filter((d) => d.date !== GOLDEN_DATE) }));
+    const week = await buildWeek(profile(), { ...deps(fn), now: `${GOLDEN_DATE}T08:30` });
+    expect(week.map((r) => r.date)).toEqual(Array.from({ length: 7 }, (_, i) => addDays(GOLDEN_DATE, i + 1)));
+  });
+
+  it('buildReports keeps the daily runs lean: 3 days of swell, 2 of wind, 3 of peak period', async () => {
+    const { fn, calls } = server();
+    await buildReports([{ profile: profile(), date: GOLDEN_DATE, mode: 'evening' }], deps(fn));
+    expect(calls.find((c) => c.url.includes('marine-api') && !c.url.includes('peak'))!.url).toContain('forecast_days=3');
+    expect(calls.find((c) => c.url.includes('/v1/forecast'))!.url).toContain('forecast_days=2');
+    expect(calls.find((c) => c.url.includes('swell_wave_peak_period'))!.url).toContain('forecast_days=3');
   });
 });
 

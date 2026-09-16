@@ -5,9 +5,9 @@ import { LANGS, DEFAULT_LOCATION, RADIUS_KM } from '../config';
 import { hasDaylightLeft } from '../engine/factors';
 import { haversineKm } from '../engine/geo';
 import { addDays, dateOf, floorHour } from '../engine/time';
-import { buildReport, type CollectDeps } from '../jobs/collect';
+import { buildReport, buildWeek, nearbySpots, type CollectDeps } from '../jobs/collect';
 import { detectLang, fill, STRINGS, type Strings } from '../render/i18n';
-import { detailsMarkupFor, goButtonsMarkup, renderDetails, renderEvening, renderSpotDay, spotName, type RenderCtx, allSpotOrder } from '../render/messages';
+import { detailsMarkupFor, goButtonsMarkup, renderDetails, renderEvening, renderSpotDay, renderWeek, spotName, type RenderCtx, allSpotOrder } from '../render/messages';
 import type { Lang, Profile, Region, Report, Spot } from '../types';
 import { langKeyboard, persistentKeyboard, profileKeyboard } from './keyboards';
 import { newProfile, parseHours, profileSummary, welcomeText } from './profile';
@@ -53,6 +53,20 @@ async function nowReport(profile: Profile, deps: BotDeps): Promise<Report> {
   const report = await buildReport({ profile, date: today, mode: 'now', fromTime }, collectDeps(deps, now));
   if (report.spots.length === 0 || hasDaylightLeft(fromTime, report.sun.sunrise, report.sun.sunset)) return report;
   return buildReport({ profile, date: addDays(today, 1), mode: 'evening' }, collectDeps(deps, now));
+}
+
+/**
+ * La semaine à venir (`buildWeek`). Loin de tout spot connu, on répond comme /now : sept rapports hors
+ * couverture coûteraient deux appels chacun pour dire sept fois la même chose.
+ */
+async function handleWeek(chatId: number, profile: Profile, deps: BotDeps): Promise<void> {
+  const ctx = renderCtx(profile.lang, deps);
+  if (nearbySpots(deps.spots, profile.location, deps.radiusKm ?? RADIUS_KM).length === 0) {
+    await deps.telegram.sendMessage(chatId, renderEvening(await nowReport(profile, deps), ctx));
+    return;
+  }
+  const now = deps.now();
+  await deps.telegram.sendMessage(chatId, renderWeek(await buildWeek(profile, collectDeps(deps, now)), ctx, { today: dateOf(now) }));
 }
 
 /** Le prefixe a coller devant un rapport « maintenant » que `nowReport` a bascule sur demain. */
@@ -157,6 +171,10 @@ export async function handleUpdate(update: TgUpdate, deps: BotDeps): Promise<voi
     const report = await nowReport(profile, deps);
     const ctx = renderCtx(profile.lang, deps);
     await telegram.sendMessage(chatId, `${rolloverPrefix(report, deps, s)}${renderEvening(report, ctx)}`, detailsMarkupFor(report, ctx));
+    return;
+  }
+  if (text.startsWith('/week')) {
+    await handleWeek(chatId, profile, deps);
     return;
   }
   if (isButton(text, 'backHome')) {

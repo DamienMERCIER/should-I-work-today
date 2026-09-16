@@ -6,22 +6,22 @@ import { parseHours } from '../../src/bot/profile';
 import { REGIONS, SPOTS } from '../../src/data/index';
 import type { Profile, Spot, SpotResult } from '../../src/types';
 import { fakeFetch, jsonResponse } from '../helpers/fakeFetch';
-import { GOLDEN_DAILY, GOLDEN_DATE, GOLDEN_SPOTS, goldenReport, goldenSwell, goldenWind } from '../helpers/golden';
+import { GOLDEN_DAILY, GOLDEN_DATE, GOLDEN_SPOTS, goldenReport, goldenSwell, goldenWind, weekData } from '../helpers/golden';
 import { MemoryKV } from '../helpers/memoryKv';
-import { openMeteoServer } from '../helpers/openMeteoServer';
+import { openMeteoServer, type ServerData } from '../helpers/openMeteoServer';
 import { OUTER_KOM } from '../helpers/spots';
 import { ALL_SPOTS_CAP, fmtDate } from '../../src/render/messages';
 
 const NOW = '2026-09-16T08:30';
 const TOMORROW = '2026-09-17';
 
-function setup(opts: { inviteCode?: string; spots?: Spot[]; now?: string } = {}) {
+function setup(opts: { inviteCode?: string; spots?: Spot[]; now?: string; data?: ServerData } = {}) {
   const store = new Store(new MemoryKV());
   const tg = fakeFetch(() => jsonResponse({ ok: true }));
   // Vent sur aujourd'hui ET demain : un rapport bascule sur le lendemain (§nowReport) n'a de
   // données que si la série les couvre, sinon il retombe en noData et le test ne prouve rien.
   const wind = [...goldenWind(), ...goldenWind(TOMORROW)];
-  const om = fakeFetch(openMeteoServer({ swell: goldenSwell(), wind, daily: GOLDEN_DAILY }));
+  const om = fakeFetch(openMeteoServer(opts.data ?? { swell: goldenSwell(), wind, daily: GOLDEN_DAILY }));
   const deps: BotDeps = {
     telegram: new Telegram('t', tg.fn), store, spots: opts.spots ?? GOLDEN_SPOTS, regions: REGIONS, fetchFn: om.fn,
     inviteCode: opts.inviteCode, now: () => opts.now ?? NOW,
@@ -199,6 +199,52 @@ describe('/now once the light has gone', () => {
     await store.putProfiles({ '1': ready() });
     await handleUpdate(msg('/now'), deps);
     expect(sent()[0].text).not.toContain('Today is done');
+  });
+});
+
+describe('/week — the week ahead', () => {
+  // mer 16 (aujourd'hui) → : 3,5 / 2,3 / 1,2 / 0,2 m, puis on recommence ; vent de SE 8 kt partout
+  const week = weekData(GOLDEN_DATE, 10, (i) => [3.5, 2.3, 1.2, 0.2][i % 4]);
+  const dayLines = (text: string): string[] => text.split('\n').filter((l) => /^(🟢|🌅|🌇|🔴|⚠️) <b>/.test(l));
+
+  it('includes the rest of today while daylight remains, then six more days, from one load per region', async () => {
+    const { deps, store, sent, omCalls } = setup({ data: week });
+    await store.putProfiles({ '1': ready() });
+    await handleUpdate(msg('/week'), deps);
+    expect(sent()).toHaveLength(1);
+    const text = sent()[0].text;
+    expect(text.startsWith('📅 <b>THE WEEK AHEAD</b>')).toBe(true);
+    const lines = dayLines(text);
+    expect(lines).toHaveLength(7);
+    // 18:00 n'a que 38 min de jour (coucher 18:38) : les fenêtres se ferment à 18:00
+    expect(lines[0]).toBe('🟢 <b>Today</b> · Long Beach ★★★★★★ · 8:00–18:00');
+    expect(lines[1]).toBe('🟢 <b>Thu 17</b> · Long Beach ★★★★ · 7:00–18:00');
+    expect(lines[2]).toBe('🔴 <b>Fri 18</b> · Long Beach ★★★');
+    expect(lines[3]).toBe('🔴 <b>Sat 19</b> · 0★ everywhere');
+    expect(lines[6]).toBe('🔴 <b>Tue 22</b> · Long Beach ★★★');
+    // dimanche 20 fait aussi 6★ : à égalité, le plus tôt gagne
+    expect(text).toContain(`⭐ Best: Today · Kommetjie – Long Beach ★★★★★★ · 8:00–18:00`);
+    expect(omCalls).toHaveLength(3);
+    expect(omCalls.every((c) => c.url.includes('forecast_days=8'))).toBe(true);
+  });
+
+  it('starts tomorrow once the light has gone — never a day of zeros', async () => {
+    const { deps, store, sent } = setup({ data: week, now: `${GOLDEN_DATE}T19:30` });
+    await store.putProfiles({ '1': ready() });
+    await handleUpdate(msg('/week'), deps);
+    const lines = dayLines(sent()[0].text);
+    expect(lines).toHaveLength(7);
+    expect(lines[0].startsWith('🟢 <b>Thu 17</b>')).toBe(true);
+    expect(lines[6]).toBe('🔴 <b>Wed 23</b> · 0★ everywhere');
+    expect(sent()[0].text).not.toContain('Today');
+  });
+
+  it('answers like /now far from any known spot, without fetching a week for nothing', async () => {
+    const { deps, store, sent, omCalls } = setup({ data: week });
+    await store.putProfiles({ '1': ready({ location: { lat: -33.9, lon: 18.87, source: 'custom' } }) });
+    await handleUpdate(msg('/week'), deps);
+    expect(sent()[0].text.startsWith('📍 No known spot within 20 km.')).toBe(true);
+    expect(omCalls.length).toBeLessThanOrEqual(2);
   });
 });
 
@@ -430,6 +476,7 @@ describe('/all, /<spot> and /about', () => {
     const text = sent()[0].text;
     expect(text.startsWith('Commands:')).toBe(true);
     expect(text).toContain('/all');
+    expect(text).toContain('/week');
     expect(text).toContain('/about');
     expect(text).toContain('/long_beach');
   });

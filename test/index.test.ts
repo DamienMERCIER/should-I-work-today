@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import worker, { buildDeps, handleWebhookRequest, runCron, type AppDeps, type Env } from '../src/index';
+import { CRON } from '../src/config';
 import { Store } from '../src/adapters/kv';
 import { Telegram } from '../src/adapters/telegram';
 import { REGIONS } from '../src/data/index';
@@ -91,6 +93,20 @@ describe('crons', () => {
     await runCron('0 4 * * *', deps);
     expect(kv.data.has('run:2026-09-15:morning')).toBe(true);
     await expect(runCron('* * * * *', deps)).resolves.toBeUndefined();
+  });
+  it('dispatches the Sunday 19:05 SAST cron to the week ahead', async () => {
+    const { deps, kv } = setup();
+    await deps.store.putProfiles({ '1': { chatId: 1, lang: 'en', workHours: { start: '09:00', end: '18:00' }, location: { lat: -34.1085, lon: 18.4715, source: 'default' }, active: true, createdAt: 'x' } });
+    await runCron(CRON.week, deps);
+    expect(CRON.week).toBe('5 17 * * 0');
+    expect(kv.data.has('run:2026-09-16:week')).toBe(true);
+  });
+  it('wrangler.toml declares every cron the code dispatches — a missing one would silence its run without an error', () => {
+    const toml = readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8');
+    const line = /^crons\s*=\s*(\[[^\]]*\])/m.exec(toml);
+    expect(line, 'wrangler.toml has no crons line').not.toBeNull();
+    const declared = JSON.parse(line![1]) as string[];
+    expect([...declared].sort()).toEqual(Object.values(CRON).sort());
   });
   it('logs the JobResult as JSON for each cron run', async () => {
     const { deps } = setup();

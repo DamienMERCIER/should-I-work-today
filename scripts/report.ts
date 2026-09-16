@@ -1,8 +1,8 @@
 import { DEFAULT_LOCATION, DEFAULT_WORK_HOURS } from '../src/config';
 import { REGIONS, SPOTS } from '../src/data/index';
 import { addDays, dateOf, floorHour, nowLocal } from '../src/engine/time';
-import { buildReport } from '../src/jobs/collect';
-import { renderDetails, renderEvening } from '../src/render/messages';
+import { buildReport, buildWeek } from '../src/jobs/collect';
+import { renderDetails, renderEvening, renderWeek } from '../src/render/messages';
 import type { Profile } from '../src/types';
 
 function arg(name: string): string | undefined {
@@ -48,12 +48,22 @@ const profile: Profile = {
   createdAt: now,
 };
 
+const plain = (html: string): string => html.replace(/<\/?b>/g, '');
+
+if (process.argv.includes('--week')) {
+  // la semaine à venir telle que /week l'enverrait, sur données live
+  const collect = { spots: SPOTS, regions: REGIONS, fetchFn: (url: string, init?: RequestInit) => fetch(url, init), now };
+  const ctx = { lang: profile.lang, spots: new Map(SPOTS.map((s) => [s.id, s])) };
+  console.log(`# week · ${now} · ${profile.location.lat}, ${profile.location.lon}\n`);
+  console.log(plain(renderWeek(await buildWeek(profile, collect), ctx, { today: dateOf(now) })));
+  process.exit(0);
+}
+
 const report = await buildReport(
   { profile, date, mode, fromTime: mode === 'now' ? floorHour(now) : undefined },
   { spots: SPOTS, regions: REGIONS, fetchFn: (url, init) => fetch(url, init), now },
 );
 const ctx = { lang: profile.lang, spots: new Map(SPOTS.map((s) => [s.id, s])) };
-const plain = (html: string): string => html.replace(/<\/?b>/g, '');
 
 console.log(`# ${mode} · ${date} · ${profile.location.lat}, ${profile.location.lon}\n`);
 console.log(plain(renderEvening(report, ctx)));

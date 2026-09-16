@@ -41,7 +41,7 @@ export interface KVStore {
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
 }
 
-export type RunKind = 'evening' | 'morning';
+export type RunKind = 'evening' | 'morning' | 'week';
 
 export class Store {
   constructor(private readonly kv: KVStore) {}

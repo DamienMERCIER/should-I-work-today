@@ -2,12 +2,13 @@ import { describe, it, expect, vi } from 'vitest';
 import { Store } from '../../src/adapters/kv';
 import { Telegram } from '../../src/adapters/telegram';
 import { REGIONS } from '../../src/data/index';
-import { runEvening, runMorning, estimateBudget, notifyAdmin, type JobDeps } from '../../src/jobs/runs';
+import { runEvening, runMorning, runWeek, estimateBudget, notifyAdmin, type JobDeps } from '../../src/jobs/runs';
 import type { Profile } from '../../src/types';
 import { fakeFetch, jsonResponse } from '../helpers/fakeFetch';
-import { GOLDEN_DAILY, GOLDEN_SPOTS, goldenReport, goldenSwell, goldenWind } from '../helpers/golden';
+import { GOLDEN_DAILY, GOLDEN_SPOTS, goldenReport, goldenSwell, goldenWind, weekData } from '../helpers/golden';
 import { MemoryKV } from '../helpers/memoryKv';
-import { openMeteoServer } from '../helpers/openMeteoServer';
+import { openMeteoServer, type ServerData } from '../helpers/openMeteoServer';
+import { fmtDay } from '../../src/render/messages';
 
 const ready = (chatId: number, over: Partial<Profile> = {}): Profile => ({
   chatId, lang: 'en', workHours: { start: '09:00', end: '18:00' },
@@ -15,14 +16,14 @@ const ready = (chatId: number, over: Partial<Profile> = {}): Profile => ({
 });
 const JOBURG = { lat: -26.2, lon: 28.04, source: 'custom' as const };
 
-function setup(opts: { now: string; blocked?: number[]; failMarine?: boolean; profiles?: Profile[] }) {
+function setup(opts: { now: string; blocked?: number[]; failMarine?: boolean; profiles?: Profile[]; data?: ServerData }) {
   const kv = new MemoryKV();
   const store = new Store(kv);
   const tg = fakeFetch((_url, init) => {
     const body = JSON.parse(String(init?.body)) as { chat_id?: number };
     return opts.blocked?.includes(body.chat_id ?? 0) ? jsonResponse({ ok: false, description: 'Forbidden: bot was blocked by the user' }, 403) : jsonResponse({ ok: true });
   });
-  const om = fakeFetch(openMeteoServer({ swell: goldenSwell(), wind: goldenWind(), daily: GOLDEN_DAILY, failMarine: opts.failMarine }));
+  const om = fakeFetch(openMeteoServer(opts.data ?? { swell: goldenSwell(), wind: goldenWind(), daily: GOLDEN_DAILY, failMarine: opts.failMarine }));
   const deps: JobDeps = {
     store, telegram: new Telegram('t', tg.fn), spots: GOLDEN_SPOTS, regions: REGIONS, fetchFn: om.fn,
     adminChatId: 999, now: () => opts.now, sleep: async () => {},
@@ -176,5 +177,47 @@ describe('estimateBudget', () => {
     expect(estimateBudget([ready(1), ready(2)], deps, 'evening')).toBe(10);
     // + 1 lecture des rapports de la veille, + 2 appels bruts pour le profil hors couverture
     expect(estimateBudget([ready(1), ready(5, { location: JOBURG })], deps, 'morning')).toBe(13);
+  });
+});
+
+describe('runWeek — Sunday evening, the week ahead', () => {
+  const SUNDAY = '2026-09-20T19:05';
+  // lun 21 → dim 27 : 2,3 / 1,2 / 3,5 / 0,2 m, puis on recommence ; vent de SE 8 kt partout
+  const week = () => weekData('2026-09-21', 7, (i) => [2.3, 1.2, 3.5, 0.2][i % 4]);
+
+  it('sends Monday to Sunday to every active profile near a spot, from one load per region, and only once', async () => {
+    const { deps, sent, seed, omCalls } = setup({ now: SUNDAY, data: week() });
+    await seed([ready(1), ready(2, { lang: 'ru' }), ready(3, { active: false }), ready(5, { location: JOBURG })]);
+    const result = await runWeek(deps);
+    expect(result).toEqual({ skipped: false, sent: 2, failed: 0, date: '2026-09-21' });
+    // Johannesburg est loin de tout spot : pas de semaine vide pour lui
+    expect(sent().map((m) => m.chat_id)).toEqual([1, 2]);
+    const text = sent()[0].text;
+    expect(text.startsWith('📅 <b>THE WEEK AHEAD</b>')).toBe(true);
+    expect(text).toContain('⭐ Best: Wed 23 · Kommetjie – Long Beach ★★★★★★ · 7:00–18:00');
+    expect(text).toContain('🟢 <b>Mon 21</b> · Long Beach ★★★★ · 7:00–18:00');
+    expect(text).toContain('🟢 <b>Sun 27</b> · Long Beach ★★★★★★ · 7:00–18:00');
+    expect(text).toContain('From Thu 24 on, a trend only: check again closer to the day.');
+    expect(text).not.toContain('Today');
+    expect(sent()[1].text.startsWith('📅 <b>НЕДЕЛЯ ВПЕРЕДИ</b>')).toBe(true);
+    // chaque profil reçoit sa propre tranche de sept rapports, lundi → dimanche, dans sa langue
+    const dayLines = (t: string): string[] => t.split('\n').filter((l) => /^(🟢|🌅|🌇|🔴|⚠️) <b>/.test(l));
+    for (const [i, lang] of [[0, 'en'], [1, 'ru']] as const) {
+      const lines = dayLines(sent()[i].text);
+      expect(lines).toHaveLength(7);
+      expect(lines[0].startsWith(`🟢 <b>${fmtDay('2026-09-21', lang)}</b>`)).toBe(true);
+      expect(lines[6].startsWith(`🟢 <b>${fmtDay('2026-09-27', lang)}</b>`)).toBe(true);
+    }
+    expect(omCalls).toHaveLength(3);
+    expect(await runWeek(deps)).toEqual({ skipped: true, sent: 0, failed: 0, date: '2026-09-21' });
+  });
+
+  it('turns off a profile that blocked the bot, like the daily runs do', async () => {
+    const { deps, store, seed } = setup({ now: SUNDAY, data: week(), blocked: [2] });
+    await seed([ready(1), ready(2)]);
+    const result = await runWeek(deps);
+    expect(result).toMatchObject({ sent: 1, failed: 1 });
+    expect((await store.getProfile(2))?.active).toBe(false);
+    expect((await store.getProfile(1))?.active).toBe(true);
   });
 });

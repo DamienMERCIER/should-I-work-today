@@ -4,7 +4,7 @@ Bot Telegram qui dit chaque soir à 19h (SAST) s'il faut aller travailler le len
 
 ## Commandes du bot
 
-`/start <code>` · `📍 Use my location` · `🏠 Back to Muizenberg` · `🔎 Right now` / `/now` · `/all` · `/about` · `/profil` · `/lang` · `/stop` · bouton `📋 All spots` · `/<spot>` (commande par spot dérivée du `short`, ex. `/long_beach` — voir `/about` et `src/bot/spotMatch.ts`).
+`/start <code>` · `📍 Use my location` · `🏠 Back to Muizenberg` · `🔎 Right now` / `/now` · `/week` (la semaine à venir, meilleur jour en tête ; envoyée aussi chaque dimanche à 19h05) · `/all` · `/about` · `/profil` · `/lang` · `/stop` · bouton `📋 All spots` · `/<spot>` (commande par spot dérivée du `short`, ex. `/long_beach` — voir `/about` et `src/bot/spotMatch.ts`).
 
 ## Développement
 
@@ -15,6 +15,7 @@ npm test           # vitest
 npm run typecheck
 npm run check:spots
 npm run report                                   # message du soir sur données live (--date, --lat, --lon, --lang)
+npm run report -- --week                         # la semaine à venir, comme /week
 npm run compare:sf                               # étoiles du bot face à surf-forecast, créneau par créneau → data/sf-compare.csv
 npm run dev        # wrangler dev --test-scheduled ; POST /__scheduled?cron=0+17+*+*+* pour simuler 19h
 ```
@@ -23,7 +24,7 @@ Variables locales dans `.dev.vars` (ignoré par git) : `TELEGRAM_BOT_TOKEN`, `WE
 
 ## Mise en production (une fois)
 
-1. BotFather → `/newbot` → token. `/setcommands` : `now - the rest of the day`, `all - every spot, hour by hour`, `profile - work hours`, `lang - language`, `about - data and licence`, `stop - no more messages`.
+1. BotFather → `/newbot` → token. `/setcommands` : `now - the rest of the day`, `week - the week ahead, best day first`, `all - every spot, hour by hour`, `profile - work hours`, `lang - language`, `about - data and licence`, `stop - no more messages`.
 2. `npx wrangler login`, puis `npx wrangler kv namespace create KV` → coller l'`id` dans `wrangler.toml`.
 3. Secrets : `npx wrangler secret put TELEGRAM_BOT_TOKEN`, `WEBHOOK_SECRET` (chaîne aléatoire, ex. `openssl rand -hex 24`), `INVITE_CODE` (**obligatoire** — le bot refuse tout `/start` sans lui ; ex. `openssl rand -hex 8`), `ADMIN_CHAT_ID` (ton `chat_id` — envoie `/start` au bot, lis `wrangler tail`, ou utilise @userinfobot).
 4. `npm run deploy` → URL `https://should-i-work.<sous-domaine>.workers.dev`.
@@ -33,10 +34,10 @@ Variables locales dans `.dev.vars` (ignoré par git) : `TELEGRAM_BOT_TOKEN`, `WE
 
 ## Exploitation
 
-- Le push de 19h est le heartbeat ; toute erreur de run arrive sur Telegram à `ADMIN_CHAT_ID`.
+- Le push de 19h est le heartbeat ; toute erreur de run arrive sur Telegram à `ADMIN_CHAT_ID`. Le dimanche, un second cron à 19h05 envoie la semaine à venir.
 - Logs : `npx wrangler tail`.
 - Calibrer : lancer `npm run compare:sf` chaque jour pendant quelques semaines ; le CSV met face à face étoiles, hauteurs, vent et état du vent du site et du bot, spot par spot. Les constantes de la note sont dans `src/engine/rating.ts`, les seuils du verdict dans `src/config.ts`, l'orientation de chaque spot (`facing`) dans `src/data/spots.json`.
 - Verrou coincé (run planté après le verrou) : `npx wrangler kv key delete --binding KV "run:<date>:evening"` (ou `morning`) avant de relancer.
-- Limites gratuites : 50 sous-requêtes par run → ~38 utilisateurs (au-delà, les profils les plus récents sont reportés et l'admin est prévenu) ; le CPU (10 ms) est l'autre plafond — vérifier dans `wrangler tail` dès 10 utilisateurs.
+- Limites gratuites : 50 sous-requêtes par run → ~38 utilisateurs (au-delà, les profils les plus récents sont reportés et l'admin est prévenu) ; le CPU (10 ms) est l'autre plafond — vérifier dans `wrangler tail` dès 10 utilisateurs, et pour le cron du dimanche (7 jours évalués d'un coup) dès que des spots du monde s'ajoutent autour de Muizenberg.
 
 Données : Open-Meteo.com (CC-BY 4.0), usage non commercial.

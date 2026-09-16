@@ -21,7 +21,7 @@ export const en: Strings = {
   },
   privateBot: 'Private bot — you need the invite link.',
   help:
-    'Commands:\n/now — the rest of the day\n/all — every spot\n/about — about this bot\n' +
+    'Commands:\n/now — the rest of the day\n/week — the week ahead, best day first\n/all — every spot\n/about — about this bot\n' +
     '/profile — work hours\n/lang — language\n/stop — no more messages\n📍 the button sends your location\n' +
     'Each spot has its own command too — e.g. /long_beach shows its day',
   profile: {
@@ -84,6 +84,14 @@ export const en: Strings = {
       swellDrops: 'swell drops to {m} m',
       getsDark: 'gets dark',
     },
+  },
+  week: {
+    title: '📅 <b>THE WEEK AHEAD</b>',
+    best: '⭐ Best: {day} · {spot} {stars}',
+    today: 'Today',
+    nothing: '0★ everywhere',
+    noData: 'no data',
+    trend: 'From {day} on, a trend only: check again closer to the day.',
   },
   coverage: {
     none: '📍 No known spot within {radius} km.',
