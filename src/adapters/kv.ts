@@ -1,20 +1,39 @@
-import { BOARDS, LANGS, LEVELS, LOCK_TTL_S, REPORT_TTL_S } from '../config';
+import { LANGS, LOCK_TTL_S, REPORT_TTL_S } from '../config';
 import type { Profile, Report } from '../types';
 
 /**
- * Les champs fermés du profil viennent de KV, pas du code : une valeur retirée (le français,
- * le 2026-09-16) ou abîmée indexerait `STRINGS`/`Strings.levels` sur `undefined`, ce que `fill`
- * transforme en exception — donc un rendu impossible plutôt qu'une simple dégradation.
+ * Champs qu'une version antérieure écrivait et que plus rien ne lit : niveau, planche et étape de
+ * l'ancien onboarding en deux questions (retirés le 2026-09-16, la note étant désormais celle de
+ * surf-forecast). Les garder ferait traîner un ami resté entre les deux questions hors des envois
+ * du soir, qui écartaient les profils en cours d'onboarding.
+ */
+const LEGACY_KEYS = ['level', 'board', 'onboarding'] as const;
+
+/**
+ * Les champs fermés du profil viennent de KV, pas du code : une langue retirée (le français,
+ * le 2026-09-16) ou abîmée indexerait `STRINGS` sur `undefined`, ce que `fill` transforme en
+ * exception — donc un rendu impossible plutôt qu'une simple dégradation.
  * Une entrée qui n'est pas un objet passe telle quelle : les consommateurs la gèrent déjà,
  * et la faire échouer ici priverait tous les autres profils de leur run.
  */
 function withSupportedFields(p: Profile): Profile {
   if (!p || typeof p !== 'object') return p;
   const lang = LANGS.includes(p.lang) ? p.lang : 'en';
-  const level = LEVELS.includes(p.level) ? p.level : 'intermediate';
-  const board = BOARDS.includes(p.board) ? p.board : 'both';
-  return lang === p.lang && level === p.level && board === p.board ? p : { ...p, lang, level, board };
+  const legacy = LEGACY_KEYS.some((k) => k in p);
+  if (lang === p.lang && !legacy) return p;
+  const next: Record<string, unknown> = { ...p, lang };
+  for (const k of LEGACY_KEYS) delete next[k];
+  return next as unknown as Profile;
 }
+
+/**
+ * Tous les rapports d'un jour partagent une seule clé KV : ce test ne doit jamais lever, sinon un seul
+ * enregistrement abîmé (écriture partielle, schéma futur) ferait échouer la lecture pour tout le monde.
+ * Chaque niveau est donc vérifié avant d'être lu, et un rapport douteux est simplement écarté.
+ */
+const hasCurrentShape = (r: Report): boolean =>
+  Boolean(r) && Array.isArray(r.spots) &&
+  r.spots.every((s) => Boolean(s) && Array.isArray(s.hours) && s.hours.every((h) => Boolean(h) && typeof h.stars === 'number'));
 
 /** Sous-ensemble de KVNamespace utilisé par l'application (facile à simuler en test). */
 export interface KVStore {
@@ -49,8 +68,15 @@ export class Store {
     return next;
   }
 
+  /**
+   * Un rapport écrit avant les étoiles (16/09/2026) n'a ni `stars`, ni `heightM`, ni `windState` :
+   * rendu tel quel il donnait « NaN–NaN m · undefined SE » et dix étoiles creuses, et le run du matin
+   * l'aurait comparé à un rapport neuf pour annoncer un faux changement. On le traite comme absent :
+   * aujourd'hui se recalcule, un jour plus ancien répond « trop vieux ». Ils expirent en 48 h.
+   */
   async getReports(date: string): Promise<Record<string, Report>> {
-    return ((await this.kv.get(`reports:${date}`, 'json')) as Record<string, Report> | null) ?? {};
+    const stored = ((await this.kv.get(`reports:${date}`, 'json')) as Record<string, Report> | null) ?? {};
+    return Object.fromEntries(Object.entries(stored).filter(([, r]) => hasCurrentShape(r)));
   }
 
   async putReports(date: string, reports: Record<string, Report>): Promise<void> {

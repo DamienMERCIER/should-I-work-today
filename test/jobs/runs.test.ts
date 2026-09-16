@@ -10,7 +10,7 @@ import { MemoryKV } from '../helpers/memoryKv';
 import { openMeteoServer } from '../helpers/openMeteoServer';
 
 const ready = (chatId: number, over: Partial<Profile> = {}): Profile => ({
-  chatId, lang: 'en', level: 'intermediate', board: 'shortboard', workHours: { start: '09:00', end: '18:00' },
+  chatId, lang: 'en', workHours: { start: '09:00', end: '18:00' },
   location: { lat: -34.1085, lon: 18.4715, source: 'default' }, active: true, createdAt: '2026-09-15T19:00', ...over,
 });
 const JOBURG = { lat: -26.2, lon: 28.04, source: 'custom' as const };
@@ -32,30 +32,31 @@ function setup(opts: { now: string; blocked?: number[]; failMarine?: boolean; pr
   return { deps, store, kv, sent, seed, omCalls: om.calls };
 }
 
-const ALL = [ready(1), ready(2, { lang: 'ru' }), ready(3, { active: false }), ready(4, { onboarding: 'board' }), ready(5, { location: JOBURG })];
+// 4 : un ami resté entre les deux questions de l'ancien onboarding — il reçoit désormais le verdict
+const LEGACY_MID_ONBOARDING = { ...ready(4), level: 'beginner', onboarding: 'board' } as unknown as Profile;
+const ALL = [ready(1), ready(2, { lang: 'ru' }), ready(3, { active: false }), LEGACY_MID_ONBOARDING, ready(5, { location: JOBURG })];
 
 describe('runEvening', () => {
-  it('sends tomorrow verdict to active, onboarded profiles and stores the reports twice', async () => {
+  it('sends tomorrow verdict to every active profile — one stuck in the old onboarding included — and stores the reports twice', async () => {
     const { deps, store, kv, sent, seed, omCalls } = setup({ now: '2026-09-15T19:00' });
     await seed(ALL);
     const result = await runEvening(deps);
-    expect(result).toEqual({ skipped: false, sent: 3, failed: 0, date: '2026-09-16' });
+    expect(result).toEqual({ skipped: false, sent: 4, failed: 0, date: '2026-09-16' });
     expect(omCalls).toHaveLength(3); // une région (marine + forecast + période pic), le profil de Johannesburg est loin de tout
-    expect(sent().map((m) => m.chat_id)).toEqual([1, 2, 5]);
+    expect(sent().map((m) => m.chat_id)).toEqual([1, 2, 4, 5]);
     expect(sent()[0].text.startsWith("🟢 <b>DON'T GO TO WORK TOMORROW</b> (Wed 16 Sept)")).toBe(true);
     expect(sent()[1].text).toContain('ЗАВТРА НЕ ИДИ НА РАБОТУ');
-    expect(sent()[2].text.startsWith('📍 No known spot')).toBe(true);
+    expect(sent()[3].text.startsWith('📍 No known spot')).toBe(true);
     // the evening push carries the 📍 go buttons (ordered by peak) before the 📋 row — same verdict rendering path as /now.
     expect(sent()[0].reply_markup).toEqual({
       inline_keyboard: [
         [{ text: '📍 Go to Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
-        [{ text: '📍 Go to Muizenberg', url: 'https://www.google.com/maps/search/?api=1&query=-34.1085%2C18.4715' }],
         [{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }],
       ],
     });
-    expect(sent()[2].reply_markup).toBeUndefined();
+    expect(sent()[3].reply_markup).toBeUndefined();
     const reports = await store.getReports('2026-09-16');
-    expect(Object.keys(reports).sort()).toEqual(['1', '2', '5']);
+    expect(Object.keys(reports).sort()).toEqual(['1', '2', '4', '5']);
     expect(reports['1'].sentAt).toBe('2026-09-15T19:00');
     expect(kv.writes.filter((k) => k === 'reports:2026-09-16')).toHaveLength(2);
     expect(kv.data.has('run:2026-09-16:evening')).toBe(true);
@@ -107,13 +108,12 @@ describe('runMorning', () => {
     const result = await runMorning(deps);
     expect(result).toEqual({ skipped: false, sent: 2, failed: 0, date: '2026-09-16' });
     expect(sent().map((m) => m.chat_id)).toEqual([1, 2]);
-    expect(sent()[0].text).toBe('✅ Confirmed: 🟢 Kommetjie – Long Beach 7:00–11:00');
-    expect(sent()[1].text.startsWith('⚠️ Change: 🔴 go to work → 🟢 Kommetjie – Long Beach 7:00–11:00')).toBe(true);
+    expect(sent()[0].text).toBe('✅ Confirmed: 🟢 Kommetjie – Long Beach 7:00–12:00');
+    expect(sent()[1].text.startsWith('⚠️ Change: 🔴 go to work → 🟢 Kommetjie – Long Beach 7:00–12:00')).toBe(true);
     // the morning push is the same rendering path as the evening one — it carries the go buttons too.
     expect(sent()[0].reply_markup).toEqual({
       inline_keyboard: [
         [{ text: '📍 Go to Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
-        [{ text: '📍 Go to Muizenberg', url: 'https://www.google.com/maps/search/?api=1&query=-34.1085%2C18.4715' }],
         [{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }],
       ],
     });
@@ -128,7 +128,7 @@ describe('runMorning', () => {
     const writesBeforeRun = kv.writes.filter((k) => k === 'reports:2026-09-16').length;
     await runMorning(deps);
     expect(sent().map((m) => m.chat_id)).toEqual([1]);
-    expect(sent()[0].text).toBe("⚠️ No data this morning — last night's verdict stands: 🟢 Kommetjie – Long Beach 7:00–11:00");
+    expect(sent()[0].text).toBe("⚠️ No data this morning — last night's verdict stands: 🟢 Kommetjie – Long Beach 7:00–12:00");
     expect((await store.getReports('2026-09-16'))['1'].mode).toBe('evening');
     // un envoi a eu lieu (chat 1) : le run fait bien ses deux écritures (première + sentAt).
     expect(kv.writes.filter((k) => k === 'reports:2026-09-16').length - writesBeforeRun).toBe(2);

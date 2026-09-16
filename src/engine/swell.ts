@@ -1,4 +1,4 @@
-import { M_TO_FT, SCORING } from '../config';
+import { SCORING } from '../config';
 import type { SwellHour } from '../types';
 import { distanceOutsideArc } from './geo';
 
@@ -13,8 +13,10 @@ export function componentWeight(directionDeg: number, window: [number, number]):
 }
 
 /**
- * periodS : période PIC (Tp) — celle qu'attendent periodFactor et k(T) (§7.2) — quand le modèle gwam la publie
- * pour cette heure (`hour.peakPeriodS`) ; sinon repli sur la période MOYENNE de la composante dominante.
+ * La houle « dirigée vers le spot » de surf-forecast : les composantes dans la fenêtre du spot comptent
+ * pleinement, celles à ≤ 20° hors fenêtre à moitié, les autres pas du tout.
+ * periodS : période PIC (Tp) quand le modèle gwam la publie pour cette heure (`hour.peakPeriodS`) ;
+ * sinon repli sur la période MOYENNE de la composante dominante.
  */
 export function effectiveSwell(hour: SwellHour, window: [number, number]): EffectiveSwell {
   const parts = [hour.primary, hour.secondary]
@@ -24,15 +26,4 @@ export function effectiveSwell(hour: SwellHour, window: [number, number]): Effec
   const heightM = Math.sqrt(parts.reduce((sum, p) => sum + p.weighted * p.weighted, 0));
   const lead = parts.reduce((a, b) => (b.weighted > a.weighted ? b : a));
   return { heightM, periodS: hour.peakPeriodS ?? lead.c.periodS, directionDeg: lead.c.directionDeg };
-}
-
-/** k(T) = clamp(1 + 0.05·(T − 8), 0.9, 1.3) (§7.2). */
-export function periodShoaling(periodS: number): number {
-  const { perSecond, refS, min, max } = SCORING.kPeriod;
-  return Math.min(max, Math.max(min, 1 + perSecond * (periodS - refS)));
-}
-
-export function faceHeightFt(swell: EffectiveSwell, exposure: number): number {
-  if (swell.heightM <= 0) return 0;
-  return swell.heightM * M_TO_FT * exposure * periodShoaling(swell.periodS);
 }

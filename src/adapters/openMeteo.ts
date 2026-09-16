@@ -32,28 +32,35 @@ export function marineUrl(points: LatLon[], forecastDays = 3): string {
 }
 
 /**
- * `cell_selection=nearest` et non `sea` : forcer une cellule en pleine mer eloignait le point de vent
- * du spot de 4,8 km en mediane et jusqu'a 10,1 km sur les 35 spots, 16 d'entre eux au-dela de 5 km
- * (Long Beach tombait 8,2 km au nord, vers Hout Bay). `nearest` ramene la mediane a 3,5 km, le
- * maximum a 5,1 km, et seuls 3 spots restent au-dela de 5 km. L'ecart portait surtout sur les
- * rafales, que le score lit depuis le correctif du vent : 45 km/h au large contre 58 km/h au bord
- * pour la meme heure a Kommetjie. L'appel houle, lui, ne fixe pas de `cell_selection` : sa grille
- * est deja oceanique.
+ * `models=gfs_seamless` : les étoiles reproduisent la note de surf-forecast, dont les courbes de vent
+ * basculent à des seuils précis (offshore plein jusqu'à 30 km/h, onshore à zéro dès 20 km/h) — un
+ * vent sous-estimé de 10 km/h y change des étoiles entières. Le 16/09/2026, sur huit créneaux de
+ * Long Beach et de Muizenberg, GFS tombait à 4,1 et 4,8 km/h du vent affiché par le site ; le modèle
+ * par défaut à 10,5 et 10,4 km/h, toujours en dessous ; ECMWF et Météo-France bons sur un spot,
+ * faux de 17 à 19 km/h sur l'autre. Mesure courte (un jour, deux spots) : `npm run compare:sf`,
+ * lancé dans la durée, dit si elle tient. La houle reste sur le modèle par défaut : à 0,2 m du site,
+ * et forcer un modèle de vagues fait perdre la colonne de marée.
+ *
+ * `cell_selection=nearest` et non `sea` : forcer une cellule en pleine mer éloignait le point de vent
+ * jusqu'à 10 km du spot (Long Beach tombait 8,2 km au nord, vers Hout Bay). La grille de GFS est plus
+ * lâche que celle du modèle par défaut : avec `nearest`, 24 cellules pour les 35 spots, à 5,3 km en
+ * médiane et 6,9 km au plus.
  */
 export function forecastUrl(points: LatLon[], forecastDays = 3): string {
   const q = new URLSearchParams({
     latitude: coords(points, 'lat'), longitude: coords(points, 'lon'),
     hourly: FORECAST_HOURLY.join(','), daily: FORECAST_DAILY.join(','),
-    wind_speed_unit: 'kn', cell_selection: 'nearest', timezone: TIMEZONE, forecast_days: String(forecastDays),
+    wind_speed_unit: 'kn', cell_selection: 'nearest', models: 'gfs_seamless', timezone: TIMEZONE, forecast_days: String(forecastDays),
   });
   return `${FORECAST_BASE}?${q.toString()}`;
 }
 
 /**
  * `swell_wave_period` (appel marine principal) est la période MOYENNE ; le modèle par défaut ne publie pas la
- * période PIC (Tp), celle que les seuils de scoring et k(T) attendent (§7.2). `models=gwam` la fournit, mais
- * appliqué à l'appel marine principal il viderait `sea_level_height_msl` et la houle secondaire — d'où un
- * second appel, séparé, ne demandant que cette colonne.
+ * période PIC (Tp), celle que surf-forecast affiche (« SW 13 s ») et qu'on montre dans les messages. Les
+ * étoiles n'en dépendent pas : c'est de l'affichage. `models=gwam` la fournit, mais appliqué à l'appel
+ * marine principal il viderait `sea_level_height_msl` et la houle secondaire — d'où un second appel,
+ * séparé, ne demandant que cette colonne.
  */
 export function peakPeriodUrl(points: LatLon[], forecastDays = 3): string {
   const q = new URLSearchParams({
@@ -118,7 +125,9 @@ const MARINE_REQUIRED_HOURLY = [
   'secondary_swell_wave_height', 'secondary_swell_wave_period', 'secondary_swell_wave_direction',
   'sea_level_height_msl',
 ] as const;
-const FORECAST_REQUIRED_HOURLY = ['wind_speed_10m', 'wind_direction_10m', 'wind_gusts_10m', 'weather_code'] as const;
+// `wind_gusts_10m` est encore demandé (le script de comparaison l'enregistre) mais plus exigé : la note
+// ne lit pas la rafale, son absence ne doit pas priver une région de verdict.
+const FORECAST_REQUIRED_HOURLY = ['wind_speed_10m', 'wind_direction_10m', 'weather_code'] as const;
 const FORECAST_REQUIRED_DAILY = ['time', 'sunrise', 'sunset'] as const;
 
 export function parseMarine(json: unknown): SwellHour[][] {

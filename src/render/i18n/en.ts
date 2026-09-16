@@ -4,41 +4,33 @@ export const en: Strings = {
   locale: 'en-GB',
   cardinal: ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'],
   buttons: { useMyLocation: '📍 Use my location', backHome: '🏠 Back to Muizenberg', now: '🔎 Right now', allSpots: '📋 All spots', goTo: '📍 Go to {spot}' },
-  levels: { beginner: 'Beginner', intermediate: 'Intermediate', advanced: 'Advanced' },
-  boards: { longboard: 'Longboard', shortboard: 'Shortboard', both: 'Both' },
-  relations: { offshore: 'offshore', cross: 'cross', onshore: 'onshore' },
-  glassy: 'glassy',
-  gusting: 'gusts {kt}',
+  windStates: { glassy: 'glassy', off: 'offshore', 'cross-off': 'cross-offshore', cross: 'cross-shore', 'cross-on': 'cross-onshore', on: 'onshore' },
   then: 'then',
   today: 'today',
   tideStates: { low: 'low', mid: 'mid', high: 'high' },
   tideTrends: { rising: 'incoming tide', falling: 'outgoing tide' },
   tideNext: { high: 'high {time}', low: 'low {time}' },
   onboarding: {
-    askLevel: 'Hey! Two questions and we are set. Your level?',
-    askBoard: 'What do you ride?',
     welcome:
       'All set. Every evening at 19:00 I tell you whether to work tomorrow.\n' +
       'Location: {home} · work {start}–{end}.\n' +
       '📍 send your location if you move\n' +
       '🔎 conditions right now\n' +
-      '/profile to change level, board or hours\n' +
+      '/profile to change your work hours\n' +
       'Data: Open-Meteo.com (CC-BY 4.0)',
   },
   privateBot: 'Private bot — you need the invite link.',
   help:
     'Commands:\n/now — the rest of the day\n/all — every spot\n/about — about this bot\n' +
-    '/profile — level, board, work hours\n/lang — language\n/stop — no more messages\n📍 the button sends your location\n' +
+    '/profile — work hours\n/lang — language\n/stop — no more messages\n📍 the button sends your location\n' +
     'Each spot has its own command too — e.g. /long_beach shows its day',
   profile: {
-    summary: 'Profile\nLevel: {level}\nBoard: {board}\nWork: {start}–{end}\nLocation: {location}',
+    summary: 'Profile\nWork: {start}–{end}\nLocation: {location}',
     askHours: 'Send your work hours, e.g. 9-18',
     badHours: "I didn't get that. Format: 9-18",
     saved: 'Saved.',
     locationDefault: 'Muizenberg (default)',
     locationCustom: 'custom location ({lat}, {lon})',
-    changeLevel: 'Level',
-    changeBoard: 'Board',
     changeHours: 'Hours',
   },
   lang: { ask: 'Language / Язык', set: 'Language: English' },
@@ -57,12 +49,12 @@ export const en: Strings = {
     red: '🔴 <b>GO TO WORK TOMORROW</b> ({date})',
     redWeekend: '🔴 Nothing tomorrow ({date})',
     redNow: '🔴 Nothing today',
-    redBody: 'Nothing ≥ 7/10 within {radius} km.',
-    redTooShort: 'The only good window within {radius} km is too short to be worth it.',
-    redBest: 'Best: {spot} {score}/10 ({reason})',
+    redBody: 'Nothing ≥ {good}★ within {radius} km.',
+    redTooShort: 'The good window within {radius} km is too short or clashes with work.',
+    redBest: 'Best: {spot} {stars} ({reason})',
   },
-  reasons: { size: '{ft} ft', period: '{s} s period', tide: '{state} tide', dark: 'dark' },
-  spotLine: { conditions: '{ft} ft · {dir} {s} s · {wind} · {tide}', sun: '☀️ {temp}° · sunrise {sunrise}' },
+  reasons: { size: 'swell {m} m', dark: 'dark', storm: 'thunderstorm' },
+  spotLine: { conditions: '{m} m · {dir} {s} s · {wind} · {tide}', sun: '☀️ {temp}° · sunrise {sunrise}' },
   rain: 'rain {mm} mm',
   morning: {
     confirmed: '✅ Confirmed: {verdict}',
@@ -70,31 +62,26 @@ export const en: Strings = {
     cause: 'cause: {cause}',
     noDataKeep: "⚠️ No data this morning — last night's verdict stands: {verdict}",
   },
-  causes: { wind: 'wind', size: 'size', period: 'period', tide: 'tide' },
+  causes: { wind: 'wind', size: 'swell' },
   shortVerdict: { green: '🟢 {spot} {window}', dawn: '🌅 dawn patrol {spot} {window}', dusk: '🌇 after work {spot} {window}', red: '🔴 go to work' },
   details: {
     title: '📋 <b>All spots</b> ({date})',
-    closed: 'closed for your level: {spots}',
     tides: 'tide: {list}',
     tooOld: 'Too old — run /now.',
   },
   dayView: {
     title: '📋 <b>Your day</b> ({date})',
-    peak: 'peak {score} at {time}',
+    peak: 'peak {stars} at {time}',
     bestAt: 'best at {time} — {reasons}',
     fadesFrom: 'fades from {time} — {reasons}',
-    flatSpots: '{n} spots flat all day',
-    moreSpots: '+{n} more open spots not shown — try /<spot>',
+    flatSpots: '{n} spots at 0★ all day',
+    moreSpots: '+{n} more spots not shown — try /<spot>',
     sun: '🌅 {sunrise} · 🌇 {sunset}',
-    closedSpot: 'closed for your level',
     reasons: {
       windDrops: 'wind drops to {kt} kt',
       windBuilds: 'wind builds to {kt} kt',
-      tideStillHigh: 'tide still high',
-      tideMid: 'mid tide',
-      tideLow: 'low tide',
-      sizePeaks: 'size peaks at {ft} ft',
-      groundswell: '{s} s groundswell',
+      swellPeaks: 'swell peaks at {m} m',
+      swellDrops: 'swell drops to {m} m',
       getsDark: 'gets dark',
     },
   },

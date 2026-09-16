@@ -42,8 +42,6 @@ const custom = arg('lat') !== undefined || arg('lon') !== undefined;
 const profile: Profile = {
   chatId: 0,
   lang: choice('lang', ['en', 'ru'] as const, 'en'),
-  level: choice('level', ['beginner', 'intermediate', 'advanced'] as const, 'intermediate'),
-  board: choice('board', ['longboard', 'shortboard', 'both'] as const, 'both'),
   workHours: { ...DEFAULT_WORK_HOURS },
   location: { lat: numberArg('lat', DEFAULT_LOCATION.lat), lon: numberArg('lon', DEFAULT_LOCATION.lon), source: custom ? 'custom' : 'default' },
   active: true,
@@ -57,7 +55,7 @@ const report = await buildReport(
 const ctx = { lang: profile.lang, spots: new Map(SPOTS.map((s) => [s.id, s])) };
 const plain = (html: string): string => html.replace(/<\/?b>/g, '');
 
-console.log(`# ${mode} · ${date} · ${profile.level}/${profile.board} · ${profile.location.lat}, ${profile.location.lon}\n`);
+console.log(`# ${mode} · ${date} · ${profile.location.lat}, ${profile.location.lon}\n`);
 console.log(plain(renderEvening(report, ctx)));
 console.log();
 console.log(plain(renderDetails(report, ctx)));

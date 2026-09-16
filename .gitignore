@@ -9,3 +9,7 @@ coverage/
 # slugs churns this file every chunk; it must never sit untracked next to tracked docs in .superpowers/.
 .superpowers/import-spots-progress.json
 *.progress.json
+
+# npm run compare:sf — le CSV s'accumule jour après jour en local, les pages sauvées servent au débogage du parseur
+data/sf-compare.csv
+tmp/

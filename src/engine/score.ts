@@ -1,17 +1,15 @@
 import { SCORING } from '../config';
-import type { Board, Level, Spot, SpotHour, SpotResult, SwellHour, WindHour, Window } from '../types';
-import {
-  daylightFactor, effectiveBand, periodFactor, sizeFactor, tideFactor, weatherFactor, windFactor, windRelation,
-} from './factors';
-import { effectiveSwell, faceHeightFt } from './swell';
+import type { Spot, SpotHour, SpotResult, SwellHour, WindHour, Window } from '../types';
+import { daylightFactor, weatherFactor } from './factors';
+import { rateLikeSurfForecast } from './rating';
+import { effectiveSwell } from './swell';
 import type { TideInfo } from './tide';
 import { addHours, dateOf, hoursBetween, toMs } from './time';
 
 export interface EvaluateSpotInput {
   spot: Spot;
-  level: Level;
-  board: Board;
   date: string;
+  /** houle à la cellule du spot (`collect.ts` s'occupe du repli régional quand la cellule est vide) */
   swell: SwellHour[];
   wind: WindHour[];
   sun: { sunrise: string; sunset: string };
@@ -23,10 +21,14 @@ export interface EvaluateSpotInput {
 
 export const round1 = (x: number): number => Math.round(x * 10) / 10;
 
+/**
+ * Note chaque heure comme surf-forecast : étoiles 0..10 sur la houle dirigée vers le spot et le vent,
+ * rien d'autre (§ RAPPORT-surf-forecast.md). Niveau, planche, marée, période et rafale n'y entrent pas.
+ * La lumière et l'orage ne touchent pas les étoiles : ils décident seulement si l'heure peut compter
+ * pour une session, via `score`.
+ */
 export function evaluateSpot(input: EvaluateSpotInput): SpotResult {
   const { spot, date } = input;
-  const band = effectiveBand(spot, input.level, input.board);
-  const open = band !== null;
   const swellByTime = new Map(input.swell.map((h) => [h.time, h]));
   const fromMs = input.fromTime ? toMs(input.fromTime) : Number.NEGATIVE_INFINITY;
   const hours: SpotHour[] = [];
@@ -37,29 +39,27 @@ export function evaluateSpot(input: EvaluateSpotInput): SpotResult {
     const tide = input.tide.states.get(w.time);
     if (!s || !tide) continue;
     const eff = effectiveSwell(s, spot.swellWindow);
-    const faceFt = faceHeightFt(eff, spot.exposure);
-    const relation = windRelation(w.windDirDeg, spot.facing);
+    const rating = rateLikeSurfForecast({
+      heightM: eff.heightM, periodS: eff.periodS, windKt: w.windKt, windFromDeg: w.windDirDeg, facingDeg: spot.facing,
+    });
     const factors = {
-      size: band ? sizeFactor(faceFt, band) : 0,
-      period: periodFactor(eff.periodS),
-      wind: windFactor(w.windKt, relation, w.gustKt),
-      tide: tideFactor(tide.state, spot.tide),
+      swell: rating.base / 10,
+      wind: rating.windFactor,
       day: daylightFactor(w.time, input.sun.sunrise, input.sun.sunset),
       weather: weatherFactor(w.weatherCode),
     };
-    const product = factors.size * factors.period * factors.wind * factors.tide * factors.day * factors.weather;
     hours.push({
       time: w.time,
-      faceFt, periodS: eff.periodS, swellDirDeg: eff.directionDeg,
-      windKt: w.windKt, windDirDeg: w.windDirDeg, gustKt: w.gustKt, windRelation: relation,
-      tide, factors,
-      score: open ? round1(10 * product) : 0,
+      heightM: eff.heightM, periodS: eff.periodS, swellDirDeg: eff.directionDeg,
+      windKt: w.windKt, windDirDeg: w.windDirDeg, windState: rating.state,
+      tide, stars: rating.stars, clean: rating.clean, factors,
+      score: factors.day * factors.weather === 1 ? rating.stars : 0,
     });
   }
 
-  const windows = open ? findWindows(hours) : [];
+  const windows = findWindows(hours);
   return {
-    spotId: spot.id, distanceKm: input.distanceKm, open, hours, windows,
+    spotId: spot.id, distanceKm: input.distanceKm, hours, windows,
     best: pickBest(windows),
     maxScore: hours.reduce((m, h) => Math.max(m, h.score), 0),
   };

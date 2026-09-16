@@ -1,9 +1,11 @@
 import { SCORING } from '../config';
 import type { Report, SpotHour, SpotResult, Verdict } from '../types';
+import { rawStars } from './rating';
 import { hoursBetween } from './time';
 import { primaryPick } from './verdict';
 
-export type Cause = 'wind' | 'size' | 'period' | 'tide';
+/** Les étoiles ne dépendent que du vent et de la houle : ce sont les deux seules causes possibles. */
+export type Cause = 'wind' | 'size';
 export interface Delta { send: boolean; changed: boolean; cause?: Cause }
 
 export const isActionable = (v: Verdict | undefined): boolean => v?.kind === 'green' || v?.kind === 'yellow';
@@ -34,15 +36,18 @@ export function hasChanged(prev: Verdict | undefined, next: Verdict): boolean {
   );
 }
 
-const CAUSE_KEYS: Cause[] = ['wind', 'size', 'period', 'tide'];
+
 
 function peakHourIn(r: SpotResult, start: string, end: string): SpotHour | undefined {
   return r.hours.filter((h) => h.time >= start && h.time < end).sort((a, b) => b.score - a.score)[0];
 }
 
 /**
- * Facteur qui a le plus varié (≥ 0.15) à l'heure du pic du soir, sur le spot principal du soir.
- * Baisse si le verdict se dégrade, hausse s'il s'améliore, n'importe quel sens sinon.
+ * Ce qui a le plus changé les étoiles à l'heure du pic du soir, sur le spot principal du soir : on
+ * rejoue le pic avec le seul vent du matin, puis avec la seule houle du matin, et on garde l'écart le
+ * plus grand s'il vaut au moins une étoile. Baisse si le verdict se dégrade, hausse s'il s'améliore,
+ * n'importe quel sens sinon. En étoiles et pas en facteurs bruts : la houle y est une note de base
+ * ramenée sur 0..1, le vent un multiplicateur, et 0,15 de l'un ne pèse pas 0,15 de l'autre.
  */
 export function findCause(evening: Report, morning: Report): Cause | undefined {
   const pick = primaryPick(evening.verdict);
@@ -55,10 +60,15 @@ export function findCause(evening: Report, morning: Report): Cause | undefined {
   if (!peakHour || !afterHour) return undefined;
 
   const direction = Math.sign(rank(morning.verdict) - rank(evening.verdict));
+  const base = (h: SpotHour): number => h.factors.swell * 10;
+  const atPeak = rawStars(base(peakHour), peakHour.factors.wind);
+  const changes: [Cause, number][] = [
+    ['wind', rawStars(base(peakHour), afterHour.factors.wind) - atPeak],
+    ['size', rawStars(base(afterHour), peakHour.factors.wind) - atPeak],
+  ];
   let cause: Cause | undefined;
   let magnitude: number = SCORING.deltaCauseThreshold;
-  for (const key of CAUSE_KEYS) {
-    const d = afterHour.factors[key] - peakHour.factors[key];
+  for (const [key, d] of changes) {
     if (direction !== 0 && Math.sign(d) !== direction) continue;
     if (Math.abs(d) >= magnitude) {
       magnitude = Math.abs(d);

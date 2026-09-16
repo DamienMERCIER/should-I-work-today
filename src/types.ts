@@ -1,9 +1,12 @@
+import type { WindState } from './engine/rating';
+
+/** Les six états de vent de surf-forecast (`src/engine/rating.ts`). */
+export type { WindState };
+
 export type Level = 'beginner' | 'intermediate' | 'advanced';
-export type Board = 'longboard' | 'shortboard' | 'both';
 export type Lang = 'en' | 'ru';
 export type TideState = 'low' | 'mid' | 'high';
 export type TideTrend = 'rising' | 'falling';
-export type WindRelation = 'offshore' | 'cross' | 'onshore';
 export type ReportMode = 'evening' | 'morning' | 'now';
 
 export interface LatLon { lat: number; lon: number }
@@ -11,15 +14,17 @@ export interface LatLon { lat: number; lon: number }
 /** 'HH:MM' */
 export interface WorkHours { start: string; end: string }
 
+/**
+ * Ni niveau ni planche : la note est celle de surf-forecast, la même pour tout le monde
+ * (§ RAPPORT-surf-forecast.md). Un profil écrit avant le 16/09/2026 peut encore porter `level`,
+ * `board` et `onboarding` en KV : `Store` les retire à la lecture.
+ */
 export interface Profile {
   chatId: number;
   lang: Lang;
-  level: Level;
-  board: Board;
   workHours: WorkHours;
   location: LatLon & { source: 'default' | 'custom' };
   active: boolean;
-  onboarding?: 'level' | 'board';
   awaiting?: 'hours';
   createdAt: string;
 }
@@ -58,18 +63,29 @@ export interface WindHour {
 export interface DailySun { date: string; sunrise: string; sunset: string; tempMaxC: number; tempMinC: number; precipMm: number }
 
 // ---- sorties du moteur ----
-export interface HourFactors { size: number; period: number; wind: number; tide: number; day: number; weather: number }
+/**
+ * Ce qui fait la note d'une heure. `swell` = note de base surf-forecast ramenée sur 0..1 (base / 10),
+ * `wind` = multiplicateur vent de l'état courant ; `day` et `weather` ne touchent pas les étoiles, ils
+ * disent seulement si l'heure peut compter pour une session.
+ */
+export interface HourFactors { swell: number; wind: number; day: number; weather: number }
 export interface SpotHour {
   time: string;
-  faceFt: number; periodS: number; swellDirDeg: number;
-  windKt: number; windDirDeg: number; gustKt: number; windRelation: WindRelation;
+  /** houle dirigée vers le spot, à sa cellule (m) — la hauteur sur laquelle surf-forecast note */
+  heightM: number; periodS: number; swellDirDeg: number;
+  windKt: number; windDirDeg: number; windState: WindState;
   tide: { state: TideState; trend: TideTrend };
+  /** note surf-forecast pure, 0..10, même de nuit */
+  stars: number;
+  /** étoiles « or » : pas de composante onshore */
+  clean: boolean;
   factors: HourFactors;
+  /** les étoiles si l'heure a du jour et pas d'orage, 0 sinon : c'est ce que lisent fenêtres et verdict */
   score: number;
 }
 export interface Window { start: string; end: string; peak: number; mean: number }
 export interface SpotResult {
-  spotId: string; distanceKm: number; open: boolean;
+  spotId: string; distanceKm: number;
   hours: SpotHour[]; windows: Window[]; best?: Window; maxScore: number;
 }
 export interface TideEvent { time: string; kind: 'high' | 'low'; heightM: number }

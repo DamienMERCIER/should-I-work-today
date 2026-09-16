@@ -8,28 +8,8 @@ export const persistentKeyboard = (s: Strings): ReplyMarkup => ({
   is_persistent: true,
 });
 
-export const levelKeyboard = (s: Strings): ReplyMarkup => ({
-  inline_keyboard: [[
-    { text: s.levels.beginner, callback_data: 'lvl:beginner' },
-    { text: s.levels.intermediate, callback_data: 'lvl:intermediate' },
-    { text: s.levels.advanced, callback_data: 'lvl:advanced' },
-  ]],
-});
-
-export const boardKeyboard = (s: Strings): ReplyMarkup => ({
-  inline_keyboard: [[
-    { text: s.boards.longboard, callback_data: 'board:longboard' },
-    { text: s.boards.shortboard, callback_data: 'board:shortboard' },
-    { text: s.boards.both, callback_data: 'board:both' },
-  ]],
-});
-
 export const profileKeyboard = (s: Strings): ReplyMarkup => ({
-  inline_keyboard: [[
-    { text: s.profile.changeLevel, callback_data: 'prof:level' },
-    { text: s.profile.changeBoard, callback_data: 'prof:board' },
-    { text: s.profile.changeHours, callback_data: 'prof:hours' },
-  ]],
+  inline_keyboard: [[{ text: s.profile.changeHours, callback_data: 'prof:hours' }]],
 });
 
 export const langKeyboard = (): ReplyMarkup => ({

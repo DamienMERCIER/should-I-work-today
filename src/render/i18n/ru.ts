@@ -4,41 +4,33 @@ export const ru: Strings = {
   locale: 'ru-RU',
   cardinal: ['С', 'СВ', 'В', 'ЮВ', 'Ю', 'ЮЗ', 'З', 'СЗ'],
   buttons: { useMyLocation: '📍 Использовать моё местоположение', backHome: '🏠 Вернуться в Muizenberg', now: '🔎 Сейчас', allSpots: '📋 Все споты', goTo: '📍 Маршрут до {spot}' },
-  levels: { beginner: 'Начинающий', intermediate: 'Средний', advanced: 'Продвинутый' },
-  boards: { longboard: 'Лонгборд', shortboard: 'Шортборд', both: 'Обе' },
-  relations: { offshore: 'оффшор', cross: 'кросс', onshore: 'оншор' },
-  glassy: 'штиль',
-  gusting: 'порывы {kt}',
+  windStates: { glassy: 'штиль', off: 'оффшор', 'cross-off': 'кросс-оффшор', cross: 'кросс', 'cross-on': 'кросс-оншор', on: 'оншор' },
   then: 'затем',
   today: 'сегодня',
   tideStates: { low: 'малая вода', mid: 'половина', high: 'полная вода' },
   tideTrends: { rising: 'прилив', falling: 'отлив' },
   tideNext: { high: 'полная {time}', low: 'малая {time}' },
   onboarding: {
-    askLevel: 'Привет! Два вопроса — и поехали. Твой уровень?',
-    askBoard: 'На чём катаешься?',
     welcome:
       'Готово. Каждый вечер в 19:00 я скажу, идти ли завтра на работу.\n' +
       'Позиция: {home} · работа {start}–{end}.\n' +
       '📍 отправь позицию, если переехал\n' +
       '🔎 условия сейчас\n' +
-      '/profile — уровень, доска, часы\n' +
+      '/profile — рабочие часы\n' +
       'Данные: Open-Meteo.com (CC-BY 4.0)',
   },
   privateBot: 'Приватный бот — нужна ссылка-приглашение.',
   help:
     'Команды:\n/now — остаток дня\n/all — все споты\n/about — о боте\n' +
-    '/profil — уровень, доска, рабочие часы\n/lang — язык\n/stop — больше не писать\n📍 кнопка отправляет твою позицию\n' +
+    '/profil — рабочие часы\n/lang — язык\n/stop — больше не писать\n📍 кнопка отправляет твою позицию\n' +
     'У каждого спота есть своя команда — например /long_beach покажет его день',
   profile: {
-    summary: 'Профиль\nУровень: {level}\nДоска: {board}\nРабота: {start}–{end}\nПозиция: {location}',
+    summary: 'Профиль\nРабота: {start}–{end}\nПозиция: {location}',
     askHours: 'Напиши рабочие часы, например 9h-18h',
     badHours: 'Не понял. Формат: 9h-18h',
     saved: 'Сохранено.',
     locationDefault: 'Muizenberg (по умолчанию)',
     locationCustom: 'своя позиция ({lat}, {lon})',
-    changeLevel: 'Уровень',
-    changeBoard: 'Доска',
     changeHours: 'Часы',
   },
   lang: { ask: 'Language / Язык', set: 'Язык: русский' },
@@ -57,12 +49,12 @@ export const ru: Strings = {
     red: '🔴 <b>ЗАВТРА НА РАБОТУ</b> ({date})',
     redWeekend: '🔴 Завтра пусто ({date})',
     redNow: '🔴 Сегодня пусто',
-    redBody: 'Ничего ≥ 7/10 в радиусе {radius} км.',
-    redTooShort: 'Единственное хорошее окно в радиусе {radius} км слишком короткое.',
-    redBest: 'Лучшее: {spot} {score}/10 ({reason})',
+    redBody: 'Ничего ≥ {good}★ в радиусе {radius} км.',
+    redTooShort: 'Хорошее окно в радиусе {radius} км слишком короткое или попадает на работу.',
+    redBest: 'Лучшее: {spot} {stars} ({reason})',
   },
-  reasons: { size: '{ft} ft', period: 'период {s} с', tide: 'вода: {state}', dark: 'темно' },
-  spotLine: { conditions: '{ft} ft · {dir} {s} с · {wind} · {tide}', sun: '☀️ {temp}° · восход {sunrise}' },
+  reasons: { size: 'волна {m} м', dark: 'темно', storm: 'гроза' },
+  spotLine: { conditions: '{m} м · {dir} {s} с · {wind} · {tide}', sun: '☀️ {temp}° · восход {sunrise}' },
   rain: 'дождь {mm} мм',
   morning: {
     confirmed: '✅ Подтверждаю: {verdict}',
@@ -70,31 +62,26 @@ export const ru: Strings = {
     cause: 'причина: {cause}',
     noDataKeep: '⚠️ Утром нет данных — остаётся вчерашний прогноз: {verdict}',
   },
-  causes: { wind: 'ветер', size: 'размер', period: 'период', tide: 'прилив' },
+  causes: { wind: 'ветер', size: 'волна' },
   shortVerdict: { green: '🟢 {spot} {window}', dawn: '🌅 доун-патруль {spot} {window}', dusk: '🌇 после работы {spot} {window}', red: '🔴 на работу' },
   details: {
     title: '📋 <b>Все споты</b> ({date})',
-    closed: 'закрыто для твоего уровня: {spots}',
     tides: 'вода: {list}',
     tooOld: 'Слишком старое — набери /now.',
   },
   dayView: {
     title: '📋 <b>Твой день</b> ({date})',
-    peak: 'пик {score} в {time}',
+    peak: 'пик {stars} в {time}',
     bestAt: 'лучшее в {time} — {reasons}',
     fadesFrom: 'спадает после {time} — {reasons}',
-    flatSpots: '{n} спотов без волны весь день',
-    moreSpots: 'ещё {n} открытых спотов не показано — попробуй /<spot>',
+    flatSpots: '{n} спотов на 0★ весь день',
+    moreSpots: 'ещё {n} спотов не показано — попробуй /<spot>',
     sun: '🌅 {sunrise} · 🌇 {sunset}',
-    closedSpot: 'закрыто для твоего уровня',
     reasons: {
       windDrops: 'ветер стихает до {kt} kt',
       windBuilds: 'ветер усиливается до {kt} kt',
-      tideStillHigh: 'вода всё ещё полная',
-      tideMid: 'средняя вода',
-      tideLow: 'малая вода',
-      sizePeaks: 'пик размера {ft} ft',
-      groundswell: '{s} с зыбь',
+      swellPeaks: 'пик волны {m} м',
+      swellDrops: 'волна спадает до {m} м',
       getsDark: 'темнеет',
     },
   },

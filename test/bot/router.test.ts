@@ -40,7 +40,7 @@ const cb = (data: string, chatId = 1): TgUpdate => ({
   callback_query: { id: 'cb1', from: { id: chatId }, message: { message_id: 1, chat: { id: chatId, type: 'private' } }, data },
 });
 const ready = (over: Partial<Profile> = {}): Profile => ({
-  chatId: 1, lang: 'en', level: 'intermediate', board: 'shortboard', workHours: { start: '09:00', end: '18:00' },
+  chatId: 1, lang: 'en', workHours: { start: '09:00', end: '18:00' },
   location: { lat: -34.1085, lon: 18.4715, source: 'default' }, active: true, createdAt: '2026-09-15T19:00', ...over,
 });
 
@@ -64,27 +64,19 @@ describe('/start and onboarding', () => {
     expect(sent()[0].text).toBe('Private bot — you need the invite link.');
     expect(await store.getProfile(1)).toBeUndefined();
   });
-  it('creates a profile in the detected language and walks the two taps', async () => {
-    const { deps, store, sent, answered } = setup({ inviteCode: 'surf' });
+  it('creates a ready profile in the detected language and welcomes right away — no level or board question', async () => {
+    const { deps, store, sent } = setup({ inviteCode: 'surf' });
     await handleUpdate(msg('/start surf', { from: { id: 1, language_code: 'ru' } }), deps);
-    expect((await store.getProfile(1))?.onboarding).toBe('level');
-    expect((await store.getProfile(1))?.lang).toBe('ru');
-    expect(sent()[0].text).toBe('Привет! Два вопроса — и поехали. Твой уровень?');
-    expect(sent()[0].reply_markup.inline_keyboard[0].map((b: { callback_data: string }) => b.callback_data)).toEqual(['lvl:beginner', 'lvl:intermediate', 'lvl:advanced']);
-
-    await handleUpdate(cb('lvl:intermediate'), deps);
-    expect((await store.getProfile(1))?.level).toBe('intermediate');
-    expect((await store.getProfile(1))?.onboarding).toBe('board');
-    expect(sent()[1].text).toBe('На чём катаешься?');
-
-    await handleUpdate(cb('board:both'), deps);
     const p = await store.getProfile(1);
-    expect(p?.board).toBe('both');
-    expect(p?.onboarding).toBeUndefined();
-    expect(sent()[2].text.startsWith('Готово.')).toBe(true);
-    expect(sent()[2].reply_markup.keyboard[0][0]).toEqual({ text: '🔎 Сейчас' });
-    expect(sent()[2].reply_markup.keyboard[1][1]).toEqual({ text: '📍 Использовать моё местоположение', request_location: true });
-    expect(answered()).toBe(2);
+    expect(p?.lang).toBe('ru');
+    expect(p?.active).toBe(true);
+    expect(p).not.toHaveProperty('level');
+    expect(p).not.toHaveProperty('board');
+    expect(p).not.toHaveProperty('onboarding');
+    expect(sent()).toHaveLength(1);
+    expect(sent()[0].text.startsWith('Готово.')).toBe(true);
+    expect(sent()[0].reply_markup.keyboard[0][0]).toEqual({ text: '🔎 Сейчас' });
+    expect(sent()[0].reply_markup.keyboard[1][1]).toEqual({ text: '📍 Использовать моё местоположение', request_location: true });
   });
   it('refuses every /start when no invite code is configured', async () => {
     const { deps, store, sent } = setup();
@@ -92,11 +84,24 @@ describe('/start and onboarding', () => {
     expect(sent()[0].text).toBe('Private bot — you need the invite link.');
     expect(await store.getProfile(1)).toBeUndefined();
   });
-  it('re-asks the pending question on /start during onboarding', async () => {
-    const { deps, sent } = setup({ inviteCode: 'surf' });
-    await handleUpdate(msg('/start surf'), deps);
-    await handleUpdate(msg('/start surf'), deps);
-    expect(sent().map((m) => m.text)).toEqual(['Hey! Two questions and we are set. Your level?', 'Hey! Two questions and we are set. Your level?']);
+  it('a friend stuck mid-way through the old two-question onboarding is simply ready now', async () => {
+    const { deps, store, sent } = setup();
+    // profil écrit par l'ancienne version : niveau choisi, planche jamais répondue
+    await store.putProfiles({ '1': { ...ready(), level: 'beginner', onboarding: 'board' } as Profile });
+    await handleUpdate(msg('/now'), deps);
+    expect(sent()[0].text.startsWith('🟢')).toBe(true);
+    await handleUpdate(msg('/start'), deps);
+    expect(sent()[1].text.startsWith('Good to see you again')).toBe(true);
+  });
+  it('an old level or board button still in the chat history does nothing but stop the spinner', async () => {
+    const { deps, store, sent, answered } = setup();
+    await store.putProfiles({ '1': ready() });
+    await handleUpdate(cb('lvl:advanced'), deps);
+    await handleUpdate(cb('board:longboard'), deps);
+    await handleUpdate(cb('prof:level'), deps);
+    expect(answered()).toBe(3);
+    expect(sent()).toHaveLength(0);
+    expect(await store.getProfile(1)).toEqual(ready());
   });
   it('/stop deactivates, /start reactivates with the keyboard and the profile summary', async () => {
     const { deps, store, sent } = setup();
@@ -106,7 +111,8 @@ describe('/start and onboarding', () => {
     await handleUpdate(msg('/start'), deps);
     expect((await store.getProfile(1))?.active).toBe(true);
     expect(sent()[1].text.startsWith('Good to see you again — your profile is still here.')).toBe(true);
-    expect(sent()[1].text).toContain('Level: Intermediate');
+    expect(sent()[1].text).toContain('Work: 9:00–18:00');
+    expect(sent()[1].text).not.toMatch(/Level|Board/);
     expect(sent()[1].reply_markup.keyboard[0].map((b: { text: string }) => b.text)).toEqual(['🔎 Right now']);
     expect(sent()[1].reply_markup.keyboard[1].map((b: { text: string }) => b.text)).toEqual(['🏠 Back to Muizenberg', '📍 Use my location']);
   });
@@ -125,7 +131,6 @@ describe('location and /now', () => {
     expect(sent()[0].reply_markup).toEqual({
       inline_keyboard: [
         [{ text: '📍 Go to Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
-        [{ text: '📍 Go to Muizenberg', url: 'https://www.google.com/maps/search/?api=1&query=-34.1085%2C18.4715' }],
         [{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }],
       ],
     });
@@ -143,7 +148,7 @@ describe('location and /now', () => {
     await handleUpdate(msg('/now'), deps);
     await handleUpdate(msg('🔎 Сейчас'), deps);
     expect(sent()).toHaveLength(2);
-    expect(sent()[1].text).toContain('Kommetjie – Long Beach · 8:00–11:00 · 10.0/10');
+    expect(sent()[1].text).toContain('Kommetjie – Long Beach · 8:00–12:00 · ★★★★★★');
   });
 });
 
@@ -202,8 +207,8 @@ describe('/profil, hours, /lang, help', () => {
     const { deps, store, sent } = setup();
     await store.putProfiles({ '1': ready() });
     await handleUpdate(msg('/profil'), deps);
-    expect(sent()[0].text).toBe('Profile\nLevel: Intermediate\nBoard: Shortboard\nWork: 9:00–18:00\nLocation: Muizenberg (default)');
-    expect(sent()[0].reply_markup.inline_keyboard[0].map((b: { callback_data: string }) => b.callback_data)).toEqual(['prof:level', 'prof:board', 'prof:hours']);
+    expect(sent()[0].text).toBe('Profile\nWork: 9:00–18:00\nLocation: Muizenberg (default)');
+    expect(sent()[0].reply_markup.inline_keyboard[0].map((b: { callback_data: string }) => b.callback_data)).toEqual(['prof:hours']);
 
     await handleUpdate(cb('prof:hours'), deps);
     expect((await store.getProfile(1))?.awaiting).toBe('hours');
@@ -225,16 +230,6 @@ describe('/profil, hours, /lang, help', () => {
     await handleUpdate(msg('/now'), deps);
     expect((await store.getProfile(1))?.awaiting).toBeUndefined();
     expect(sent()[0].text.startsWith('🟢')).toBe(true);
-  });
-  it('prof:level / prof:board re-ask with inline keyboards and save outside onboarding', async () => {
-    const { deps, store, sent } = setup();
-    await store.putProfiles({ '1': ready() });
-    await handleUpdate(cb('prof:level'), deps);
-    expect(sent()[0].reply_markup.inline_keyboard[0][2].callback_data).toBe('lvl:advanced');
-    await handleUpdate(cb('lvl:advanced'), deps);
-    expect((await store.getProfile(1))?.level).toBe('advanced');
-    expect((await store.getProfile(1))?.onboarding).toBeUndefined();
-    expect(sent()[1].text.startsWith('Saved.\nProfile')).toBe(true);
   });
   it('/lang switches the language and the keyboard', async () => {
     const { deps, store, sent } = setup();
@@ -295,7 +290,7 @@ describe('📋 details callback', () => {
 });
 
 describe('/all, /<spot> and /about', () => {
-  it('/all uses the stored report, titles "All spots", shows every open spot and ends with a tappable command line ordered like the rows above', async () => {
+  it('/all uses the stored report, titles "All spots", shows every spot and ends with a tappable command line ordered like the rows above', async () => {
     const { deps, store, sent } = setup();
     await store.putProfiles({ '1': ready() });
     await store.putReports('2026-09-16', { '1': goldenReport() });
@@ -309,7 +304,6 @@ describe('/all, /<spot> and /about', () => {
     expect(sent()[0].reply_markup).toEqual({
       inline_keyboard: [
         [{ text: '📍 Go to Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
-        [{ text: '📍 Go to Muizenberg', url: 'https://www.google.com/maps/search/?api=1&query=-34.1085%2C18.4715' }],
       ],
     });
   });
@@ -320,11 +314,12 @@ describe('/all, /<spot> and /about', () => {
       id: `world-${i}`, name: `World Spot ${i}`, short: `W${i}`, region: 'cape-peninsula', lat: 0, lon: 0, facing: 0,
       swellWindow: [0, 90], exposure: 0.7, tide: { best: [], forbidden: [] }, levels: {}, character: 'punchy', verified: false,
     }));
-    const manyResults: SpotResult[] = manySpots.map((s, i) => ({ spotId: s.id, distanceKm: 1, open: true, hours: [], windows: [], best: undefined, maxScore: n - i }));
+    // de 10★ à 1★, jamais croissant : le tri stable garde world-0 en tête et l'ordre d'insertion ensuite
+    const manyResults: SpotResult[] = manySpots.map((s, i) => ({ spotId: s.id, distanceKm: 1, hours: [], windows: [], best: undefined, maxScore: 10 - Math.floor((10 * i) / n) }));
 
     const { deps, store, sent } = setup({ spots: manySpots });
     await store.putProfiles({ '1': ready() });
-    // verdict: 'red' (no spotId pick) so openSpotOrder falls back to the highest-scoring OPEN spot in
+    // verdict: 'red' (no spotId pick) so openSpotOrder falls back to the highest-rated spot in
     // `spots` (world-0) — goldenReport()'s default verdict picks kommetjie-long-beach, which isn't in
     // this report's (fully replaced) spots array at all.
     await store.putReports('2026-09-16', { '1': goldenReport({ spots: manyResults, verdict: { kind: 'red' } }) });
@@ -332,7 +327,7 @@ describe('/all, /<spot> and /about', () => {
 
     const text = sent()[0].text;
     expect(text.length).toBeLessThan(2500); // comfortably under Telegram's 4096-char limit
-    expect(text).toContain('+49 more open spots not shown'); // 80 - 1 primary - 30 shown
+    expect(text).toContain('+49 more spots not shown'); // 80 - 1 primary - 30 shown
 
     const commandLine = text.trim().split('\n').pop()!;
     const commands = commandLine.split(' · ');
@@ -346,7 +341,7 @@ describe('/all, /<spot> and /about', () => {
     await store.putProfiles({ '1': ready() });
     await handleUpdate(msg('/long_beach'), deps);
     expect(sent()).toHaveLength(1);
-    expect(sent()[0].text.startsWith('🏄 Kommetjie – Long Beach · 8:00–11:00')).toBe(true);
+    expect(sent()[0].text.startsWith('🏄 Kommetjie – Long Beach · 8:00–12:00')).toBe(true);
     expect(omCalls.length).toBeGreaterThan(0);
     // the per-spot command's go button, in English.
     expect(sent()[0].reply_markup).toEqual({
@@ -363,15 +358,16 @@ describe('/all, /<spot> and /about', () => {
     });
   });
 
-  it('a per-spot command always yields exactly one go button, even for a closed spot or a spot flat today', async () => {
+  it('a per-spot command always yields exactly one go button, even for a spot at 0★ or without a window today', async () => {
     const { deps, store, sent } = setup({ spots: [...GOLDEN_SPOTS, OUTER_KOM] });
     await store.putProfiles({ '1': ready() });
-    const closed: SpotResult = { spotId: 'outer-kom', distanceKm: 14.5, open: false, hours: [], windows: [], best: undefined, maxScore: 0 };
-    const flat: SpotResult = { spotId: 'muizenberg', distanceKm: 0, open: true, hours: [], windows: [], best: undefined, maxScore: 3.0 };
-    await store.putReports('2026-09-16', { '1': goldenReport({ spots: [closed, flat] }) });
+    const nothing: SpotResult = { spotId: 'outer-kom', distanceKm: 14.5, hours: [], windows: [], best: undefined, maxScore: 0 };
+    const flat: SpotResult = { spotId: 'muizenberg', distanceKm: 0, hours: [], windows: [], best: undefined, maxScore: 2 };
+    await store.putReports('2026-09-16', { '1': goldenReport({ spots: [nothing, flat] }) });
 
     await handleUpdate(msg('/outer_kom'), deps);
-    expect(sent()[0].text).toContain('closed for your level');
+    expect(sent()[0].text.startsWith('🏄 Kommetjie – Outer Kom')).toBe(true);
+    expect(sent()[0].text).not.toContain('closed');
     expect(sent()[0].reply_markup).toEqual({
       inline_keyboard: [[{ text: '📍 Go to Outer Kom', url: 'https://www.google.com/maps/search/?api=1&query=-34.142%2C18.319' }]],
     });

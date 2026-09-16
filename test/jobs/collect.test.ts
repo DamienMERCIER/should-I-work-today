@@ -1,14 +1,15 @@
 import { describe, it, expect, vi } from 'vitest';
-import { buildReports, buildReport, mergePeakPeriod, nearbySpots, nearestSpots } from '../../src/jobs/collect';
+import { buildReports, buildReport, mergePeakPeriod, nearbySpots, nearestSpots, spotSwellSeries } from '../../src/jobs/collect';
 import { SPOTS, REGIONS } from '../../src/data/index';
 import type { SpotTuple } from '../../src/data/world';
+import { addHours } from '../../src/engine/time';
 import type { Profile, SwellHour } from '../../src/types';
-import { fakeFetch } from '../helpers/fakeFetch';
-import { openMeteoServer } from '../helpers/openMeteoServer';
+import { fakeFetch, jsonResponse } from '../helpers/fakeFetch';
+import { forecastJson, marineJson, openMeteoServer, peakJson } from '../helpers/openMeteoServer';
 import { GOLDEN_DAILY, GOLDEN_DATE, GOLDEN_SPOTS, goldenSwell, goldenWind } from '../helpers/golden';
 
 const profile = (over: Partial<Profile> = {}): Profile => ({
-  chatId: 1, lang: 'en', level: 'intermediate', board: 'shortboard', workHours: { start: '09:00', end: '18:00' },
+  chatId: 1, lang: 'en', workHours: { start: '09:00', end: '18:00' },
   location: { lat: -34.1085, lon: 18.4715, source: 'default' }, active: true, createdAt: '2026-09-15T19:00', ...over,
 });
 const server = (over: Partial<Parameters<typeof openMeteoServer>[0]> = {}) =>
@@ -93,14 +94,15 @@ describe('nearbySpots / nearestSpots — world set wiring (§report "Resilience,
 });
 
 describe('buildReports', () => {
-  it('golden: 3 calls for one region (marine + forecast + peak period), 🟢 Kommetjie 07:00→11:00', async () => {
+  it('golden: 3 calls for one region (marine + forecast + peak period), 🟢 Kommetjie 07:00→12:00', async () => {
     const { fn, calls } = server();
     const reports = await buildReports([{ profile: profile(), date: GOLDEN_DATE, mode: 'evening' }], deps(fn));
     const r = reports.get(1)!;
     expect(calls).toHaveLength(3);
-    expect(calls.find((c) => c.url.includes('marine-api'))!.url).toContain('latitude=-34.5000');
+    // la houle au point régional (marée) ET à la cellule de chaque spot (étoiles), dans le même appel
+    expect(calls.find((c) => c.url.includes('marine-api') && !c.url.includes('peak'))!.url).toContain('latitude=-34.5000%2C-34.1085%2C-34.1330');
     expect(calls.find((c) => c.url.includes('/v1/forecast'))!.url).toContain('latitude=-34.1085%2C-34.1330');
-    expect(r.verdict).toMatchObject({ kind: 'green', spotId: 'kommetjie-long-beach', window: { start: `${GOLDEN_DATE}T07:00`, end: `${GOLDEN_DATE}T11:00`, peak: 10.0 } });
+    expect(r.verdict).toMatchObject({ kind: 'green', spotId: 'kommetjie-long-beach', window: { start: `${GOLDEN_DATE}T07:00`, end: `${GOLDEN_DATE}T12:00`, peak: 6 } });
     expect(r.spots.map((s) => s.spotId)).toEqual(['muizenberg', 'kommetjie-long-beach']);
     expect(r.tides.map((t) => t.time)).toEqual([`${GOLDEN_DATE}T03:00`, `${GOLDEN_DATE}T09:00`, `${GOLDEN_DATE}T15:00`, `${GOLDEN_DATE}T21:00`]);
     expect(r.sun).toEqual({ sunrise: `${GOLDEN_DATE}T06:44`, sunset: `${GOLDEN_DATE}T18:38` });
@@ -111,7 +113,7 @@ describe('buildReports', () => {
   it('shares the region calls between two profiles at the same place', async () => {
     const { fn, calls } = server();
     const reports = await buildReports(
-      [{ profile: profile(), date: GOLDEN_DATE, mode: 'evening' }, { profile: profile({ chatId: 2, level: 'advanced' }), date: GOLDEN_DATE, mode: 'evening' }],
+      [{ profile: profile(), date: GOLDEN_DATE, mode: 'evening' }, { profile: profile({ chatId: 2 }), date: GOLDEN_DATE, mode: 'evening' }],
       deps(fn),
     );
     expect(calls).toHaveLength(3);
@@ -119,11 +121,9 @@ describe('buildReports', () => {
   });
   it('now mode truncates from fromTime', async () => {
     const { fn } = server();
-    // 08:00 et non 10:00 : depuis que l'offshore se paie dès 10 kt, la journée golden n'a plus
-    // qu'une heure au-dessus de windowMin après 10:00, trop courte pour une session (sessionMinH).
     const r = await buildReport({ profile: profile(), date: GOLDEN_DATE, mode: 'now', fromTime: `${GOLDEN_DATE}T08:00` }, deps(fn));
     expect(r.mode).toBe('now');
-    expect(r.verdict).toMatchObject({ kind: 'green', window: { start: `${GOLDEN_DATE}T08:00`, end: `${GOLDEN_DATE}T11:00` } });
+    expect(r.verdict).toMatchObject({ kind: 'green', window: { start: `${GOLDEN_DATE}T08:00`, end: `${GOLDEN_DATE}T12:00` } });
   });
   it('out of coverage near the coast: raw conditions at the user position, 3 nearest spots', async () => {
     const { fn, calls } = server();
@@ -132,7 +132,7 @@ describe('buildReports', () => {
     expect(calls.find((c) => c.url.includes('marine-api'))!.url).toContain('latitude=-33.9000');
     expect(r.verdict).toMatchObject({
       kind: 'outOfCoverage',
-      raw: { swellHeightM: 2.0, periodS: 10.2, swellDirDeg: 225, windKt: 8, windDirDeg: 120 },
+      raw: { swellHeightM: 3.5, periodS: 10.2, swellDirDeg: 225, windKt: 8, windDirDeg: 120 },
     });
     expect((r.verdict as { nearest: { spotId: string }[] }).nearest[0].spotId).toBe('strand');
     expect(r.spots).toEqual([]);
@@ -182,13 +182,96 @@ describe('buildReports', () => {
       const { fn, calls } = server({ failPeak: true });
       const r = await buildReport({ profile: profile(), date: GOLDEN_DATE, mode: 'evening' }, deps(fn));
       expect(calls).toHaveLength(3);
-      // repli sur la période moyenne (10.2 s) : mêmes chiffres que l'ancien comportement, pic 8.6 (pas 10.0).
-      expect(r.verdict).toMatchObject({ kind: 'green', spotId: 'kommetjie-long-beach', window: { peak: 8.6 } });
+      // les étoiles ne dépendent pas de la période : la panne ne change que la période affichée, repliée
+      // sur la période moyenne (10,2 s au lieu de 13 s)
+      expect(r.verdict).toMatchObject({ kind: 'green', spotId: 'kommetjie-long-beach', window: { peak: 6 } });
+      expect(r.spots.find((s) => s.spotId === 'kommetjie-long-beach')!.hours[0].periodS).toBe(10.2);
       expect(warnSpy).toHaveBeenCalledOnce();
       expect(String(warnSpy.mock.calls[0][0])).toContain('peak period');
     } finally {
       warnSpy.mockRestore();
     }
+  });
+});
+
+describe('swell at the spot cell (§ RAPPORT-surf-forecast.md 1.2)', () => {
+  const series = (heightM: number, seaLevel = (h: SwellHour) => h.seaLevelM): SwellHour[] =>
+    goldenSwell().map((h) => ({ ...h, primary: { ...h.primary, heightM }, seaLevelM: seaLevel(h), peakPeriodS: undefined }));
+  // marée des cellules de spots décalée de 3 h : si la marée venait d'un spot, ses pleines et basses mers bougeraient
+  const shifted = (h: SwellHour): number => goldenSwell().find((g) => g.time === addHours(h.time, 3))?.seaLevelM ?? 0;
+
+  /**
+   * Open-Meteo multi-points : le premier point est la référence régionale, les suivants les spots, dans
+   * l'ordre de la requête. Chaque point a ici sa propre hauteur et les spots leur propre marée, pour
+   * qu'un décalage d'index, un ordre inversé ou une marée lue au mauvais point se voie.
+   */
+  const perPointServer = (regional: SwellHour[], atSpot: (i: number) => unknown) => fakeFetch((url: string) => {
+    const n = (new URL(url).searchParams.get('latitude') ?? '').split(',').length;
+    if (url.includes('swell_wave_peak_period')) return jsonResponse(Array.from({ length: n }, () => peakJson(goldenSwell())));
+    if (url.includes('marine-api')) return jsonResponse([marineJson(regional), ...Array.from({ length: n - 1 }, (_, i) => atSpot(i))]);
+    const one = forecastJson(goldenWind(), GOLDEN_DAILY);
+    return jsonResponse(n === 1 ? one : Array.from({ length: n }, () => one));
+  });
+  const at7 = (r: { spots: { spotId: string; hours: { time: string; heightM: number; periodS: number }[] }[] }, id: string) =>
+    r.spots.find((s) => s.spotId === id)!.hours.find((h) => h.time === `${GOLDEN_DATE}T07:00`)!;
+
+  it('rates each spot on its own cell, in request order: Muizenberg first (closest), then Kommetjie', async () => {
+    // point 0 régional plat, point 1 = Muizenberg 1,2 m, point 2 = Kommetjie 3,5 m
+    const heights = [1.2, 3.5];
+    const { fn } = perPointServer(series(0.5), (i) => marineJson(series(heights[i], shifted)));
+    const r = await buildReport({ profile: profile(), date: GOLDEN_DATE, mode: 'evening' }, deps(fn));
+    expect(at7(r, 'muizenberg').heightM).toBeCloseTo(1.2, 6);
+    expect(at7(r, 'kommetjie-long-beach').heightM).toBeCloseTo(3.5, 6);
+    expect(r.spots.find((s) => s.spotId === 'kommetjie-long-beach')!.maxScore).toBe(6);
+  });
+
+  it('reads the tides at the regional point, never at a spot cell', async () => {
+    const { fn } = perPointServer(series(0.5), () => marineJson(series(3.5, shifted)));
+    const r = await buildReport({ profile: profile(), date: GOLDEN_DATE, mode: 'evening' }, deps(fn));
+    expect(r.tides.map((e) => e.time)).toEqual([`${GOLDEN_DATE}T03:00`, `${GOLDEN_DATE}T09:00`, `${GOLDEN_DATE}T15:00`, `${GOLDEN_DATE}T21:00`]);
+  });
+
+  it('merges the regional peak period into every spot series — the message says 13 s, not the 10.2 s mean', async () => {
+    const { fn } = perPointServer(series(0.5), () => marineJson(series(3.5)));
+    const r = await buildReport({ profile: profile(), date: GOLDEN_DATE, mode: 'evening' }, deps(fn));
+    expect(at7(r, 'kommetjie-long-beach').periodS).toBe(13);
+    expect(at7(r, 'muizenberg').periodS).toBe(13);
+  });
+
+  it('falls back to the regional swell × exposure when the spot cell publishes nothing (all nulls)', async () => {
+    const empty = () => {
+      const json = marineJson(series(0)) as { hourly: Record<string, unknown[]> };
+      for (const key of ['swell_wave_height', 'secondary_swell_wave_height']) json.hourly[key] = json.hourly[key].map(() => null);
+      return json;
+    };
+    const { fn } = perPointServer(series(3.5), empty);
+    const r = await buildReport({ profile: profile(), date: GOLDEN_DATE, mode: 'evening' }, deps(fn));
+    // Kommetjie : exposure 0,6 → 3,5 × 0,6 = 2,1 m, pas les 0 m d'une cellule vide
+    expect(at7(r, 'kommetjie-long-beach').heightM).toBeCloseTo(2.1, 6);
+  });
+
+  it('spotSwellSeries fills each empty hour from the region, and keeps every hour that has data', () => {
+    const regional = series(3.5);
+    // valeurs jusqu'à midi le 16, puis plus rien : la cellule ne publie plus, ce n'est pas une mer d'huile
+    const atSpot = series(1.2).map((h) => (h.time >= `${GOLDEN_DATE}T12:00` ? { ...h, primary: { ...h.primary, heightM: 0 } } : h));
+    const out = spotSwellSeries(atSpot, regional, 0.6);
+    expect(out.find((h) => h.time === `${GOLDEN_DATE}T11:00`)!.primary.heightM).toBeCloseTo(1.2, 6);
+    expect(out.find((h) => h.time === `${GOLDEN_DATE}T12:00`)!.primary.heightM).toBeCloseTo(2.1, 6);
+    expect(out).toHaveLength(atSpot.length);
+  });
+
+  it('spotSwellSeries counts a secondary swell alone as data', () => {
+    const atSpot = series(0).map((h) => ({ ...h, secondary: { heightM: 0.8, periodS: 9, directionDeg: 230 } }));
+    expect(spotSwellSeries(atSpot, series(3.5), 0.6)[0].secondary.heightM).toBe(0.8);
+    expect(spotSwellSeries(atSpot, series(3.5), 0.6)[0].primary.heightM).toBe(0);
+  });
+
+  it('spotSwellSeries scales both components of the regional series when the spot series is missing', () => {
+    const regional = series(2).map((h) => ({ ...h, secondary: { heightM: 1, periodS: 8, directionDeg: 200 } }));
+    const out = spotSwellSeries(undefined, regional, 0.5);
+    expect(out[0].primary.heightM).toBe(1);
+    expect(out[0].secondary.heightM).toBe(0.5);
+    expect(out[0].seaLevelM).toBe(regional[0].seaLevelM);
   });
 });
 

@@ -56,6 +56,9 @@ describe('urls', () => {
     // spot, et sous-estimait surtout les rafales (45 contre 58 km/h à Kommetjie).
     expect(u).toContain('cell_selection=nearest');
     expect(u).not.toContain('cell_selection=sea');
+    // GFS, le modèle dont surf-forecast tire son vent : le 16/09/2026 il tombait à 4-5 km/h du site sur
+    // Long Beach et Muizenberg, quand le modèle par défaut sous-estimait de 10 km/h sur les deux.
+    expect(u).toContain('models=gfs_seamless');
     expect(u).toContain('daily=sunrise%2Csunset%2Ctemperature_2m_max%2Ctemperature_2m_min%2Cprecipitation_sum');
     expect(u).toContain('forecast_days=2');
   });

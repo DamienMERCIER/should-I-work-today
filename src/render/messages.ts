@@ -1,11 +1,11 @@
 import type { InlineButton, ReplyMarkup } from '../adapters/telegram';
 import { FAR_FROM_COAST_KM, SCORING } from '../config';
 import type { Delta } from '../engine/delta';
-import { gustFactor } from '../engine/factors';
 import { cardinal8 } from '../engine/geo';
 import { isWeekend, toMs } from '../engine/time';
+import { rawStars, starGlyphs } from '../engine/rating';
 import { primaryPick } from '../engine/verdict';
-import type { HourFactors, Lang, Report, Spot, SpotHour, SpotPick, SpotResult, Window } from '../types';
+import type { Lang, Report, Spot, SpotHour, SpotPick, SpotResult, Window } from '../types';
 import { chartHours, hourRuler, sparkline } from './chart';
 import { fill, STRINGS, type Strings } from './i18n';
 
@@ -28,7 +28,15 @@ export function fmtDate(date: string, lang: Lang): string {
 
 export const fmtWindow = (w: Window): string => `${fmtTime(w.start)}–${fmtTime(w.end)}`;
 
-const score1 = (x: number): string => x.toFixed(1);
+/**
+ * `★★★★` quand c'est propre, `☆☆☆` sous l'onshore, comme l'or et le blanc du site. `0★` à zéro :
+ * le site n'affiche rien, et un point seul se lirait comme un bug.
+ */
+export const starsText = (stars: number, clean: boolean): string => (stars === 0 ? '0★' : starGlyphs({ stars, clean }));
+/** Forme courte pour les rangées à largeur fixe : `4★`, `3☆`. */
+const starsShort = (stars: number, clean: boolean): string => `${stars}${stars > 0 && !clean ? '☆' : '★'}`;
+/** En dessous, un spot ne mérite pas sa rangée dans la vue 📋 : zéro étoile de toute la journée. */
+const DAY_VIEW_MIN_STARS = 1;
 const cardinal = (deg: number, s: Strings): string => s.cardinal[cardinal8(deg)];
 
 export function spotName(id: string, ctx: RenderCtx, s: Strings): string {
@@ -51,39 +59,36 @@ function peakHour(r: SpotResult, w?: Window): SpotHour | undefined {
   return [...hours].sort((a, b) => b.score - a.score)[0];
 }
 
-function ftRange(hours: SpotHour[]): string {
-  const fts = hours.map((h) => Math.round(h.faceFt));
-  const min = Math.min(...fts);
-  const max = Math.max(...fts);
-  return min === max ? String(min) : `${min}–${max}`;
+/** La houle dirigée vers le spot, au 0,1 m comme sur surf-forecast : `2.1` ou `1.8–2.1`. */
+function heightRange(hours: SpotHour[]): string {
+  const ms = hours.map((h) => Math.round(h.heightM * 10) / 10);
+  const min = Math.min(...ms);
+  const max = Math.max(...ms);
+  return min === max ? min.toFixed(1) : `${min.toFixed(1)}–${max.toFixed(1)}`;
 }
 
-/**
- * La rafale n'est citee que quand elle coute des points, c'est-a-dire exactement quand le moteur la
- * penalise : en dessous de 25 kt c'est le bruit de fond d'une brise et l'afficher n'apprendrait rien.
- * Un « offshore SE 15 kt » qui tape a 30 kt en rafale se lisait comme une journee parfaite.
- */
-const gustText = (h: SpotHour, s: Strings): string | undefined =>
-  (gustFactor(h.gustKt) < 1 ? fill(s.gusting, { kt: Math.round(h.gustKt) }) : undefined);
+/** Les étoiles du meilleur créneau d'une fenêtre, dans la couleur de cette heure-là. */
+function windowStars(r: SpotResult | undefined, w: Window): string {
+  const h = r ? peakHour(r, w) : undefined;
+  return h ? starsText(h.score, h.clean) : `${w.peak}★`;
+}
 
-const isCalm = (h: SpotHour): boolean => h.windKt < 5 && gustFactor(h.gustKt) === 1;
-
-const relationText = (h: SpotHour, s: Strings): string => (isCalm(h) ? s.glassy : s.relations[h.windRelation]);
+/** L'état du vent tel que surf-forecast le nomme : glassy, offshore, cross-offshore, cross-shore, cross-onshore, onshore. */
+const stateText = (h: SpotHour, s: Strings): string => s.windStates[h.windState];
 
 function windText(h: SpotHour, s: Strings): string {
-  if (isCalm(h)) return s.glassy;
-  const gust = gustText(h, s);
-  return `${s.relations[h.windRelation]} ${cardinal(h.windDirDeg, s)} ${Math.round(h.windKt)} kt${gust ? ` (${gust})` : ''}`;
+  if (h.windState === 'glassy') return stateText(h, s);
+  return `${stateText(h, s)} ${cardinal(h.windDirDeg, s)} ${Math.round(h.windKt)} kt`;
 }
 
-/** Vent à l'heure du pic, « puis <relation> » si la fin de fenêtre diffère. */
+/** Vent à l'heure du pic, « puis <état> » si la fin de fenêtre change d'état. */
 function windSummary(r: SpotResult, w: Window, s: Strings): string {
   const hours = hoursIn(r, w);
   const peak = peakHour(r, w);
   const last = hours[hours.length - 1];
   if (!peak || !last) return '';
   const base = windText(peak, s);
-  return relationText(last, s) !== relationText(peak, s) ? `${base} ${s.then} ${relationText(last, s)}` : base;
+  return last.windState !== peak.windState ? `${base} ${s.then} ${stateText(last, s)}` : base;
 }
 
 function tideText(report: Report, h: SpotHour, s: Strings): string {
@@ -96,7 +101,7 @@ function conditionsLine(r: SpotResult, w: Window, report: Report, s: Strings): s
   const peak = peakHour(r, w);
   if (!peak) return '';
   return fill(s.spotLine.conditions, {
-    ft: ftRange(hoursIn(r, w)), dir: cardinal(peak.swellDirDeg, s), s: Math.round(peak.periodS),
+    m: heightRange(hoursIn(r, w)), dir: cardinal(peak.swellDirDeg, s), s: Math.round(peak.periodS),
     wind: windSummary(r, w, s), tide: tideText(report, peak, s),
   });
 }
@@ -127,7 +132,7 @@ function spotChart(report: Report, spotId: string): string[] {
  */
 function primaryBlock(pick: SpotPick, report: Report, ctx: RenderCtx, s: Strings, opts: { chart?: boolean } = {}): string[] {
   const r = report.spots.find((x) => x.spotId === pick.spotId);
-  const lines = [`🏄 ${spotName(pick.spotId, ctx, s)} · ${fmtWindow(pick.window)} · ${score1(pick.window.peak)}/10`];
+  const lines = [`🏄 ${spotName(pick.spotId, ctx, s)} · ${fmtWindow(pick.window)} · ${windowStars(r, pick.window)}`];
   if (r) lines.push(`   ${conditionsLine(r, pick.window, report, s)}`);
   lines.push(`   ${sunLine(report, s)}`);
   if (opts.chart !== false) lines.push(...spotChart(report, pick.spotId));
@@ -136,12 +141,12 @@ function primaryBlock(pick: SpotPick, report: Report, ctx: RenderCtx, s: Strings
 
 function runnerUp(report: Report, excludeId: string, ctx: RenderCtx, s: Strings): string[] {
   const r = report.spots
-    .filter((x) => x.open && x.spotId !== excludeId && x.best)
+    .filter((x) => x.spotId !== excludeId && x.best)
     .sort((a, b) => (b.best?.peak ?? 0) - (a.best?.peak ?? 0))[0];
   if (!r?.best) return [];
   return [
-    `🥈 ${spotName(r.spotId, ctx, s)} · ${fmtWindow(r.best)} · ${score1(r.best.peak)}/10`,
-    `   ${ftRange(hoursIn(r, r.best))} ft · ${windSummary(r, r.best, s)}`,
+    `🥈 ${spotName(r.spotId, ctx, s)} · ${fmtWindow(r.best)} · ${windowStars(r, r.best)}`,
+    `   ${heightRange(hoursIn(r, r.best))} m · ${windSummary(r, r.best, s)}`,
     ...spotChart(report, r.spotId),
   ];
 }
@@ -160,28 +165,27 @@ function redTitle(report: Report, ctx: RenderCtx, s: Strings): string {
   return isWeekend(report.date) ? fill(s.verdict.redWeekend, dateVars(report, ctx)) : fill(s.verdict.red, dateVars(report, ctx));
 }
 
-/** Le facteur le plus bas à l'heure du meilleur score → raison affichée sur un 🔴. */
+/** La note de base surf-forecast d'une heure, 0..10 : ce que la houle seule permettrait. */
+const baseOf = (h: SpotHour): number => h.factors.swell * 10;
+
+/** Ce que le vent retire à la houle de cette heure, en étoiles avant arrondi. */
+const windCost = (h: SpotHour): number => rawStars(baseOf(h), 1) - rawStars(baseOf(h), h.factors.wind);
+
+/**
+ * Pourquoi un 🔴 : à la meilleure heure surfable du spot, ce qui retient les étoiles. Le vent s'il en
+ * coûte au moins une, la houle sinon — c'est alors elle qui plafonne. Comparer les deux facteurs
+ * entre eux ne marchait pas : `swell` est une note de base ramenée sur 0..1, pas une pénalité, et
+ * 2,2 m (0,37) passait pour pire qu'un offshore à 41 km/h (×0,54) qui coûtait deux étoiles.
+ * L'orage est nommé quand il est la seule chose qui ait tenu les heures de jour à zéro, la nuit quand
+ * il n'y a aucune heure de jour.
+ */
 function lowestFactorReason(r: SpotResult, s: Strings): string {
-  const h = peakHour(r);
-  if (!h) return s.reasons.dark;
-  const ranked: [keyof HourFactors, number][] = [
-    ['day', h.factors.day], ['wind', h.factors.wind], ['size', h.factors.size], ['period', h.factors.period], ['tide', h.factors.tide],
-  ];
-  const [key] = ranked.sort((a, b) => a[1] - b[1])[0];
-  switch (key) {
-    case 'day':
-      return s.reasons.dark;
-    case 'wind':
-      // meme texte que partout ailleurs : sur une journee ventee, « offshore SE 15 kt » seul se
-      // lisait comme une bonne nouvelle alors que c'est la raison du rouge.
-      return windText(h, s);
-    case 'size':
-      return fill(s.reasons.size, { ft: h.faceFt.toFixed(1) });
-    case 'period':
-      return fill(s.reasons.period, { s: Math.round(h.periodS) });
-    default:
-      return fill(s.reasons.tide, { state: s.tideStates[h.tide.state] });
-  }
+  const daylit = r.hours.filter((x) => x.factors.day === 1);
+  if (daylit.length === 0) return s.reasons.dark;
+  const surfable = daylit.filter((x) => x.factors.weather === 1);
+  if (surfable.length === 0) return s.reasons.storm;
+  const h = [...surfable].sort((a, b) => b.score - a.score)[0];
+  return windCost(h) >= 1 ? windText(h, s) : fill(s.reasons.size, { m: h.heightM.toFixed(1) });
 }
 
 /**
@@ -210,12 +214,13 @@ export function renderEvening(report: Report, ctx: RenderCtx): string {
       push(redTitle(report, ctx, s));
       const best = v.bestSpotId ? report.spots.find((x) => x.spotId === v.bestSpotId) : undefined;
       // Un rouge a deux causes distinctes : rien d'assez bon, ou bien une fenetre assez bonne mais
-      // trop courte (ou tombant en plein travail). Dire « rien ≥ 7/10 » puis afficher « 7,3/10 »
-      // juste en dessous se contredisait a l'ecran.
+      // trop courte (ou tombant en plein travail). Dire « rien ≥ 4★ » puis afficher « ★★★★ »
+      // juste en dessous se contredirait a l'ecran.
       const tooShort = (best?.maxScore ?? 0) >= SCORING.good;
+      const top = best && [...best.hours].sort((a, b) => b.score - a.score)[0];
       push(
-        fill(tooShort ? s.verdict.redTooShort : s.verdict.redBody, { radius: report.radiusKm }),
-        ...(best ? [fill(s.verdict.redBest, { spot: spotName(best.spotId, ctx, s), score: score1(best.maxScore), reason: lowestFactorReason(best, s) })] : []),
+        fill(tooShort ? s.verdict.redTooShort : s.verdict.redBody, { radius: report.radiusKm, good: SCORING.good }),
+        ...(best ? [fill(s.verdict.redBest, { spot: spotName(best.spotId, ctx, s), stars: starsText(best.maxScore, top?.clean ?? true), reason: lowestFactorReason(best, s) })] : []),
       );
       break;
     }
@@ -279,52 +284,59 @@ function alignedHours(r: SpotResult, date: string, hours: number[]): (SpotHour |
   return hours.map((h) => byTime.get(`${date}T${String(h).padStart(2, '0')}:00`));
 }
 
-/** Wind for the day view: relation/direction from the peak hour, kt as a range across every plotted hour. */
+/** Wind for the day view: state/direction from the peak hour, kt as a range across every plotted hour. */
 function windRangeText(plotted: SpotHour[], peak: SpotHour, s: Strings): string {
-  if (isCalm(peak)) return s.glassy;
+  if (peak.windState === 'glassy') return stateText(peak, s);
   const kts = plotted.length > 0 ? plotted.map((h) => h.windKt) : [peak.windKt];
   const lo = Math.round(Math.min(...kts));
   const hi = Math.round(Math.max(...kts));
-  const base = `${s.relations[peak.windRelation]} ${cardinal(peak.windDirDeg, s)}`;
-  const gust = gustText(peak, s);
-  return `${lo === hi ? `${base} ${lo} kt` : `${base} ${lo}→${hi} kt`}${gust ? ` (${gust})` : ''}`;
+  const base = `${stateText(peak, s)} ${cardinal(peak.windDirDeg, s)}`;
+  return lo === hi ? `${base} ${lo} kt` : `${base} ${lo}→${hi} kt`;
 }
 
-type ExplainKey = 'wind' | 'tide' | 'size' | 'period' | 'day';
-/** best-at: factors that can be favourable *or* not — size/period rarely swing, but wind & tide do. */
-const BEST_KEYS: readonly ExplainKey[] = ['wind', 'tide', 'size', 'period'];
-/** fades-from: no "size drops"/"period shortens" phrase exists, so only wind, tide and daylight explain a fade. */
-const FADE_KEYS: readonly ExplainKey[] = ['wind', 'tide', 'day'];
+/**
+ * Les étoiles ne dépendent que du vent et de la houle, et la houle à la cellule du spot bouge d'heure en
+ * heure autant que le vent : les deux se citent. La marée et la période ne pèsent pas sur la note,
+ * les nommer mentirait. La lumière, elle, dit quand la session s'arrête.
+ */
+type ExplainKey = 'wind' | 'swell' | 'day';
 
-function spreadOf(hours: SpotHour[], key: ExplainKey): number {
-  if (hours.length === 0) return 0;
-  const values = hours.map((h) => h.factors[key]);
-  return Math.max(...values) - Math.min(...values);
-}
+/** Un facteur n'est nommé que s'il pèse au moins une étoile à lui seul — la même règle que la raison d'un 🔴. */
+const MIN_EXPLAINED_STARS = 1;
+
+const explain = (effects: [ExplainKey, number][], h: SpotHour, direction: 'best' | 'fade', s: Strings): string[] =>
+  effects
+    .filter(([, stars]) => stars >= MIN_EXPLAINED_STARS)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2)
+    .map(([k]) => phraseFor(k, h, direction, s));
 
 function phraseFor(key: ExplainKey, h: SpotHour, direction: 'best' | 'fade', s: Strings): string {
   const r = s.dayView.reasons;
   switch (key) {
     case 'wind':
-      if (h.windKt < 5) return s.glassy;
+      if (h.windState === 'glassy') return stateText(h, s);
       return fill(direction === 'best' ? r.windDrops : r.windBuilds, { kt: Math.round(h.windKt) });
-    case 'tide':
-      return h.tide.state === 'high' ? r.tideStillHigh : h.tide.state === 'low' ? r.tideLow : r.tideMid;
-    case 'size':
-      return fill(r.sizePeaks, { ft: Math.round(h.faceFt) });
-    case 'period':
-      return fill(r.groundswell, { s: Math.round(h.periodS) });
+    case 'swell':
+      return fill(direction === 'best' ? r.swellPeaks : r.swellDrops, { m: h.heightM.toFixed(1) });
     case 'day':
       return r.getsDark;
   }
 }
 
-/** Factors at the peak hour that are favourable (≥ 0.9) *and* meaningfully lower elsewhere (spread ≥ 0.15). */
+/**
+ * Pourquoi le pic est le meilleur moment : combien d'étoiles il perdrait si ce seul facteur tombait à sa
+ * valeur la moins favorable de la journée tracée, l'autre restant celui du pic.
+ */
 function bestReasons(peak: SpotHour, plotted: SpotHour[], s: Strings): string[] {
-  return BEST_KEYS.filter((k) => peak.factors[k] >= 0.9 && spreadOf(plotted, k) >= 0.15)
-    .sort((a, b) => spreadOf(plotted, b) - spreadOf(plotted, a))
-    .slice(0, 2)
-    .map((k) => phraseFor(k, peak, 'best', s));
+  if (plotted.length === 0) return [];
+  const worstWind = Math.min(...plotted.map((h) => h.factors.wind));
+  const worstBase = Math.min(...plotted.map(baseOf));
+  const atPeak = rawStars(baseOf(peak), peak.factors.wind);
+  return explain([
+    ['wind', atPeak - rawStars(baseOf(peak), worstWind)],
+    ['swell', atPeak - rawStars(worstBase, peak.factors.wind)],
+  ], peak, 'best', s);
 }
 
 /** First hour after the peak (anywhere in the spot's day, not just the plotted range — dusk included) below 60 % of it. */
@@ -333,13 +345,18 @@ function fadeHourAfter(hours: SpotHour[], peak: SpotHour): SpotHour | undefined 
   return hours.find((h) => h.time > peak.time && h.score < threshold);
 }
 
-/** Factors that dropped the most from the peak to the fade hour, phrased from their value at the fade hour. */
+/**
+ * Ce qui fait retomber la note entre le pic et l'heure où elle s'effondre : le seul vent de cette heure
+ * appliqué au pic, la seule houle de cette heure, ou la nuit qui ramène tout à zéro. Formulé depuis
+ * l'heure de la chute.
+ */
 function fadeReasons(peak: SpotHour, fade: SpotHour, s: Strings): string[] {
-  return FADE_KEYS.map((k) => ({ k, drop: peak.factors[k] - fade.factors[k] }))
-    .filter((x) => x.drop > 0)
-    .sort((a, b) => b.drop - a.drop)
-    .slice(0, 2)
-    .map((x) => phraseFor(x.k, fade, 'fade', s));
+  const atPeak = rawStars(baseOf(peak), peak.factors.wind);
+  return explain([
+    ['wind', atPeak - rawStars(baseOf(peak), fade.factors.wind)],
+    ['swell', atPeak - rawStars(baseOf(fade), peak.factors.wind)],
+    ['day', peak.factors.day === 1 && fade.factors.day === 0 ? atPeak : 0],
+  ], fade, 'fade', s);
 }
 
 /** The two explanation lines (§3 day-view.md) — silent (returns []) on a flat day rather than inventing a story. */
@@ -358,8 +375,7 @@ function explanationLines(r: SpotResult, peak: SpotHour, plotted: SpotHour[], s:
 /**
  * The detailed chart block for one spot: title (+ its best window, if any), ruler + sparkline in `<code>` lines
  * block, then the peak/conditions/explanation lines. Works with no window (skips peak/best-at/fades-from,
- * keeps the chart and conditions) and for a spot closed at the user's level (chart of zeros, says so) —
- * also called directly by the follow-up `/spot` command.
+ * keeps the chart and conditions) — also called directly by the follow-up `/spot` command.
  */
 export function renderSpotDay(report: Report, spotId: string, ctx: RenderCtx): string {
   const s = STRINGS[ctx.lang];
@@ -367,20 +383,20 @@ export function renderSpotDay(report: Report, spotId: string, ctx: RenderCtx): s
   const name = spotName(spotId, ctx, s);
   const chart = spotChart(report, spotId).join('\n');
   const aligned = r ? alignedHours(r, report.date, chartHours(report)) : [];
-  // avec une fenêtre, le créneau ; sans fenêtre, la note du jour — sinon l'en-tête ne chiffrait rien
-  const headline = r?.best ? fmtWindow(r.best) : r ? `${r.maxScore.toFixed(1)}/10` : '';
+  const peak = r ? (r.best ? peakHour(r, r.best) : peakHour(r)) : undefined;
+  // avec une fenêtre, le créneau ; sans fenêtre, les étoiles du jour — sinon l'en-tête ne chiffrait rien
+  const headline = r?.best ? fmtWindow(r.best) : peak ? starsText(peak.score, peak.clean) : '';
   const title = `🏄 ${name}${headline ? ` · ${headline}` : ''}`;
 
-  if (!r || !r.open) return [title, chart, s.dayView.closedSpot].join('\n\n');
+  if (!r) return [title, chart].join('\n\n');
 
-  const peak = r.best ? peakHour(r, r.best) : peakHour(r);
   const rest: string[] = [];
   if (peak) {
-    if (r.best) rest.push(fill(s.dayView.peak, { score: score1(r.best.peak), time: fmtTime(peak.time) }));
-    const ftHours = r.best ? hoursIn(r, r.best) : [peak];
+    if (r.best) rest.push(fill(s.dayView.peak, { stars: starsText(peak.score, peak.clean), time: fmtTime(peak.time) }));
+    const heightHours = r.best ? hoursIn(r, r.best) : [peak];
     const plotted = aligned.filter((h): h is SpotHour => h !== undefined);
     rest.push(fill(s.spotLine.conditions, {
-      ft: ftRange(ftHours), dir: cardinal(peak.swellDirDeg, s), s: Math.round(peak.periodS),
+      m: heightRange(heightHours), dir: cardinal(peak.swellDirDeg, s), s: Math.round(peak.periodS),
       wind: windRangeText(plotted, peak, s), tide: tideText(report, peak, s),
     }));
     if (r.best) rest.push(...explanationLines(r, peak, plotted, s));
@@ -390,30 +406,31 @@ export function renderSpotDay(report: Report, spotId: string, ctx: RenderCtx): s
 
 /**
  * One compact row: short label (≤ 13 chars, own field — no truncation heuristics, § defect 2) · sparkline
- * (1 char/hour) · maxScore. Width budget for a 14-hour day (§ day-view.md "Width and naming fix"):
- * label 13 + 1 space + spark 14 + 2 spaces + score ≤ 4 ("10.0") = 34.
+ * (1 char/hour) · the day's best stars. Width budget for a 14-hour day (§ day-view.md "Width and naming fix"):
+ * label 13 + 1 space + spark 14 + 2 spaces + stars ≤ 3 ("10★") = 33.
  */
 function spotRow(r: SpotResult, hours: number[], date: string, ctx: RenderCtx, s: Strings): string {
   const label = spotShort(r.spotId, ctx, s);
   const aligned = alignedHours(r, date, hours);
-  return `${label.padEnd(13, ' ')} ${sparkline(aligned.map((h) => h?.score ?? 0))}  ${score1(r.maxScore)}`;
+  const top = peakHour(r);
+  return `${label.padEnd(13, ' ')} ${sparkline(aligned.map((h) => h?.score ?? 0))}  ${starsShort(r.maxScore, top?.clean ?? true)}`;
 }
 
 /**
- * The 📋 day view: the primary spot's full chart, one sparkline row per other open spot scoring ≥ 2.5
- * (sorted best first; below that they collapse into a count unless `opts.all`), the closed-spots line,
- * the tide line and a sun line. No Open-Meteo attribution — that now lives in the welcome message.
+ * The 📋 day view: the primary spot's full chart, one sparkline row per other spot reaching at least one
+ * star in daylight (sorted best first; the rest collapse into a count unless `opts.all`), the tide line
+ * and a sun line. No Open-Meteo attribution — that now lives in the welcome message.
  */
 /**
- * Spot du verdict d'abord, puis les autres spots ouverts du meilleur au moins bon. C'est l'ordre
+ * Spot du verdict d'abord, puis les autres spots du meilleur au moins bon. C'est l'ordre
  * des lignes de `renderDayView` ; le routeur s'en sert pour que la liste de commandes de `/all`
  * suive exactement les lignes affichées au-dessus (une seule définition, pas deux qui dérivent).
  */
 export function openSpotOrder(report: Report): string[] {
   const pick = primaryPick(report.verdict);
   const byScore = (a: SpotResult, b: SpotResult): number => b.maxScore - a.maxScore;
-  const primaryId = pick?.spotId ?? [...report.spots].filter((r) => r.open).sort(byScore)[0]?.spotId;
-  const others = report.spots.filter((r) => r.open && r.spotId !== primaryId).sort(byScore).map((r) => r.spotId);
+  const primaryId = pick?.spotId ?? [...report.spots].sort(byScore)[0]?.spotId;
+  const others = report.spots.filter((r) => r.spotId !== primaryId).sort(byScore).map((r) => r.spotId);
   return primaryId ? [primaryId, ...others] : others;
 }
 
@@ -421,14 +438,14 @@ export function openSpotOrder(report: Report): string[] {
  * Hard cap on how many non-primary spots the `/all` surface shows or lists. `/all`'s spot list is
  * bounded only by the caller's radius query (`nearbySpots`), and once that query considers curated +
  * world spots (§report "Resilience, wiring and dedupe"), a dense real-world cluster of adjacent breaks
- * can put dozens of open spots in one report — uncapped, both the row block (≤ 34 chars/row,
+ * can put dozens of spots in one report — uncapped, both the row block (≤ 33 chars/row,
  * § "row width budget" below) and the trailing command line would grow without bound and risk
  * exceeding Telegram's 4096-character message limit.
  *
  * 30 is chosen with real margin, not just "under the limit": 30 rows × 34 chars ≈ 1050 chars, plus 31
  * command-line entries (primary + 30) × ~17 chars ≈ 530 chars, leaving well over 2000 characters of
- * headroom for the primary spot's own block, the closed-spots line, tide and sun lines even in a
- * pathological cluster (verified in this session up to 200 synthetic open spots — see the report for
+ * headroom for the primary spot's own block, tide and sun lines even in a
+ * pathological cluster (verified in this session up to 200 synthetic spots — see the report for
  * the measured message length).
  */
 export const ALL_SPOTS_CAP = 30;
@@ -454,16 +471,14 @@ export function renderDayView(report: Report, ctx: RenderCtx, opts: { all?: bool
   const blocks: string[] = [];
   if (primaryId) blocks.push(renderSpotDay(report, primaryId, ctx));
 
-  const others = report.spots.filter((r) => r.open && r.spotId !== primaryId).sort((a, b) => b.maxScore - a.maxScore);
-  const shown = opts.all ? others.slice(0, ALL_SPOTS_CAP) : others.filter((r) => r.maxScore >= 2.5);
+  const others = report.spots.filter((r) => r.spotId !== primaryId).sort((a, b) => b.maxScore - a.maxScore);
+  const shown = opts.all ? others.slice(0, ALL_SPOTS_CAP) : others.filter((r) => r.maxScore >= DAY_VIEW_MIN_STARS);
   const hours = chartHours(report);
   if (shown.length > 0) blocks.push(shown.map((r) => `<code>${spotRow(r, hours, report.date, ctx, s)}</code>`).join('\n'));
 
   const tail: string[] = [];
   const hidden = others.length - shown.length;
   if (hidden > 0) tail.push(fill(opts.all ? s.dayView.moreSpots : s.dayView.flatSpots, { n: hidden }));
-  const closed = report.spots.filter((r) => !r.open).map((r) => spotName(r.spotId, ctx, s));
-  if (closed.length > 0) tail.push(fill(s.details.closed, { spots: closed.join(', ') }));
   if (report.tides.length > 0) {
     tail.push(fill(s.details.tides, { list: report.tides.map((e) => fill(s.tideNext[e.kind], { time: fmtTime(e.time) })).join(' · ') }));
   }
@@ -497,7 +512,7 @@ const toMarkup = (rows: InlineButton[][]): ReplyMarkup | undefined => (rows.leng
  * falls back to the browser; Telegram's `url` button only accepts http(s), so a `geo:` URI is not an option.
  *
  * `opts.spotId` (a per-spot command, e.g. `/long_beach`): exactly that spot's button, unconditionally —
- * even closed or flat, and even absent from `report.spots` entirely (only `ctx.spots` is consulted).
+ * even at 0★, and even absent from `report.spots` entirely (only `ctx.spots` is consulted).
  * Otherwise: one button per *interesting* spot — a spot whose day has a window (`SpotResult.best` set,
  * the existing `SCORING.windowMin` threshold via `evaluateSpot`/`findWindows`) — ordered by `best.peak`
  * descending, capped at 5 so the keyboard stays usable. Possibly `[]`.

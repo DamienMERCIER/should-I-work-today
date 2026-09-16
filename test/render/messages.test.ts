@@ -5,6 +5,7 @@ import {
 } from '../../src/render/messages';
 import { SPOTS } from '../../src/data/index';
 import type { Report, SpotHour, SpotResult, TideTrend, Verdict, Window } from '../../src/types';
+import { rawStars, starBase } from '../../src/engine/rating';
 import { GOLDEN_DATE, goldenReport } from '../helpers/golden';
 import { makeReport } from '../helpers/reports';
 
@@ -28,16 +29,16 @@ describe('formatting', () => {
     expect(esc('a < b & c > d')).toBe('a &lt; b &amp; c &gt; d');
   });
   it('detailsMarkupFor: go buttons (ordered by peak) then the 📋 row, for a verdict with windows', () => {
+    // Muizenberg n'a pas de fenêtre dans le scénario golden (2☆ sous le cross-onshore) : pas de bouton
     expect(detailsMarkupFor(goldenReport(), EN)).toEqual({
       inline_keyboard: [
         [{ text: '📍 Go to Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
-        [{ text: '📍 Go to Muizenberg', url: 'https://www.google.com/maps/search/?api=1&query=-34.1085%2C18.4715' }],
         [{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }],
       ],
     });
   });
   it('detailsMarkupFor: a red verdict with no windowed spot still gets its 📋 row alone — the two gates are independent', () => {
-    const noWindow = goldenReport({ spots: [flatSpot('kommetjie-long-beach', 3.0), flatSpot('muizenberg', 2.0)], verdict: { kind: 'red' } });
+    const noWindow = goldenReport({ spots: [flatSpot('kommetjie-long-beach', 2), flatSpot('muizenberg', 1)], verdict: { kind: 'red' } });
     expect(detailsMarkupFor(noWindow, EN)).toEqual({ inline_keyboard: [[{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }]] });
   });
   it('detailsMarkupFor: no button at all for outOfCoverage/noData (real reports never carry spots there — §9)', () => {
@@ -49,7 +50,7 @@ describe('formatting', () => {
 describe('go buttons (📍 "go to this spot" map link)', () => {
   const W6 = (peak: number): Window => ({ start: `${GOLDEN_DATE}T07:00`, end: `${GOLDEN_DATE}T08:00`, peak, mean: peak });
   const windowed = (spotId: string, peak: number): SpotResult => ({
-    spotId, distanceKm: 1, open: true, hours: [], windows: [W6(peak)], best: W6(peak), maxScore: peak,
+    spotId, distanceKm: 1, hours: [], windows: [W6(peak)], best: W6(peak), maxScore: peak,
   });
 
   it('the url is the documented Google Maps search form, coordinates through encodeURIComponent', () => {
@@ -64,10 +65,10 @@ describe('go buttons (📍 "go to this spot" map link)', () => {
     ]);
   });
 
-  it('opts.spotId: still the one button for a spot that is closed or flat in the report', () => {
-    const closed: SpotResult = { spotId: 'outer-kom', distanceKm: 14.5, open: false, hours: [], windows: [], best: undefined, maxScore: 0 };
-    const flat: SpotResult = { spotId: 'muizenberg', distanceKm: 0, open: true, hours: [], windows: [], best: undefined, maxScore: 3.0 };
-    const r = goldenReport({ spots: [closed, flat] });
+  it('opts.spotId: still the one button for a spot at 0★ or without a window', () => {
+    const nothing: SpotResult = { spotId: 'outer-kom', distanceKm: 14.5, hours: [], windows: [], best: undefined, maxScore: 0 };
+    const flat: SpotResult = { spotId: 'muizenberg', distanceKm: 0, hours: [], windows: [], best: undefined, maxScore: 2 };
+    const r = goldenReport({ spots: [nothing, flat] });
     expect(goButtons(r, EN, { spotId: 'outer-kom' })).toEqual([[{ text: '📍 Go to Outer Kom', url: 'https://www.google.com/maps/search/?api=1&query=-34.142%2C18.319' }]]);
     expect(goButtons(r, EN, { spotId: 'muizenberg' })).toEqual([[{ text: '📍 Go to Muizenberg', url: 'https://www.google.com/maps/search/?api=1&query=-34.1085%2C18.4715' }]]);
   });
@@ -87,13 +88,13 @@ describe('go buttons (📍 "go to this spot" map link)', () => {
   it('no opts: one button per interesting (windowed) spot, ordered by peak, capped at 5', () => {
     const r = makeReport({
       spots: [
-        windowed('outer-kom', 3.0),
-        windowed('muizenberg', 9.0),
-        windowed('clovelly', 7.5),
-        windowed('kalk-bay-reef', 8.5),
-        windowed('strandfontein', 2.0),
-        windowed('noordhoek', 6.0),
-        windowed('kommetjie-long-beach', 10.0),
+        windowed('outer-kom', 2),
+        windowed('muizenberg', 7),
+        windowed('clovelly', 5),
+        windowed('kalk-bay-reef', 6),
+        windowed('strandfontein', 1),
+        windowed('noordhoek', 4),
+        windowed('kommetjie-long-beach', 8),
       ],
     });
     expect(goButtons(r, EN)).toEqual([
@@ -106,12 +107,12 @@ describe('go buttons (📍 "go to this spot" map link)', () => {
   });
 
   it('no opts: empty array when no spot has a window today', () => {
-    const r = goldenReport({ spots: [flatSpot('kommetjie-long-beach', 3.0), flatSpot('muizenberg', 2.0)] });
+    const r = goldenReport({ spots: [flatSpot('kommetjie-long-beach', 2), flatSpot('muizenberg', 1)] });
     expect(goButtons(r, EN)).toEqual([]);
   });
 
   it('goButtonsMarkup collapses an empty row list to undefined, not an empty inline_keyboard', () => {
-    const r = goldenReport({ spots: [flatSpot('kommetjie-long-beach', 3.0)] });
+    const r = goldenReport({ spots: [flatSpot('kommetjie-long-beach', 2)] });
     expect(goButtonsMarkup(r, EN)).toBeUndefined();
   });
 
@@ -119,7 +120,6 @@ describe('go buttons (📍 "go to this spot" map link)', () => {
     expect(goButtonsMarkup(goldenReport(), EN)).toEqual({
       inline_keyboard: [
         [{ text: '📍 Go to Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
-        [{ text: '📍 Go to Muizenberg', url: 'https://www.google.com/maps/search/?api=1&query=-34.1085%2C18.4715' }],
       ],
     });
   });
@@ -127,25 +127,19 @@ describe('go buttons (📍 "go to this spot" map link)', () => {
 
 describe('renderEvening — golden 🟢', () => {
   it('EN', () => {
-    // Kommetjie is now epic (window peak 10.0 ≥ 9, 5 h ≥ 1.5 h) since Tp=13 s maxes out periodFactor and k(T) —
-    // and Muizenberg's own window (peak 6.1, driven by size+period) now clears windowMin, so it shows as runner-up.
+    // 3,5 m de houle : 6★ or tant que l'offshore reste sous 30 km/h, donc epic (6★ sur 5 h) ;
+    // Muizenberg plafonne à 2☆ sous le cross-onshore, sans fenêtre : pas de 🥈.
     expect(renderEvening(goldenReport(), EN)).toBe(
       [
         "🟢 <b>DON'T GO TO WORK TOMORROW</b> (Wed 16 Sept) — it's firing",
         // un bloc par spot, separe par une ligne vide : ses lignes de conditions puis son graphe du
         // jour — le verdict dit quand y aller, la courbe montre le reste de la journee sans ouvrir 📋
         [
-          `🏄 ${KOM} · 7:00–11:00 · 10.0/10`,
-          '   5 ft · SW 13 s · offshore SE 8 kt · incoming tide, high 9:00',
+          `🏄 ${KOM} · 7:00–12:00 · ★★★★★★`,
+          '   3.5 m · SW 13 s · offshore SE 8 kt · incoming tide, high 9:00',
           '   ☀️ 22° · sunrise 6:44',
           '<code>6  9  12 15 18</code>',
-          '<code>·████▅▂······</code>',
-        ].join('\n'),
-        [
-          `🥈 ${MUIZ} · 7:00–10:00 · 6.1/10`,
-          '   3 ft · onshore SE 8 kt',
-          '<code>6  9  12 15 18</code>',
-          '<code>·▅▅▅▃········</code>',
+          '<code>·▆▆▆▆▅▂······</code>',
         ].join('\n'),
       ].join('\n\n'),
     );
@@ -155,8 +149,8 @@ describe('renderEvening — golden 🟢', () => {
     expect(lines[0]).toContain('ЗАВТРА НЕ ИДИ НА РАБОТУ');
     expect(lines[0]).toContain('16 сент.');
     expect(lines[1]).toBe(''); // le titre est un bloc a lui seul
-    expect(lines[2]).toBe(`🏄 ${KOM} · 7:00–11:00 · 10.0/10`);
-    expect(lines[3]).toBe('   5 ft · ЮЗ 13 с · оффшор ЮВ 8 kt · прилив, полная 9:00');
+    expect(lines[2]).toBe(`🏄 ${KOM} · 7:00–12:00 · ★★★★★★`);
+    expect(lines[3]).toBe('   3.5 м · ЮЗ 13 с · оффшор ЮВ 8 kt · прилив, полная 9:00');
   });
   it('adds the epic suffix, the weekend and now titles', () => {
     const r = goldenReport();
@@ -174,57 +168,89 @@ describe('renderEvening — golden 🟢', () => {
     // par contenu et non par index : le graphe du spot s'intercale avant cette ligne
     expect(renderEvening(r, EN).split('\n')).toContain('   ☀️ 18° · sunrise 6:44 · rain 5 mm');
   });
-  it('shows a 🥈 runner-up when another open spot has a window', () => {
+  it('shows a 🥈 runner-up when another spot has a window, in white stars when the wind has an onshore component', () => {
     const r = goldenReport();
     const muiz = r.spots.find((x) => x.spotId === 'muizenberg')!;
-    muiz.windows = [W('07:00', '09:00', 6.5)];
+    muiz.windows = [W('07:00', '09:00', 2)];
     muiz.best = muiz.windows[0];
     const lines = renderEvening(r, EN).split('\n');
-    const i = lines.indexOf(`🥈 ${MUIZ} · 7:00–9:00 · 6.5/10`);
+    const i = lines.indexOf(`🥈 ${MUIZ} · 7:00–9:00 · ☆☆`);
     expect(i).toBeGreaterThan(-1);
-    expect(lines[i + 1]).toBe('   3 ft · onshore SE 8 kt');
+    expect(lines[i + 1]).toBe('   3.5 m · cross-onshore SE 8 kt');
     // et son propre graphe juste dessous — c'est le second spot du message
     expect(lines[i + 2]).toBe('<code>6  9  12 15 18</code>');
-    expect(lines[i + 3]).toBe('<code>·▅▅▅▃········</code>');
+    expect(lines[i + 3]).toBe('<code>·▂▂▂·········</code>');
   });
-  it('mentions the wind change at the end of the window', () => {
+  it('mentions the wind state change at the end of the window', () => {
     const r = goldenReport();
     const kom = r.spots.find((x) => x.spotId === 'kommetjie-long-beach')!;
-    kom.hours.find((h) => h.time === `${GOLDEN_DATE}T10:00`)!.windRelation = 'onshore';
-    expect(renderEvening(r, EN).split('\n')).toContain('   5 ft · SW 13 s · offshore SE 8 kt then onshore · incoming tide, high 9:00');
+    kom.hours.find((h) => h.time === `${GOLDEN_DATE}T11:00`)!.windState = 'on';
+    expect(renderEvening(r, EN).split('\n')).toContain('   3.5 m · SW 13 s · offshore SE 8 kt then onshore · incoming tide, high 9:00');
   });
 });
 
 describe('renderEvening — other verdicts', () => {
-  it('🔴 names the best spot and its weakest factor', () => {
+  it('🔴 names the best spot, its stars and what holds them back — here the cross-onshore wind', () => {
     const r = goldenReport({ verdict: { kind: 'red', bestSpotId: 'muizenberg' } });
-    // Muizenberg's maxScore is now 6.1 (size 0.87, period 1.0), and wind (0.7) is its weakest factor —
-    // size, at 0.87, is no longer the lowest now that period no longer drags it down (was 0.549 · 0.86 before).
     expect(renderEvening(r, EN)).toBe(
-      ['🔴 <b>GO TO WORK TOMORROW</b> (Wed 16 Sept)', ['Nothing ≥ 7/10 within 20 km.', `Best: ${MUIZ} 6.1/10 (onshore SE 8 kt)`].join('\n')].join('\n\n'),
+      ['🔴 <b>GO TO WORK TOMORROW</b> (Wed 16 Sept)', ['Nothing ≥ 4★ within 20 km.', `Best: ${MUIZ} ☆☆ (cross-onshore SE 8 kt)`].join('\n')].join('\n\n'),
     );
   });
+  it('🔴 names the swell when the wind costs no star — the swell itself is the ceiling', () => {
+    const r = goldenReport({ verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } });
+    const kom = r.spots.find((x) => x.spotId === 'kommetjie-long-beach')!;
+    // 0,9 m : note de base 2,33 → 2★ ; un vent à ×0,9 donne 2,1 → toujours 2★, il ne coûte rien
+    for (const h of kom.hours) Object.assign(h, { heightM: 0.9, stars: 2, score: h.factors.day ? 2 : 0, factors: { ...h.factors, swell: 0.233, wind: 0.9 } });
+    kom.maxScore = 2;
+    expect(renderEvening(r, EN).split('\n')).toContain(`Best: ${KOM} ★★ (swell 0.9 m)`);
+  });
+  it('🔴 names the wind as soon as it costs a star, even when its factor is higher than the swell one', () => {
+    // Long Beach le 17/09/2026 : 2,2 m (base 3,7, facteur 0,37) sous un offshore à 41 km/h (×0,54) → 2★.
+    // Les deux facteurs ne sont pas sur la même échelle : sans le vent, c'était 4★ et un 🟢.
+    const r = goldenReport({ verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } });
+    const kom = r.spots.find((x) => x.spotId === 'kommetjie-long-beach')!;
+    for (const h of kom.hours) Object.assign(h, { heightM: 2.2, windKt: 22, stars: 2, score: h.factors.day ? 2 : 0, factors: { ...h.factors, swell: 0.37, wind: 0.54 } });
+    kom.maxScore = 2;
+    expect(renderEvening(r, EN).split('\n')).toContain(`Best: ${KOM} ★★ (offshore SE 22 kt)`);
+  });
+  it('🔴 says the good window does not fit, never « nothing ≥ 4★ », when the best spot does reach 4★', () => {
+    const lines = renderEvening(goldenReport({ verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } }), EN).split('\n');
+    expect(lines).toContain('The good window within 20 km is too short or clashes with work.');
+    expect(lines.join('\n')).not.toContain('Nothing ≥');
+  });
+  it('🔴 at exactly 4★ is already a good window: still « too short or clashes », the boundary is ≥', () => {
+    const r = goldenReport({ verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } });
+    r.spots.find((x) => x.spotId === 'kommetjie-long-beach')!.maxScore = 4;
+    expect(renderEvening(r, EN)).toContain('The good window within 20 km is too short or clashes with work.');
+  });
+  it('🔴 names the thunderstorm when a storm is what kept every daylight hour at zero', () => {
+    const r = goldenReport({ verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } });
+    const kom = r.spots.find((x) => x.spotId === 'kommetjie-long-beach')!;
+    for (const h of kom.hours) Object.assign(h, { score: 0, factors: { ...h.factors, weather: 0 } });
+    kom.maxScore = 0;
+    expect(renderEvening(r, EN).split('\n')).toContain(`Best: ${KOM} 0★ (thunderstorm)`);
+  });
   it('🌅 dawn block', () => {
-    const r = goldenReport({ verdict: { kind: 'yellow', dawn: { spotId: 'muizenberg', window: W('07:00', '09:00', 7.2) } } });
+    const r = goldenReport({ verdict: { kind: 'yellow', dawn: { spotId: 'kommetjie-long-beach', window: W('07:00', '09:00', 6) } } });
     const lines = renderEvening(r, EN).split('\n');
     expect(lines[0]).toBe('🌅 <b>DAWN PATROL, THEN WORK</b> (Wed 16 Sept)');
-    expect(lines[1]).toBe(`🏄 ${MUIZ} · 7:00–9:00 · 7.2/10`);
-    expect(lines[2]).toBe('   3 ft · SW 13 s · onshore SE 8 kt · incoming tide, high 9:00');
+    expect(lines[1]).toBe(`🏄 ${KOM} · 7:00–9:00 · ★★★★★★`);
+    expect(lines[2]).toBe('   3.5 m · SW 13 s · offshore SE 8 kt · incoming tide, high 9:00');
   });
   it('🌅 a dawn+dusk 🟡 on one spot draws its day chart once, not twice', () => {
     // Le graphe couvre toute la journée : le redessiner sous « après le travail » répéterait à
     // l'identique la courbe déjà affichée sous « dawn patrol ».
-    const pick = { spotId: 'muizenberg', window: W('07:00', '09:00', 7.2) };
-    const r = goldenReport({ verdict: { kind: 'yellow', dawn: pick, dusk: { spotId: 'muizenberg', window: W('17:00', '18:00', 7.0) } } });
+    const pick = { spotId: 'kommetjie-long-beach', window: W('07:00', '09:00', 6) };
+    const r = goldenReport({ verdict: { kind: 'yellow', dawn: pick, dusk: { spotId: 'kommetjie-long-beach', window: W('17:00', '18:00', 4) } } });
     const lines = renderEvening(r, EN).split('\n');
-    expect(lines.filter((l) => l.startsWith('<code>') && l.includes('▅')).length).toBe(1);
+    expect(lines.filter((l) => l === '<code>6  9  12 15 18</code>').length).toBe(1);
   });
   it('🌅 a dawn+dusk 🟡 on two different spots draws one chart each', () => {
     const r = goldenReport({
       verdict: {
         kind: 'yellow',
-        dawn: { spotId: 'muizenberg', window: W('07:00', '09:00', 7.2) },
-        dusk: { spotId: 'kommetjie-long-beach', window: W('17:00', '18:00', 7.0) },
+        dawn: { spotId: 'muizenberg', window: W('07:00', '09:00', 4) },
+        dusk: { spotId: 'kommetjie-long-beach', window: W('17:00', '18:00', 4) },
       },
     });
     const lines = renderEvening(r, EN).split('\n');
@@ -258,21 +284,21 @@ describe('renderEvening — other verdicts', () => {
 describe('renderMorning', () => {
   const evening = goldenReport();
   it('confirmed', () => {
-    expect(renderMorning(goldenReport({ mode: 'morning' }), { send: true, changed: false }, evening, EN)).toBe(`✅ Confirmed: 🟢 ${KOM} 7:00–11:00`);
+    expect(renderMorning(goldenReport({ mode: 'morning' }), { send: true, changed: false }, evening, EN)).toBe(`✅ Confirmed: 🟢 ${KOM} 7:00–12:00`);
   });
   it('changed with cause and the new conditions line', () => {
-    const morning: Report = goldenReport({ mode: 'morning', verdict: { kind: 'green', spotId: 'kommetjie-long-beach', window: W('07:00', '10:00', 8.0), epic: false } });
+    const morning: Report = goldenReport({ mode: 'morning', verdict: { kind: 'green', spotId: 'kommetjie-long-beach', window: W('07:00', '10:00', 6), epic: false } });
     expect(renderMorning(morning, { send: true, changed: true, cause: 'wind' }, evening, EN)).toBe(
-      [`⚠️ Change: 🟢 ${KOM} 7:00–11:00 → 🟢 ${KOM} 7:00–10:00`, '5 ft · SW 13 s · offshore SE 8 kt · incoming tide, high 9:00', 'cause: wind'].join('\n'),
+      [`⚠️ Change: 🟢 ${KOM} 7:00–12:00 → 🟢 ${KOM} 7:00–10:00`, '3.5 m · SW 13 s · offshore SE 8 kt · incoming tide, high 9:00', 'cause: wind'].join('\n'),
     );
   });
   it('degraded to red', () => {
     const morning = goldenReport({ mode: 'morning', verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } });
-    expect(renderMorning(morning, { send: true, changed: true }, evening, EN)).toBe(`⚠️ Change: 🟢 ${KOM} 7:00–11:00 → 🔴 go to work`);
+    expect(renderMorning(morning, { send: true, changed: true }, evening, EN)).toBe(`⚠️ Change: 🟢 ${KOM} 7:00–12:00 → 🔴 go to work`);
   });
   it('noData keeps last night verdict', () => {
     const morning = goldenReport({ mode: 'morning', verdict: { kind: 'noData', reason: 'x' } });
-    expect(renderMorning(morning, { send: true, changed: false }, evening, EN)).toBe(`⚠️ No data this morning — last night's verdict stands: 🟢 ${KOM} 7:00–11:00`);
+    expect(renderMorning(morning, { send: true, changed: false }, evening, EN)).toBe(`⚠️ No data this morning — last night's verdict stands: 🟢 ${KOM} 7:00–12:00`);
   });
   it('short verdict of a missing report is red', () => {
     expect(renderShortVerdict(undefined, EN)).toBe('🔴 go to work');
@@ -281,37 +307,35 @@ describe('renderMorning', () => {
 
 describe('renderDetails', () => {
   it('is now the 📋 title line + the day view: primary spot chart, spot rows, tides, sun', () => {
-    // Captured from the real implementation against goldenReport() and spot-checked against numbers the
-    // OLD renderDetails/renderEvening golden tests already trusted (same engine, same fixtures — only the
-    // rendering changed): Kommetjie's window (7:00–11:00, peak 10.0), its "5 ft · SW 13 s" conditions and
-    // "incoming tide, high 9:00" all match the pre-existing 🟢 EN golden test above; the wind range
-    // 8→30 kt is exactly goldenWindKt's min/max over 7..17; Muizenberg's 6.1 matches the 🥈 golden test.
+    // Kommetjie's window (7:00–12:00, 6★), its "3.5 m · SW 13 s" conditions and "incoming tide, high 9:00"
+    // match the 🟢 EN golden test above; the wind range 8→30 kt is goldenWindKt's min/max over 7..17;
+    // the fade at 12:00 is the first hour under 60 % of the peak (2★ < 3,6), when the SE reaches 24 kt.
     expect(renderDetails(goldenReport(), EN)).toBe(
       [
         '📋 <b>Your day</b> (Wed 16 Sept)',
-        `🏄 ${KOM} · 7:00–11:00`,
+        `🏄 ${KOM} · 7:00–12:00`,
         '',
         '<code>6  9  12 15 18</code>',
-        '<code>·████▅▂······</code>',
+        '<code>·▆▆▆▆▅▂······</code>',
         '',
-        'peak 10.0 at 7:00',
-        '5 ft · SW 13 s · offshore SE 8→30 kt · incoming tide, high 9:00',
-        'best at 7:00 — wind drops to 8 kt, tide still high',
-        'fades from 11:00 — wind builds to 18 kt',
+        'peak ★★★★★★ at 7:00',
+        '3.5 m · SW 13 s · offshore SE 8→30 kt · incoming tide, high 9:00',
+        'best at 7:00 — wind drops to 8 kt',
+        'fades from 12:00 — wind builds to 24 kt',
         '',
-        '<code>Muizenberg    ·▅▅▅▃········  6.1</code>',
+        '<code>Muizenberg    ·▂▂▂·········  2☆</code>',
         '',
         'tide: low 3:00 · high 9:00 · low 15:00 · high 21:00',
         '🌅 6:44 · 🌇 18:38',
       ].join('\n'),
     );
   });
-  it('lists closed spots and uses "today" in now mode', () => {
+  it('uses "today" in now mode, and no longer has any notion of a spot closed for a level', () => {
     const r = goldenReport({ mode: 'now' });
-    r.spots.push({ spotId: 'outer-kom', distanceKm: 14.5, open: false, hours: [], windows: [], maxScore: 0 });
-    const lines = renderDetails(r, EN).split('\n');
-    expect(lines[0]).toBe('📋 <b>Your day</b> (today)');
-    expect(lines).toContain('closed for your level: Kommetjie – Outer Kom');
+    r.spots.push({ spotId: 'outer-kom', distanceKm: 14.5, hours: [], windows: [], maxScore: 0 });
+    const out = renderDetails(r, EN);
+    expect(out.split('\n')[0]).toBe('📋 <b>Your day</b> (today)');
+    expect(out).not.toContain('closed');
   });
   it('never mentions Open-Meteo any more (the licence moved to the welcome message)', () => {
     expect(renderDetails(goldenReport(), EN)).not.toContain('Open-Meteo');
@@ -324,59 +348,64 @@ describe('renderDetails', () => {
 
 // ---- 📋 day view: a chart per spot instead of a flat, one-snapshot-per-row list ----
 
-/** Kommetjie – Long Beach, hand-built: size & period pinned at 1 all day; wind 0.81→0.97→0.54-ish;
- * tide 1.00→0.60→1.00. Peak at 8:00 (9.7), window 7:00–10:00, fades from 10:00 — matches the design doc's
- * worked example (day-view.md) so "best at"/"fades from" name wind & tide, never size or period. */
+/** Kommetjie – Long Beach, hand-built on the star scale. Stars are derived from the factors exactly as the
+ * engine does (base × wind, rounded), so a fixture can never claim a score its own factors contradict:
+ * 3,1 m of swell (base 5.2) all day, only the wind moves — 4★ → 5★ at 8:00 → 2★ from 10:00 as the SE builds. */
+const KOM_H = 3.1;
 function komHour(
   hour: number,
-  opts: { wind: number; tide: number; windKt: number; tideState: 'low' | 'mid' | 'high'; trend: TideTrend; score: number },
+  opts: { wind: number; windKt: number; tideState: 'low' | 'mid' | 'high'; trend: TideTrend; heightM?: number },
 ): SpotHour {
+  const heightM = opts.heightM ?? KOM_H;
+  const base = starBase(heightM);
+  const stars = Math.round(rawStars(base, opts.wind));
   return {
     time: `${GOLDEN_DATE}T${String(hour).padStart(2, '0')}:00`,
-    faceFt: 6, periodS: 12, swellDirDeg: 225,
-    windKt: opts.windKt, windDirDeg: 135, gustKt: opts.windKt + 5, windRelation: 'offshore',
+    heightM, periodS: 12, swellDirDeg: 225,
+    windKt: opts.windKt, windDirDeg: 135, windState: 'off',
     tide: { state: opts.tideState, trend: opts.trend },
-    factors: { size: 1, period: 1, wind: opts.wind, tide: opts.tide, day: 1, weather: 1 },
-    score: opts.score,
+    stars, clean: true,
+    factors: { swell: base / 10, wind: opts.wind, day: 1, weather: 1 },
+    score: stars,
   };
 }
 
 const KOM_HOURS: SpotHour[] = [
-  komHour(7, { wind: 0.81, tide: 1.0, windKt: 18, tideState: 'mid', trend: 'rising', score: 8.1 }),
-  komHour(8, { wind: 0.97, tide: 1.0, windKt: 15, tideState: 'high', trend: 'falling', score: 9.7 }),
-  komHour(9, { wind: 0.9, tide: 1.0, windKt: 16, tideState: 'high', trend: 'falling', score: 9.0 }),
-  komHour(10, { wind: 0.7, tide: 0.6, windKt: 20, tideState: 'low', trend: 'falling', score: 4.2 }),
-  komHour(11, { wind: 0.65, tide: 0.6, windKt: 21, tideState: 'low', trend: 'falling', score: 3.9 }),
-  komHour(12, { wind: 0.6, tide: 0.6, windKt: 22, tideState: 'low', trend: 'rising', score: 3.6 }),
-  komHour(13, { wind: 0.55, tide: 0.6, windKt: 23, tideState: 'low', trend: 'rising', score: 3.3 }),
-  komHour(14, { wind: 0.6, tide: 0.6, windKt: 21, tideState: 'low', trend: 'rising', score: 3.6 }),
-  komHour(15, { wind: 0.45, tide: 1.0, windKt: 19, tideState: 'mid', trend: 'rising', score: 4.5 }),
-  komHour(16, { wind: 0.4, tide: 1.0, windKt: 18, tideState: 'high', trend: 'rising', score: 4.0 }),
-  komHour(17, { wind: 0.42, tide: 1.0, windKt: 17, tideState: 'high', trend: 'falling', score: 4.2 }),
+  komHour(7, { wind: 0.81, windKt: 18, tideState: 'mid', trend: 'rising' }),
+  komHour(8, { wind: 0.97, windKt: 15, tideState: 'high', trend: 'falling' }),
+  komHour(9, { wind: 0.8, windKt: 16, tideState: 'high', trend: 'falling' }),
+  komHour(10, { wind: 0.4, windKt: 20, tideState: 'low', trend: 'falling' }),
+  komHour(11, { wind: 0.4, windKt: 21, tideState: 'low', trend: 'falling' }),
+  komHour(12, { wind: 0.4, windKt: 22, tideState: 'low', trend: 'rising' }),
+  komHour(13, { wind: 0.4, windKt: 23, tideState: 'low', trend: 'rising' }),
+  komHour(14, { wind: 0.4, windKt: 21, tideState: 'low', trend: 'rising' }),
+  komHour(15, { wind: 0.2, windKt: 19, tideState: 'mid', trend: 'rising' }),
+  komHour(16, { wind: 0.2, windKt: 18, tideState: 'high', trend: 'rising' }),
+  komHour(17, { wind: 0.2, windKt: 17, tideState: 'high', trend: 'falling' }),
 ];
-const KOM_WINDOW: Window = W('07:00', '10:00', 9.7);
+const KOM_WINDOW: Window = W('07:00', '10:00', 5);
 const KOM_TIDES = [{ time: `${GOLDEN_DATE}T11:47`, kind: 'low' as const, heightM: -0.82 }];
 
 // NB: both params are required (no defaults) — a default on `best` would fire even when a test passes
 // `undefined` on purpose to mean "no window", which is exactly the case this fixture needs to express.
 function komResult(hours: SpotHour[], best: Window | undefined): SpotResult {
   return {
-    spotId: 'kommetjie-long-beach', distanceKm: 13.4, open: true,
+    spotId: 'kommetjie-long-beach', distanceKm: 13.4,
     hours, windows: best ? [best] : [], best,
     maxScore: hours.reduce((m, h) => Math.max(m, h.score), 0),
   };
 }
 
-const KOM_CHART = '<code>6  9  12 15 18</code>\n<code>·▇██▄▄▃▃▃▄▄▄·</code>';
+const KOM_CHART = '<code>6  9  12 15 18</code>\n<code>·▄▅▄▂▂▂▂▂▁▁▁·</code>';
 const KOM_BLOCK = [
   `🏄 ${KOM} · 7:00–10:00`,
   '',
   KOM_CHART,
   '',
-  'peak 9.7 at 8:00',
-  '6 ft · SW 12 s · offshore SE 15→23 kt · outgoing tide, low 11:47',
-  'best at 8:00 — wind drops to 15 kt, tide still high',
-  'fades from 10:00 — low tide, wind builds to 20 kt',
+  'peak ★★★★★ at 8:00',
+  '3.1 m · SW 12 s · offshore SE 15→23 kt · outgoing tide, low 11:47',
+  'best at 8:00 — wind drops to 15 kt',
+  'fades from 10:00 — wind builds to 20 kt',
 ].join('\n');
 
 describe('renderSpotDay', () => {
@@ -384,83 +413,102 @@ describe('renderSpotDay', () => {
     const report = makeReport({ spots: [komResult(KOM_HOURS, KOM_WINDOW)], tides: KOM_TIDES });
     expect(renderSpotDay(report, 'kommetjie-long-beach', EN)).toBe(KOM_BLOCK);
   });
-  it('names exactly wind and tide on the pinned Kommetjie fixture, never size or period', () => {
+  it('names the wind when only the wind moves — the swell is steady, and tide or period never weigh on the stars', () => {
     const report = makeReport({ spots: [komResult(KOM_HOURS, KOM_WINDOW)], tides: KOM_TIDES });
     const out = renderSpotDay(report, 'kommetjie-long-beach', EN);
-    expect(out).toContain('best at 8:00 — wind drops to 15 kt, tide still high');
-    expect(out).toContain('fades from 10:00 — low tide, wind builds to 20 kt');
-    expect(out).not.toMatch(/size peaks|groundswell/);
+    expect(out).toContain('best at 8:00 — wind drops to 15 kt');
+    expect(out).toContain('fades from 10:00 — wind builds to 20 kt');
+    expect(out).not.toMatch(/swell|tide still|low tide|mid tide|groundswell/);
+  });
+  it('credits the swell, not the wind, when the swell falls away under a steady offshore', () => {
+    // 3,0 m → 0,9 m d'ici 10:00 ; le vent passe de 16 à 16,5 kt sans coûter une étoile
+    const hours = [
+      komHour(7, { wind: 1, windKt: 16, tideState: 'mid', trend: 'rising', heightM: 3.0 }),
+      komHour(8, { wind: 1, windKt: 16, tideState: 'mid', trend: 'rising', heightM: 3.0 }),
+      komHour(9, { wind: 1, windKt: 16, tideState: 'mid', trend: 'rising', heightM: 2.4 }),
+      ...[10, 11, 12, 13, 14, 15, 16, 17].map((hr) => komHour(hr, { wind: 0.98, windKt: 16.5, tideState: 'mid', trend: 'rising', heightM: 0.9 })),
+    ];
+    const report = makeReport({ spots: [komResult(hours, W('07:00', '10:00', 5))] });
+    const out = renderSpotDay(report, 'kommetjie-long-beach', EN);
+    expect(out).toContain('best at 7:00 — swell peaks at 3.0 m');
+    expect(out).toContain('fades from 10:00 — swell drops to 0.9 m');
+    expect(out).not.toContain('wind');
   });
   it('RU: peak / best-at / fades-from translate with the same numbers', () => {
     const report = makeReport({ spots: [komResult(KOM_HOURS, KOM_WINDOW)], tides: KOM_TIDES });
     const out = renderSpotDay(report, 'kommetjie-long-beach', RU);
-    expect(out).toContain('пик 9.7 в 8:00');
-    expect(out).toContain('лучшее в 8:00 — ветер стихает до 15 kt, вода всё ещё полная');
-    expect(out).toContain('спадает после 10:00 — малая вода, ветер усиливается до 20 kt');
+    expect(out).toContain('пик ★★★★★ в 8:00');
+    expect(out).toContain('лучшее в 8:00 — ветер стихает до 15 kt');
+    expect(out).toContain('спадает после 10:00 — ветер усиливается до 20 kt');
+  });
+  it('RU: the swell phrases translate too', () => {
+    const hours = [
+      komHour(7, { wind: 1, windKt: 16, tideState: 'mid', trend: 'rising', heightM: 3.0 }),
+      ...[8, 9, 10].map((hr) => komHour(hr, { wind: 1, windKt: 16, tideState: 'mid', trend: 'rising', heightM: 0.9 })),
+    ];
+    const out = renderSpotDay(makeReport({ spots: [komResult(hours, W('07:00', '08:00', 5))] }), 'kommetjie-long-beach', RU);
+    expect(out).toContain('лучшее в 7:00 — пик волны 3.0 м');
+    expect(out).toContain('спадает после 8:00 — волна спадает до 0.9 м');
   });
   it('a spot with no window: skips peak/best-at/fades-from, keeps the chart and conditions', () => {
     const hours = Array.from({ length: 11 }, (_, i) =>
-      komHour(7 + i, { wind: 0.5, tide: 1, windKt: 10, tideState: 'mid', trend: 'rising', score: 5.0 }));
+      komHour(7 + i, { wind: 0.4, windKt: 10, tideState: 'mid', trend: 'rising' }));
     const report = makeReport({ spots: [komResult(hours, undefined)], tides: [{ time: `${GOLDEN_DATE}T09:00`, kind: 'high', heightM: 0.5 }] });
     expect(renderSpotDay(report, 'kommetjie-long-beach', EN)).toBe(
       [
-        `🏄 ${KOM} · 5.0/10`, // sans fenêtre, l'en-tête chiffre quand même la journée
+        `🏄 ${KOM} · ★★`, // sans fenêtre, l'en-tête chiffre quand même la journée
         '',
-        '<code>6  9  12 15 18</code>\n<code>·▅▅▅▅▅▅▅▅▅▅▅·</code>',
+        '<code>6  9  12 15 18</code>\n<code>·▂▂▂▂▂▂▂▂▂▂▂·</code>',
         '',
-        '6 ft · SW 12 s · offshore SE 10 kt · incoming tide, high 9:00',
+        '3.1 m · SW 12 s · offshore SE 10 kt · incoming tide, high 9:00',
       ].join('\n'),
     );
   });
-  it('a spot closed for the level: chart of zeros, says it is closed', () => {
-    const report = makeReport({ spots: [{ spotId: 'outer-kom', distanceKm: 14.5, open: false, hours: [], windows: [], best: undefined, maxScore: 0 }] });
+  it('a spot with no rated hour at all: its name and an empty chart, nothing invented', () => {
+    const report = makeReport({ spots: [{ spotId: 'outer-kom', distanceKm: 14.5, hours: [], windows: [], best: undefined, maxScore: 0 }] });
     expect(renderSpotDay(report, 'outer-kom', EN)).toBe(
-      ['🏄 Kommetjie – Outer Kom · 0.0/10', '', '<code>6  9  12 15 18</code>\n<code>·············</code>', '', 'closed for your level'].join('\n'),
+      ['🏄 Kommetjie – Outer Kom', '', '<code>6  9  12 15 18</code>\n<code>·············</code>'].join('\n'),
     );
   });
   it('says nothing when the day is flat: a window exists but every factor is steady all day', () => {
     const hours = Array.from({ length: 11 }, (_, i) =>
-      komHour(7 + i, { wind: 0.9, tide: 0.9, windKt: 12, tideState: 'mid', trend: 'rising', score: 6.6 }));
+      komHour(7 + i, { wind: 0.8, windKt: 12, tideState: 'mid', trend: 'rising' }));
     const report = makeReport({
-      spots: [komResult(hours, W('07:00', '18:00', 6.6))],
+      spots: [komResult(hours, W('07:00', '18:00', 4))],
       tides: [{ time: `${GOLDEN_DATE}T09:00`, kind: 'high', heightM: 0.5 }],
     });
     const out = renderSpotDay(report, 'kommetjie-long-beach', EN);
-    expect(out).toContain('peak 6.6 at 7:00');
+    expect(out).toContain('peak ★★★★ at 7:00');
     expect(out).not.toContain('best at');
     expect(out).not.toContain('fades from');
   });
   it('names "gets dark" when the fade lands after the plotted hours, at the day factor dropping to 0', () => {
-    // Flat 7:00–16:00 (never reaches windowMin), a one-hour window at 17:00 (the day's only peak, score 8.0),
-    // then 18:00 — past chartHours' 7..17 range — where wind/tide are unchanged but daylight ends (day 1→0).
-    const flat = (hour: number): SpotHour => komHour(hour, { wind: 0.3, tide: 1, windKt: 12, tideState: 'high', trend: 'rising', score: 3.0 });
-    const dusk: SpotHour = {
-      time: `${GOLDEN_DATE}T18:00`, faceFt: 6, periodS: 12, swellDirDeg: 225,
-      windKt: 12, windDirDeg: 135, gustKt: 17, windRelation: 'offshore', tide: { state: 'high', trend: 'rising' },
-      factors: { size: 1, period: 1, wind: 0.8, tide: 1, day: 0, weather: 1 }, score: 0,
-    };
+    // Flat 7:00–16:00 (never reaches windowMin), a one-hour window at 17:00 (the day's only peak, 5★),
+    // then 18:00 where the wind is unchanged but daylight ends (day 1→0): the stars stay, the score drops.
+    const flat = (hour: number): SpotHour => komHour(hour, { wind: 0.2, windKt: 12, tideState: 'high', trend: 'rising' });
+    const lit = komHour(18, { wind: 0.97, windKt: 12, tideState: 'high', trend: 'rising' });
+    const dusk: SpotHour = { ...lit, score: 0, factors: { ...lit.factors, day: 0 } };
     const hours = [
       ...Array.from({ length: 10 }, (_, i) => flat(7 + i)),
-      komHour(17, { wind: 0.8, tide: 1, windKt: 12, tideState: 'high', trend: 'rising', score: 8.0 }),
+      komHour(17, { wind: 0.97, windKt: 12, tideState: 'high', trend: 'rising' }),
       dusk,
     ];
-    const report = makeReport({ spots: [komResult(hours, W('17:00', '18:00', 8.0))] });
+    const report = makeReport({ spots: [komResult(hours, W('17:00', '18:00', 5))] });
     expect(renderSpotDay(report, 'kommetjie-long-beach', EN)).toContain('fades from 18:00 — gets dark');
   });
 });
 
-function flatSpot(id: string, maxScore: number, open = true): SpotResult {
-  return { spotId: id, distanceKm: 5, open, hours: [], windows: [], best: undefined, maxScore };
+function flatSpot(id: string, maxScore: number): SpotResult {
+  return { spotId: id, distanceKm: 5, hours: [], windows: [], best: undefined, maxScore };
 }
 const DEAD_COLS = '·'.repeat(13); // 13 colonnes depuis que le graphique couvre les heures partiellement éclairées
 /**
  * Same short-label/padding rule as `renderDayView`'s spot rows, re-derived independently for the test:
- * label (≤ 13 chars, own field — no truncation, § defect 2) padEnd(13) + 1 space + sparkline + 2 spaces + score.
+ * label (≤ 13 chars, own field — no truncation, § defect 2) padEnd(13) + 1 space + sparkline + 2 spaces + stars.
  */
-function expectedRow(id: string, score: number): string {
+function expectedRow(id: string, stars: number): string {
   const spot = SPOTS.find((sp) => sp.id === id)!;
-  const label = spot.verified ? spot.short : `${spot.short}`;
-  return `${label.padEnd(13, ' ')} ${DEAD_COLS}  ${score.toFixed(1)}`;
+  return `${spot.short.padEnd(13, ' ')} ${DEAD_COLS}  ${stars}★`;
 }
 const DAY_VIEW_TIDES = [
   { time: `${GOLDEN_DATE}T05:50`, kind: 'high' as const, heightM: -0.17 },
@@ -469,40 +517,41 @@ const DAY_VIEW_TIDES = [
 ];
 function dayViewReport(): Report {
   return makeReport({
-    spots: [komResult(KOM_HOURS, KOM_WINDOW), flatSpot('muizenberg', 7.0), flatSpot('clovelly', 3.0), flatSpot('fish-hoek', 2.0), flatSpot('glen-beach', 1.0), flatSpot('kalk-bay-reef', 0, false)],
+    spots: [komResult(KOM_HOURS, KOM_WINDOW), flatSpot('muizenberg', 4), flatSpot('clovelly', 2), flatSpot('fish-hoek', 1), flatSpot('glen-beach', 0), flatSpot('kalk-bay-reef', 0)],
     tides: DAY_VIEW_TIDES,
     verdict: { kind: 'green', spotId: 'kommetjie-long-beach', window: KOM_WINDOW, epic: false },
   });
 }
-const DAY_VIEW_TAIL = ['closed for your level: Kalk Bay Reef', 'tide: high 5:50 · low 11:47 · high 18:04', '🌅 6:44 · 🌇 18:38'];
+const DAY_VIEW_TAIL = ['tide: high 5:50 · low 11:47 · high 18:04', '🌅 6:44 · 🌇 18:38'];
 
 describe('renderDayView', () => {
-  it('shows the primary spot, then a sparkline row per open spot ≥ 2.5, then collapses the rest into a count', () => {
+  it('shows the primary spot, then a sparkline row per spot with at least one star, then counts the 0★ ones', () => {
     expect(renderDayView(dayViewReport(), EN)).toBe(
       [
         KOM_BLOCK,
-        `<code>${expectedRow('muizenberg', 7.0)}</code>\n<code>${expectedRow('clovelly', 3.0)}</code>`,
-        ['2 spots flat all day', ...DAY_VIEW_TAIL].join('\n'),
+        `<code>${expectedRow('muizenberg', 4)}</code>\n<code>${expectedRow('clovelly', 2)}</code>\n<code>${expectedRow('fish-hoek', 1)}</code>`,
+        ['2 spots at 0★ all day', ...DAY_VIEW_TAIL].join('\n'),
       ].join('\n\n'),
     );
   });
-  it('with { all: true }: every open spot gets a row, and the collapse line is omitted', () => {
+  it('with { all: true }: every spot gets a row, and the collapse line is omitted', () => {
     expect(renderDayView(dayViewReport(), EN, { all: true })).toBe(
       [
         KOM_BLOCK,
         [
-          `<code>${expectedRow('muizenberg', 7.0)}</code>`,
-          `<code>${expectedRow('clovelly', 3.0)}</code>`,
-          `<code>${expectedRow('fish-hoek', 2.0)}</code>`,
-          `<code>${expectedRow('glen-beach', 1.0)}</code>`,
+          `<code>${expectedRow('muizenberg', 4)}</code>`,
+          `<code>${expectedRow('clovelly', 2)}</code>`,
+          `<code>${expectedRow('fish-hoek', 1)}</code>`,
+          `<code>${expectedRow('glen-beach', 0)}</code>`,
+          `<code>${expectedRow('kalk-bay-reef', 0)}</code>`,
         ].join('\n'),
         DAY_VIEW_TAIL.join('\n'),
       ].join('\n\n'),
     );
   });
-  it('falls back to the highest-scoring OPEN spot when the verdict has no pick (a closed spot never wins)', () => {
+  it('falls back to the highest-rated spot when the verdict has no pick', () => {
     const report = makeReport({
-      spots: [flatSpot('muizenberg', 8.0), flatSpot('clovelly', 3.0), flatSpot('kalk-bay-reef', 9.0, false)],
+      spots: [flatSpot('muizenberg', 5), flatSpot('clovelly', 2)],
       verdict: { kind: 'red', bestSpotId: 'muizenberg' },
     });
     expect(renderDayView(report, EN).startsWith(`🏄 ${MUIZ}`)).toBe(true);
@@ -512,7 +561,7 @@ describe('renderDayView', () => {
   });
   it('distinguishes secondary rows a truncated full name could not (defect 2: Inner Kom / Outer Kom)', () => {
     const report = makeReport({
-      spots: [komResult(KOM_HOURS, KOM_WINDOW), flatSpot('inner-kom', 4.0), flatSpot('outer-kom', 3.5)],
+      spots: [komResult(KOM_HOURS, KOM_WINDOW), flatSpot('inner-kom', 3), flatSpot('outer-kom', 2)],
       tides: KOM_TIDES,
       verdict: { kind: 'green', spotId: 'kommetjie-long-beach', window: KOM_WINDOW, epic: false },
     });
@@ -520,7 +569,7 @@ describe('renderDayView', () => {
     // both used to naively truncate to the identical "Kommetjie – " prefix — now each gets its own short
     // label; scoped to the secondary-rows block since the primary spot's own title legitimately uses the
     // full "Kommetjie – Long Beach" name.
-    const rowsBlock = `<code>${expectedRow('inner-kom', 4.0)}</code>\n<code>${expectedRow('outer-kom', 3.5)}</code>`;
+    const rowsBlock = `<code>${expectedRow('inner-kom', 3)}</code>\n<code>${expectedRow('outer-kom', 2)}</code>`;
     expect(out).toContain(rowsBlock);
     expect(rowsBlock).not.toContain('Kommetjie – ');
   });
@@ -536,7 +585,8 @@ describe('renderDayView / allSpotOrder — /all cap in a dense cluster (§report
         id, name: `World Spot ${i}`, short: `W${i}`, region: 'cape-peninsula', lat: 0, lon: 0, facing: 0,
         swellWindow: [0, 90], exposure: 0.7, tide: { best: [], forbidden: [] }, levels: {}, character: 'punchy', verified: false,
       });
-      results.push(flatSpot(id, n - i)); // strictly descending scores: world-0 highest (becomes primary)
+      // de 10★ à 1★, jamais croissant : world-0 en tête (spot principal), et le tri stable garde l'ordre d'insertion
+      results.push(flatSpot(id, 10 - Math.floor((10 * i) / n)));
     }
     const report = makeReport({ spots: results, verdict: { kind: 'red' } });
     return { report, ctx: { lang: 'en', spots: map } };
@@ -560,11 +610,11 @@ describe('renderDayView / allSpotOrder — /all cap in a dense cluster (§report
     const { report, ctx } = manySpots(80);
     const out = renderDayView(report, ctx, { all: true });
     // Chaque ligne a son propre <code> : les deux premiers sont la règle et le sparkline du spot
-    // principal, les suivants sont une ligne par autre spot ouvert — seuls ceux-là sont plafonnés.
+    // principal, les suivants sont une ligne par autre spot — seuls ceux-là sont plafonnés.
     const codeLines = [...out.matchAll(/<code>([\s\S]*?)<\/code>/g)].map((m) => m[1]);
     expect(codeLines).toHaveLength(2 + ALL_SPOTS_CAP);
-    expect(out).toContain('+49 more open spots not shown'); // 80 - 1 primary - 30 shown = 49 hidden
-    expect(out).not.toContain('flat all day');
+    expect(out).toContain('+49 more spots not shown'); // 80 - 1 primary - 30 shown = 49 hidden
+    expect(out).not.toContain('all day');
   });
 
   it('the capped /all message stays comfortably under Telegram\'s 4096-char limit even in an extreme, worse-than-realistic cluster', () => {
@@ -576,7 +626,7 @@ describe('renderDayView / allSpotOrder — /all cap in a dense cluster (§report
   it('a cluster with no hidden spots (exactly at the cap) shows no "+N more" tail', () => {
     const { report, ctx } = manySpots(1 + ALL_SPOTS_CAP); // primary + exactly ALL_SPOTS_CAP others
     const out = renderDayView(report, ctx, { all: true });
-    expect(out).not.toContain('more open spots');
+    expect(out).not.toContain('more spots not shown');
   });
 });
 
@@ -585,7 +635,7 @@ describe('renderDayView — row width budget (≤ 34 chars, § day-view.md "Widt
   const withDaylight = (sunrise: string, sunset: string): Report =>
     makeReport({
       sun: { sunrise: `${GOLDEN_DATE}T${sunrise}`, sunset: `${GOLDEN_DATE}T${sunset}` },
-      spots: [komResult(KOM_HOURS, KOM_WINDOW), flatSpot('muizenberg', 7.0), flatSpot('clovelly', 10.0)],
+      spots: [komResult(KOM_HOURS, KOM_WINDOW), flatSpot('muizenberg', 4), flatSpot('clovelly', 10)],
       tides: KOM_TIDES,
       verdict: { kind: 'green', spotId: 'kommetjie-long-beach', window: KOM_WINDOW, epic: false },
     });
@@ -594,7 +644,7 @@ describe('renderDayView — row width budget (≤ 34 chars, § day-view.md "Widt
     ['8-hour day', '09:00', '17:00'],
     ['11-hour day', '06:44', '18:38'],
     ['14-hour day', '05:32', '19:58'],
-  ])('keeps every monospace line ≤ 34 chars on a %s (worst case: a 10.0 score)', (_name, sunrise, sunset) => {
+  ])('keeps every monospace line ≤ 34 chars on a %s (worst case: a 10★ spot)', (_name, sunrise, sunset) => {
     const out = renderDayView(withDaylight(sunrise, sunset), EN);
     const monoLines = [...out.matchAll(/<code>([\s\S]*?)<\/code>/g)].flatMap((m) => m[1].split('\n'));
     expect(monoLines.length).toBeGreaterThan(0);

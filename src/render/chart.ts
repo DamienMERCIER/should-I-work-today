@@ -61,17 +61,15 @@ export function chartHours(report: Report): number[] {
 }
 
 /**
- * Sparkline glyph bands. `·` marks a dead/dark hour (score ≤ 0.05); otherwise the
- * 0–10 score range is split into 8 equal 1.25-point bands mapped onto ▁▂▃▄▅▆▇█
- * (▁ = lowest non-dead band, █ = 8.75–10).
+ * Une barre par étoile : `·` à 0, puis ▁▂▃▄▅▆▇ de 1★ à 7★, █ à partir de 8★. Les notes sont des étoiles
+ * entières (`src/engine/rating.ts`) ; découper 0..10 en huit tranches égales donnait le même glyphe à
+ * 5★ et 6★, justement là où se joue la différence entre une bonne journée et une journée exceptionnelle.
  */
 const BLOCKS = '▁▂▃▄▅▆▇█';
-const BAND_WIDTH = 10 / BLOCKS.length;
 
-function glyphFor(score: number): string {
-  if (score <= 0.05) return '·';
-  const level = Math.min(BLOCKS.length - 1, Math.floor(score / BAND_WIDTH));
-  return BLOCKS[level];
+function glyphFor(stars: number): string {
+  if (stars <= 0) return '·';
+  return BLOCKS[Math.min(BLOCKS.length, Math.max(1, Math.round(stars))) - 1];
 }
 
 /** One glyph per hour, no separator — 1 character/hour so the block fits a phone screen (§ defect 1). */

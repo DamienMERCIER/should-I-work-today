@@ -1,4 +1,4 @@
-import type { Board, Level, TideState, TideTrend, WindRelation } from '../../types';
+import type { TideState, TideTrend, WindState } from '../../types';
 
 export interface Strings {
   locale: string;
@@ -6,12 +6,8 @@ export interface Strings {
   cardinal: readonly [string, string, string, string, string, string, string, string];
   /** goTo: {spot} — the 📍 "go to this spot" map button (`src/render/messages.ts` `goButtons`). */
   buttons: { useMyLocation: string; backHome: string; now: string; allSpots: string; goTo: string };
-  levels: Record<Level, string>;
-  boards: Record<Board, string>;
-  relations: Record<WindRelation, string>;
-  glassy: string;
-  /** rafale citee seulement quand elle coute des points : {kt} */
-  gusting: string;
+  /** les six états de vent de surf-forecast, du plus propre au pire */
+  windStates: Record<WindState, string>;
   then: string;
   today: string;
   tideStates: Record<TideState, string>;
@@ -19,14 +15,14 @@ export interface Strings {
   /** {time} */
   tideNext: { high: string; low: string };
   /** welcome: {home} {start} {end} */
-  onboarding: { askLevel: string; askBoard: string; welcome: string };
+  onboarding: { welcome: string };
   privateBot: string;
   help: string;
-  /** summary: {level} {board} {start} {end} {location} · locationCustom: {lat} {lon} */
+  /** summary: {start} {end} {location} · locationCustom: {lat} {lon} */
   profile: {
     summary: string; askHours: string; badHours: string; saved: string;
     locationDefault: string; locationCustom: string;
-    changeLevel: string; changeBoard: string; changeHours: string;
+    changeHours: string;
   };
   lang: { ask: string; set: string };
   stopped: string;
@@ -35,30 +31,31 @@ export interface Strings {
   backHomeDone: string;
   /** en tete d'un rapport « maintenant » bascule sur demain, faute de jour restant aujourd'hui */
   dayIsDone: string;
-  /** titres : {date} ; redBody : {radius} ; redBest : {spot} {score} {reason} */
+  /** titres : {date} ; redBody : {good} {radius} ; redTooShort : {radius} ; redBest : {spot} {stars} {reason} */
   verdict: {
     green: string; greenEpicSuffix: string; greenWeekend: string; greenNow: string;
     dawn: string; dusk: string;
     red: string; redWeekend: string; redNow: string; redBody: string; redTooShort: string; redBest: string;
   };
-  /** wind: {relation} {dir} {kt} · size: {ft} · period: {s} · tide: {state} */
-  reasons: { size: string; period: string; tide: string; dark: string };
-  /** conditions: {ft} {dir} {s} {wind} {tide} · sun: {temp} {sunrise} */
+  /** raison d'un 🔴 quand ce n'est pas le vent (qui se décrit lui-même) : size: {m} */
+  reasons: { size: string; dark: string; storm: string };
+  /** conditions: {m} {dir} {s} {wind} {tide} · sun: {temp} {sunrise} */
   spotLine: { conditions: string; sun: string };
   /** {mm} */
   rain: string;
   /** confirmed: {verdict} · changed: {from} {to} · cause: {cause} · noDataKeep: {verdict} */
   morning: { confirmed: string; changed: string; cause: string; noDataKeep: string };
-  causes: { wind: string; size: string; period: string; tide: string };
+  /** les étoiles ne dépendent que du vent et de la houle */
+  causes: { wind: string; size: string };
   /** green/dawn/dusk: {spot} {window} */
   shortVerdict: { green: string; dawn: string; dusk: string; red: string };
-  /** title: {date}, the "All spots" title — reserved for the future `/all` (`opts.all`) view; the day view's own default title is `dayView.title` · closed: {spots} · tides: {list} */
-  details: { title: string; closed: string; tides: string; tooOld: string };
+  /** title: {date}, the "All spots" title — reserved for the future `/all` (`opts.all`) view; the day view's own default title is `dayView.title` · tides: {list} */
+  details: { title: string; tides: string; tooOld: string };
   /**
    * The 📋 day-view chart (`renderSpotDay` / `renderDayView`), § day-view.md.
    * title: {date} (the default, non-`all` title — `details.title` "All spots" is used when `opts.all`)
-   * peak: {score} {time} · bestAt/fadesFrom: {time} {reasons} · flatSpots/moreSpots: {n} · sun: {sunrise} {sunset}
-   * reasons.windDrops/windBuilds: {kt} · reasons.sizePeaks: {ft} · reasons.groundswell: {s}
+   * peak: {stars} {time} · bestAt/fadesFrom: {time} {reasons} · flatSpots/moreSpots: {n} · sun: {sunrise} {sunset}
+   * reasons.windDrops/windBuilds: {kt} · reasons.swellPeaks/swellDrops: {m}
    */
   dayView: {
     title: string;
@@ -69,15 +66,12 @@ export interface Strings {
     /** /all only, when a dense cluster of open spots exceeds `ALL_SPOTS_CAP` (`src/render/messages.ts`): {n} */
     moreSpots: string;
     sun: string;
-    closedSpot: string;
+    /** les étoiles ne dépendent que du vent et de la houle ; la lumière dit quand ça s'arrête */
     reasons: {
       windDrops: string;
       windBuilds: string;
-      tideStillHigh: string;
-      tideMid: string;
-      tideLow: string;
-      sizePeaks: string;
-      groundswell: string;
+      swellPeaks: string;
+      swellDrops: string;
       getsDark: string;
     };
   };

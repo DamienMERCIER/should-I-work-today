@@ -12,7 +12,14 @@ export interface EvalRequest { profile: Profile; date: string; mode: ReportMode;
 export interface CollectDeps { spots: Spot[]; regions: Region[]; fetchFn: FetchLike; radiusKm?: number; now: string }
 
 interface Near { spot: Spot; distanceKm: number }
-interface RegionData { swell: SwellHour[]; forecasts: Map<string, ForecastSeries>; tide: Map<string, TideInfo> }
+interface RegionData {
+  /** point régional : sert à la marée */
+  swell: SwellHour[];
+  /** houle à la cellule de chaque spot : c'est sur elle que se calculent les étoiles */
+  spotSwell: Map<string, SwellHour[]>;
+  forecasts: Map<string, ForecastSeries>;
+  tide: Map<string, TideInfo>;
+}
 
 const byDistance = (spots: Spot[], at: LatLon): Near[] =>
   spots.map((spot) => ({ spot, distanceKm: haversineKm(at, spot) })).sort((a, b) => a.distanceKm - b.distanceKm);
@@ -52,12 +59,37 @@ export function mergePeakPeriod(swell: SwellHour[], peak: PeakPeriodHour[]): Swe
   });
 }
 
+/**
+ * La houle à la cellule du spot, heure par heure ; la régionale × `exposure` pour chaque heure où la
+ * cellule ne publie rien. Open-Meteo rend `null` pour une valeur qu'il n'a pas et l'adaptateur le lit
+ * comme 0 : une cellule océanique n'affiche jamais exactement 0,00 m sur les deux composantes, c'est
+ * une valeur absente. Heure par heure et non série entière, pour qu'une cellule qui se tait au milieu
+ * de l'échéance ne transforme pas le lendemain en « 0★ (swell 0.0 m) ». Le 16/09/2026 les 35 spots
+ * curatés avaient tous une série complète ; le repli vise surtout les spots du monde importés.
+ */
+export function spotSwellSeries(atSpot: SwellHour[] | undefined, regional: SwellHour[], exposure: number): SwellHour[] {
+  const scaled = (h: SwellHour): SwellHour => ({
+    ...h,
+    primary: { ...h.primary, heightM: h.primary.heightM * exposure },
+    secondary: { ...h.secondary, heightM: h.secondary.heightM * exposure },
+  });
+  if (!atSpot) return regional.map(scaled);
+  const regionalByTime = new Map(regional.map((h) => [h.time, h]));
+  return atSpot.map((h) => {
+    if (h.primary.heightM > 0 || h.secondary.heightM > 0) return h;
+    const r = regionalByTime.get(h.time);
+    return r ? scaled(r) : h;
+  });
+}
+
 async function loadRegion(region: Region, spots: Spot[], fetchFn: FetchLike): Promise<RegionData> {
   // marée : J−3 h .. J+27 h → 3 jours ; vent/météo : seul le jour J est lu → 2 jours suffisent ;
   // période pic (gwam, §adapters/openMeteo) : 3e appel séparé, best-effort — une panne ne doit pas priver
   // la région de verdict (§10.1), juste la ramener au repli période moyenne déjà géré par effectiveSwell.
-  const [[swell], forecasts, peakSeries] = await Promise.all([
-    fetchMarine([region.swellRef], fetchFn),
+  // Houle : le point régional (marée) ET la cellule de chaque spot (étoiles), dans le même appel —
+  // Open-Meteo accepte plusieurs points par requête, donc zéro sous-requête de plus (§ RAPPORT 1.2).
+  const [[regional, ...atSpots], forecasts, peakSeries] = await Promise.all([
+    fetchMarine([region.swellRef, ...spots], fetchFn),
     fetchForecast(spots, fetchFn, { forecastDays: 2 }),
     // retries: 0 — best-effort : le Promise.all attend cette 3e requête comme les deux autres, donc la
     // faire re-essayer (2 s de délai par défaut) retarderait toute la région pour un gain marginal ;
@@ -67,8 +99,11 @@ async function loadRegion(region: Region, spots: Spot[], fetchFn: FetchLike): Pr
       return null;
     }),
   ]);
+  // la période pic n'existe qu'au point régional (gwam) : on la fusionne aussi dans chaque série spot
+  const withPeak = (series: SwellHour[]): SwellHour[] => (peakSeries ? mergePeakPeriod(series, peakSeries[0]) : series);
   return {
-    swell: peakSeries ? mergePeakPeriod(swell, peakSeries[0]) : swell,
+    swell: withPeak(regional),
+    spotSwell: new Map(spots.map((s, i) => [s.id, withPeak(spotSwellSeries(atSpots[i], regional, s.exposure))])),
     forecasts: new Map(spots.map((s, i) => [s.id, forecasts[i]])),
     tide: new Map(),
   };
@@ -163,7 +198,8 @@ function assemble(req: EvalRequest, nearby: Near[], regionData: Map<string, Regi
       continue;
     }
     const forecast = data.forecasts.get(spot.id);
-    if (!forecast) continue;
+    const swell = data.spotSwell.get(spot.id);
+    if (!forecast || !swell) continue;
     const daily = forecast.daily.find((d) => d.date === req.date);
     if (!daily) {
       errors.push(`no daily forecast for ${req.date}`);
@@ -171,8 +207,8 @@ function assemble(req: EvalRequest, nearby: Near[], regionData: Map<string, Regi
     }
     closest ??= { data, forecast, daily };
     results.push(evaluateSpot({
-      spot, level: req.profile.level, board: req.profile.board, date: req.date,
-      swell: data.swell, wind: forecast.wind, sun: { sunrise: daily.sunrise, sunset: daily.sunset },
+      spot, date: req.date,
+      swell, wind: forecast.wind, sun: { sunrise: daily.sunrise, sunset: daily.sunset },
       tide: tideFor(data, req.date), distanceKm, fromTime: req.fromTime,
     }));
   }
@@ -201,7 +237,7 @@ async function outOfCoverage(req: EvalRequest, deps: CollectDeps, radiusKm: numb
   try {
     const at = req.profile.location;
     // pas d'appel période pic ici : cette branche n'affiche qu'une ligne de conditions brutes (swell_wave_period,
-    // la période moyenne), jamais un score — periodFactor/k(T), les seuls consommateurs de peakPeriodS, n'entrent pas en jeu.
+    // la période moyenne), jamais d'étoiles.
     const [[swell], [forecast]] = await Promise.all([fetchMarine([at], deps.fetchFn), fetchForecast([at], deps.fetchFn, { forecastDays: 2 })]);
     const refTime = req.fromTime ? floorHour(req.fromTime) : `${req.date}T09:00`;
     const s = swell.find((h) => h.time === refTime);

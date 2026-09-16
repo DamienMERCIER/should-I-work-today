@@ -6,39 +6,23 @@ import type { Report, SpotResult } from '../../src/types';
 const DATE = '2026-09-16';
 
 const spotWith = (id: string, scoreAtHour: (h: number) => number): SpotResult => ({
-  spotId: id, distanceKm: 0, open: true, windows: [], best: undefined,
+  spotId: id, distanceKm: 0, windows: [], best: undefined,
   maxScore: Math.max(...Array.from({ length: 24 }, (_, h) => scoreAtHour(h))),
   hours: Array.from({ length: 24 }, (_, h) => makeHour(`${DATE}T${String(h).padStart(2, '0')}:00`, scoreAtHour(h))),
 });
 
 describe('sparkline', () => {
-  it('shows a dead glyph for a score of exactly 0', () => {
+  it('shows a dead glyph at 0 stars', () => {
     expect(sparkline([0])).toBe('·');
   });
-  it('shows a dead glyph up to and including 0.05', () => {
-    expect(sparkline([0.05])).toBe('·');
+  it('gives each star from 1 to 7 its own bar, so 5★ and 6★ never look the same', () => {
+    expect(sparkline([1, 2, 3, 4, 5, 6, 7])).toBe('▁▂▃▄▅▆▇');
   });
-  it('shows the lowest block just above the dead threshold', () => {
-    expect(sparkline([0.06])).toBe('▁');
-  });
-  it('stays on the lowest block up to the first band boundary', () => {
-    expect(sparkline([1.24])).toBe('▁');
-  });
-  it('moves to the second block exactly at 1.25 (10/8)', () => {
-    expect(sparkline([1.25])).toBe('▂');
-  });
-  it('reaches the top block from 8.75', () => {
-    expect(sparkline([8.75])).toBe('█');
-  });
-  it('clamps a perfect 10 to the top block', () => {
-    expect(sparkline([10])).toBe('█');
+  it('tops out at 8★ and above — the site itself almost never goes past it', () => {
+    expect(sparkline([8, 9, 10])).toBe('███');
   });
   it('joins one glyph per hour with no separator (1 char/hour)', () => {
     expect(sparkline([0, 10, 4])).toBe('·█▄');
-  });
-  it('is ≤ 34 characters for an 11-hour day', () => {
-    const scores = [8.4, 9.7, 9.2, 5.0, 4.3, 3.7, 3.4, 3.3, 5.6, 5.4, 5.4];
-    expect(sparkline(scores).length).toBeLessThanOrEqual(34);
   });
   it('is ≤ 34 characters for a 14-hour day', () => {
     const scores = Array.from({ length: 14 }, (_, i) => i % 10);

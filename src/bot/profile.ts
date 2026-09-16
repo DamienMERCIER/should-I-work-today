@@ -5,10 +5,10 @@ import type { Lang, Profile, WorkHours } from '../types';
 
 export function newProfile(chatId: number, lang: Lang, now: string): Profile {
   return {
-    chatId, lang, level: 'intermediate', board: 'both',
+    chatId, lang,
     workHours: { ...DEFAULT_WORK_HOURS },
     location: { ...DEFAULT_LOCATION, source: 'default' },
-    active: true, onboarding: 'level', createdAt: now,
+    active: true, createdAt: now,
   };
 }
 
@@ -35,10 +35,7 @@ export function profileSummary(p: Profile, s: Strings): string {
   const location = p.location.source === 'default'
     ? s.profile.locationDefault
     : fill(s.profile.locationCustom, { lat: p.location.lat.toFixed(3), lon: p.location.lon.toFixed(3) });
-  return fill(s.profile.summary, {
-    level: s.levels[p.level], board: s.boards[p.board],
-    start: fmtTime(p.workHours.start), end: fmtTime(p.workHours.end), location,
-  });
+  return fill(s.profile.summary, { start: fmtTime(p.workHours.start), end: fmtTime(p.workHours.end), location });
 }
 
 export const welcomeText = (p: Profile, s: Strings): string =>

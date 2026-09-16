@@ -65,7 +65,7 @@ async function runJob(kind: RunKind, date: string, deps: JobDeps): Promise<JobRe
   if (!(await deps.store.acquireLock(date, kind, now))) return { skipped: true, sent: 0, failed: 0, date };
 
   const profiles = Object.values(await deps.store.getProfiles())
-    .filter((p) => p.active && !p.onboarding)
+    .filter((p) => p.active)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
   // Budget dépassé (§10.1) : reporter les profils les plus récents jusqu'à rentrer dans le budget.

@@ -34,7 +34,6 @@ export function hoursAfter(w: Window, limit: string): number {
 
 function candidates(results: SpotResult[]): Candidate[] {
   return results
-    .filter((r) => r.open)
     .flatMap((r) =>
       r.windows
         .filter((w) => w.peak >= SCORING.good)
@@ -58,7 +57,7 @@ const isEpic = (w: Window): boolean => w.peak >= SCORING.epic && longEnough(w);
 
 export function decideVerdict(results: SpotResult[], opts: VerdictOptions): Verdict {
   const cands = candidates(results);
-  const bestSpotId = [...results].filter((r) => r.open).sort((a, b) => b.maxScore - a.maxScore)[0]?.spotId;
+  const bestSpotId = [...results].sort((a, b) => b.maxScore - a.maxScore)[0]?.spotId;
 
   if (opts.mode === 'now' || isWeekend(opts.date)) {
     const c = best(cands.filter((x) => longEnough(x.window)));

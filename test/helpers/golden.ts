@@ -10,10 +10,10 @@ export const GOLDEN_SPOTS: Spot[] = [KOMMETJIE_LONG_BEACH, MUIZENBERG];
 
 export function goldenSwell(): SwellHour[] {
   const tide = cosineTide(GOLDEN_DATE);
-  // periodS 10.2 = période moyenne (swell_wave_period, appel marine principal) ; peakPeriodS 13 = période pic
-  // (swell_wave_peak_period, appel gwam séparé) — celle qu'utilisent effectiveSwell/periodFactor/k(T) (§7.2).
+  // 3,5 m : note de base surf-forecast 5,92 → 6★ par vent propre, exactement le seuil `epic`.
+  // periodS 10.2 = période moyenne (swell_wave_period) ; peakPeriodS 13 = période pic (appel gwam séparé).
   return swellSeries('2026-09-15T00:00', '2026-09-17T23:00', (time) => ({
-    primary: { heightM: 2.0, periodS: 10.2, directionDeg: 225 }, secondary: NO_SWELL, seaLevelM: tide(time),
+    primary: { heightM: 3.5, periodS: 10.2, directionDeg: 225 }, secondary: NO_SWELL, seaLevelM: tide(time),
     peakPeriodS: 13,
   }));
 }
@@ -32,12 +32,15 @@ export function goldenWind(date = GOLDEN_DATE): WindHour[] {
   }));
 }
 
-/** 🟢 Kommetjie Long Beach 07:00→12:00 pic 10.0 (epic) ; Muizenberg fenêtre 07:00→10:00 pic 6.1 (sous le seuil `good`, en 🥈). */
+/**
+ * 🟢 epic : Kommetjie Long Beach 07:00→12:00, 6★ or (le SE y est offshore) ; Muizenberg à 2☆ blanches de
+ * 07:00 à 09:00 (le même SE y est cross-onshore), sans fenêtre, donc pas de 🥈.
+ */
 export function goldenReport(overrides: Partial<Report> = {}): Report {
   const swell = goldenSwell();
   const wind = goldenWind();
   const tide = computeTide(swell, GOLDEN_DATE);
-  const common = { level: 'intermediate' as const, board: 'shortboard' as const, date: GOLDEN_DATE, swell, wind, sun: SUN_SEPT, tide };
+  const common = { date: GOLDEN_DATE, swell, wind, sun: SUN_SEPT, tide };
   const spots = [
     evaluateSpot({ ...common, spot: KOMMETJIE_LONG_BEACH, distanceKm: 13.4 }),
     evaluateSpot({ ...common, spot: MUIZENBERG, distanceKm: 0 }),

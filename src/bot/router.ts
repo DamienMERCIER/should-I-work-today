@@ -1,15 +1,15 @@
 import { safeEqual, type FetchLike } from '../adapters/http';
 import type { Store } from '../adapters/kv';
 import type { Telegram, TgCallbackQuery, TgMessage, TgUpdate } from '../adapters/telegram';
-import { BOARDS, LANGS, LEVELS, DEFAULT_LOCATION, RADIUS_KM } from '../config';
+import { LANGS, DEFAULT_LOCATION, RADIUS_KM } from '../config';
 import { hasDaylightLeft } from '../engine/factors';
 import { haversineKm } from '../engine/geo';
 import { addDays, dateOf, floorHour } from '../engine/time';
 import { buildReport, type CollectDeps } from '../jobs/collect';
 import { detectLang, fill, STRINGS, type Strings } from '../render/i18n';
 import { detailsMarkupFor, goButtonsMarkup, renderDetails, renderEvening, renderSpotDay, spotName, type RenderCtx, allSpotOrder } from '../render/messages';
-import type { Board, Lang, Level, Profile, Region, Report, Spot } from '../types';
-import { boardKeyboard, langKeyboard, levelKeyboard, persistentKeyboard, profileKeyboard } from './keyboards';
+import type { Lang, Profile, Region, Report, Spot } from '../types';
+import { langKeyboard, persistentKeyboard, profileKeyboard } from './keyboards';
 import { newProfile, parseHours, profileSummary, welcomeText } from './profile';
 import { matchSpot, spotSlug, totalSpotCount } from './spotMatch';
 
@@ -206,15 +206,14 @@ async function handleStart(msg: TgMessage, profile: Profile | undefined, deps: B
       await deps.telegram.sendMessage(chatId, STRINGS[lang].privateBot);
       return;
     }
+    // Plus de questions : la note ne dépend ni du niveau ni de la planche, le profil est prêt tout de suite.
     const created = await deps.store.updateProfile(chatId, () => newProfile(chatId, lang, deps.now()));
     const s = STRINGS[created.lang];
-    await deps.telegram.sendMessage(chatId, s.onboarding.askLevel, levelKeyboard(s));
+    await deps.telegram.sendMessage(chatId, welcomeText(created, s), persistentKeyboard(s));
     return;
   }
   const s = STRINGS[profile.lang];
   const p = await deps.store.updateProfile(chatId, (cur) => ({ ...(cur ?? profile), active: true }));
-  if (p.onboarding === 'level') return void (await deps.telegram.sendMessage(chatId, s.onboarding.askLevel, levelKeyboard(s)));
-  if (p.onboarding === 'board') return void (await deps.telegram.sendMessage(chatId, s.onboarding.askBoard, boardKeyboard(s)));
   await deps.telegram.sendMessage(chatId, `${s.reactivated}\n${profileSummary(p, s)}`, persistentKeyboard(s));
 }
 
@@ -244,34 +243,11 @@ async function handleCallback(cb: TgCallbackQuery, deps: BotDeps): Promise<void>
   const [kind, value = ''] = (cb.data ?? '').split(':');
   const { telegram, store } = deps;
 
+  // `lvl:*`, `board:*`, `prof:level` et `prof:board` venaient de l'ancien onboarding : leurs boutons
+  // peuvent encore traîner dans l'historique d'un chat, ils tombent dans `default` et ne font rien.
   switch (kind) {
-    case 'lvl': {
-      if (!LEVELS.includes(value as Level)) return;
-      const p = await store.updateProfile(chatId, (cur) => {
-        const next = { ...(cur ?? profile), level: value as Level };
-        if (next.onboarding === 'level') next.onboarding = 'board';
-        return next;
-      });
-      if (p.onboarding === 'board') await telegram.sendMessage(chatId, s.onboarding.askBoard, boardKeyboard(s));
-      else await telegram.sendMessage(chatId, `${s.profile.saved}\n${profileSummary(p, s)}`);
-      return;
-    }
-    case 'board': {
-      if (!BOARDS.includes(value as Board)) return;
-      const wasOnboarding = profile.onboarding === 'board';
-      const p = await store.updateProfile(chatId, (cur) => {
-        const next = { ...(cur ?? profile), board: value as Board };
-        if (next.onboarding === 'board') delete next.onboarding;
-        return next;
-      });
-      if (wasOnboarding) await telegram.sendMessage(chatId, welcomeText(p, s), persistentKeyboard(s));
-      else await telegram.sendMessage(chatId, `${s.profile.saved}\n${profileSummary(p, s)}`);
-      return;
-    }
     case 'prof': {
-      if (value === 'level') await telegram.sendMessage(chatId, s.onboarding.askLevel, levelKeyboard(s));
-      else if (value === 'board') await telegram.sendMessage(chatId, s.onboarding.askBoard, boardKeyboard(s));
-      else if (value === 'hours') {
+      if (value === 'hours') {
         await store.updateProfile(chatId, (cur) => ({ ...(cur ?? profile), awaiting: 'hours' }));
         await telegram.sendMessage(chatId, s.profile.askHours);
       }

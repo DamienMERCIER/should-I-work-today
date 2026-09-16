@@ -4,9 +4,10 @@ export const DATE = '2026-09-16';
 
 export function makeHour(time: string, score: number, factors: Partial<HourFactors> = {}): SpotHour {
   return {
-    time, faceFt: 4, periodS: 12, swellDirDeg: 225, windKt: 8, windDirDeg: 120, gustKt: 12, windRelation: 'offshore',
+    time, heightM: 2, periodS: 12, swellDirDeg: 225, windKt: 8, windDirDeg: 120, windState: 'off',
     tide: { state: 'mid', trend: 'rising' },
-    factors: { size: 1, period: 1, wind: 1, tide: 1, day: 1, weather: 1, ...factors },
+    stars: score, clean: true,
+    factors: { swell: 0.4, wind: 1, day: 1, weather: 1, ...factors },
     score,
   };
 }
