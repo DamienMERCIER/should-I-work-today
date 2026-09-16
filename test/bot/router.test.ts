@@ -34,7 +34,7 @@ const cb = (data: string, chatId = 1): TgUpdate => ({
   callback_query: { id: 'cb1', from: { id: chatId }, message: { message_id: 1, chat: { id: chatId, type: 'private' } }, data },
 });
 const ready = (over: Partial<Profile> = {}): Profile => ({
-  chatId: 1, lang: 'fr', level: 'intermediate', board: 'shortboard', workHours: { start: '09:00', end: '18:00' },
+  chatId: 1, lang: 'en', level: 'intermediate', board: 'shortboard', workHours: { start: '09:00', end: '18:00' },
   location: { lat: -34.1085, lon: 18.4715, source: 'default' }, active: true, createdAt: '2026-09-15T19:00', ...over,
 });
 
@@ -47,7 +47,7 @@ describe('parseHours', () => {
     expect(parseHours('8h15 - 17h45')).toEqual({ start: '08:15', end: '17:45' });
     expect(parseHours('18h-9h')).toBeNull();
     expect(parseHours('25h-3h')).toBeNull();
-    expect(parseHours('bonjour')).toBeNull();
+    expect(parseHours('hello')).toBeNull();
   });
 });
 
@@ -55,7 +55,7 @@ describe('/start and onboarding', () => {
   it('refuses strangers without the invite code', async () => {
     const { deps, store, sent } = setup({ inviteCode: 'surf' });
     await handleUpdate(msg('/start'), deps);
-    expect(sent()[0].text).toBe("Bot privé — il faut le lien d'invitation.");
+    expect(sent()[0].text).toBe('Private bot — you need the invite link.');
     expect(await store.getProfile(1)).toBeUndefined();
   });
   it('creates a profile in the detected language and walks the two taps', async () => {
@@ -82,14 +82,14 @@ describe('/start and onboarding', () => {
   it('refuses every /start when no invite code is configured', async () => {
     const { deps, store, sent } = setup();
     await handleUpdate(msg('/start'), deps);
-    expect(sent()[0].text).toBe("Bot privé — il faut le lien d'invitation.");
+    expect(sent()[0].text).toBe('Private bot — you need the invite link.');
     expect(await store.getProfile(1)).toBeUndefined();
   });
   it('re-asks the pending question on /start during onboarding', async () => {
     const { deps, sent } = setup({ inviteCode: 'surf' });
     await handleUpdate(msg('/start surf'), deps);
     await handleUpdate(msg('/start surf'), deps);
-    expect(sent().map((m) => m.text)).toEqual(['Salut ! Deux questions et on est partis. Ton niveau ?', 'Salut ! Deux questions et on est partis. Ton niveau ?']);
+    expect(sent().map((m) => m.text)).toEqual(['Hey! Two questions and we are set. Your level?', 'Hey! Two questions and we are set. Your level?']);
   });
   it('/stop deactivates, /start reactivates with the keyboard and the profile summary', async () => {
     const { deps, store, sent } = setup();
@@ -98,9 +98,9 @@ describe('/start and onboarding', () => {
     expect((await store.getProfile(1))?.active).toBe(false);
     await handleUpdate(msg('/start'), deps);
     expect((await store.getProfile(1))?.active).toBe(true);
-    expect(sent()[1].text.startsWith('Content de te revoir — ton profil est toujours là.')).toBe(true);
-    expect(sent()[1].text).toContain('Niveau : Intermédiaire');
-    expect(sent()[1].reply_markup.keyboard[1].map((b: { text: string }) => b.text)).toEqual(['🏠 Retour à Muizenberg', '🔎 Maintenant']);
+    expect(sent()[1].text.startsWith('Good to see you again — your profile is still here.')).toBe(true);
+    expect(sent()[1].text).toContain('Level: Intermediate');
+    expect(sent()[1].reply_markup.keyboard[1].map((b: { text: string }) => b.text)).toEqual(['🏠 Back to Muizenberg', '🔎 Right now']);
   });
 });
 
@@ -111,16 +111,16 @@ describe('location and /now', () => {
     await handleUpdate(msg(undefined, { location: { latitude: -34.12, longitude: 18.45 } }), deps);
     expect((await store.getProfile(1))?.location).toEqual({ lat: -34.12, lon: 18.45, source: 'custom' });
     expect(omCalls).toHaveLength(2);
-    expect(sent()[0].text.startsWith("🟢 <b>VA SURFER</b> (aujourd'hui)")).toBe(true);
-    expect(sent()[0].text.endsWith('Position enregistrée — le verdict de 19h utilisera cette position.')).toBe(true);
-    expect(sent()[0].reply_markup).toEqual({ inline_keyboard: [[{ text: '📋 Tous les spots', callback_data: 'rep:2026-09-16' }]] });
+    expect(sent()[0].text.startsWith('🟢 <b>GO SURF</b> (today)')).toBe(true);
+    expect(sent()[0].text.endsWith('Location saved — the 19:00 verdict will use it.')).toBe(true);
+    expect(sent()[0].reply_markup).toEqual({ inline_keyboard: [[{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }]] });
   });
   it('the home button resets the location', async () => {
     const { deps, store, sent } = setup();
     await store.putProfiles({ '1': ready({ location: { lat: -34.12, lon: 18.45, source: 'custom' } }) });
-    await handleUpdate(msg('🏠 Retour à Muizenberg'), deps);
+    await handleUpdate(msg('🏠 Back to Muizenberg'), deps);
     expect((await store.getProfile(1))?.location).toEqual({ lat: -34.1085, lon: 18.4715, source: 'default' });
-    expect(sent()[0].text).toBe('Position : retour à Muizenberg.');
+    expect(sent()[0].text).toBe('Location: back to Muizenberg.');
   });
   it('/now and the 🔎 button (in either language) evaluate the rest of the day', async () => {
     const { deps, store, sent } = setup();
@@ -128,7 +128,7 @@ describe('location and /now', () => {
     await handleUpdate(msg('/now'), deps);
     await handleUpdate(msg('🔎 Сейчас'), deps);
     expect(sent()).toHaveLength(2);
-    expect(sent()[1].text).toContain('Kommetjie – Long Beach · 8h–12h · 8.6/10');
+    expect(sent()[1].text).toContain('Kommetjie – Long Beach · 8:00–12:00 · 8.6/10');
   });
 });
 
@@ -137,22 +137,22 @@ describe('/profil, hours, /lang, help', () => {
     const { deps, store, sent } = setup();
     await store.putProfiles({ '1': ready() });
     await handleUpdate(msg('/profil'), deps);
-    expect(sent()[0].text).toBe('Profil\nNiveau : Intermédiaire\nPlanche : Shortboard\nBoulot : 9h–18h\nPosition : Muizenberg (par défaut)');
+    expect(sent()[0].text).toBe('Profile\nLevel: Intermediate\nBoard: Shortboard\nWork: 9:00–18:00\nLocation: Muizenberg (default)');
     expect(sent()[0].reply_markup.inline_keyboard[0].map((b: { callback_data: string }) => b.callback_data)).toEqual(['prof:level', 'prof:board', 'prof:hours']);
 
     await handleUpdate(cb('prof:hours'), deps);
     expect((await store.getProfile(1))?.awaiting).toBe('hours');
-    expect(sent()[1].text).toBe('Envoie tes heures de boulot, ex. 9h-18h');
+    expect(sent()[1].text).toBe('Send your work hours, e.g. 9-18');
 
     await handleUpdate(msg('25h-3h'), deps);
-    expect(sent()[2].text).toBe("Je n'ai pas compris. Format : 9h-18h");
+    expect(sent()[2].text).toBe("I didn't get that. Format: 9-18");
     expect((await store.getProfile(1))?.awaiting).toBe('hours');
 
     await handleUpdate(msg('10h-19h'), deps);
     const p = await store.getProfile(1);
     expect(p?.workHours).toEqual({ start: '10:00', end: '19:00' });
     expect(p?.awaiting).toBeUndefined();
-    expect(sent()[3].text.startsWith('Enregistré.')).toBe(true);
+    expect(sent()[3].text.startsWith('Saved.')).toBe(true);
   });
   it('a command escapes the awaiting state', async () => {
     const { deps, store, sent } = setup();
@@ -169,13 +169,13 @@ describe('/profil, hours, /lang, help', () => {
     await handleUpdate(cb('lvl:advanced'), deps);
     expect((await store.getProfile(1))?.level).toBe('advanced');
     expect((await store.getProfile(1))?.onboarding).toBeUndefined();
-    expect(sent()[1].text.startsWith('Enregistré.\nProfil')).toBe(true);
+    expect(sent()[1].text.startsWith('Saved.\nProfile')).toBe(true);
   });
   it('/lang switches the language and the keyboard', async () => {
     const { deps, store, sent } = setup();
     await store.putProfiles({ '1': ready() });
     await handleUpdate(msg('/lang'), deps);
-    expect(sent()[0].reply_markup.inline_keyboard[0].map((b: { callback_data: string }) => b.callback_data)).toEqual(['lang:fr', 'lang:ru']);
+    expect(sent()[0].reply_markup.inline_keyboard[0].map((b: { callback_data: string }) => b.callback_data)).toEqual(['lang:en', 'lang:ru']);
     await handleUpdate(cb('lang:ru'), deps);
     expect((await store.getProfile(1))?.lang).toBe('ru');
     expect(sent()[1].text).toBe('Язык: русский');
@@ -189,7 +189,7 @@ describe('/profil, hours, /lang, help', () => {
     await handleUpdate(msg('hello', { chat: { id: -5, type: 'group' } }), deps);
     expect(sent()).toHaveLength(0);
     await handleUpdate(msg('hello'), deps);
-    expect(sent()[0].text.startsWith('Commandes :')).toBe(true);
+    expect(sent()[0].text.startsWith('Commands:')).toBe(true);
   });
 });
 
@@ -220,11 +220,11 @@ describe('📋 details callback', () => {
     await store.putProfiles({ '1': ready() });
     await store.putReports('2026-09-16', { '1': goldenReport() });
     await handleUpdate(cb('rep:2026-09-16'), deps);
-    expect(sent()[0].text.startsWith('📋 <b>Tous les spots</b> (mer. 16 sept.)')).toBe(true);
+    expect(sent()[0].text.startsWith('📋 <b>All spots</b> (Wed 16 Sept)')).toBe(true);
     await handleUpdate(cb('rep:2026-09-17'), deps);
-    expect(sent()[1].text.startsWith('📋 <b>Tous les spots</b> (jeu. 17 sept.)')).toBe(true);
+    expect(sent()[1].text.startsWith('📋 <b>All spots</b> (Thu 17 Sept)')).toBe(true);
     await handleUpdate(cb('rep:2020-01-01'), deps);
-    expect(sent()[2].text).toBe('Trop ancien — fais /now.');
+    expect(sent()[2].text).toBe('Too old — run /now.');
     expect(answered()).toBe(3);
   });
 });

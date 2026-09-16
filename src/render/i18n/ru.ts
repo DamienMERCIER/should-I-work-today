@@ -35,7 +35,7 @@ export const ru: Strings = {
     changeBoard: 'Доска',
     changeHours: 'Часы',
   },
-  lang: { ask: 'Langue / Язык', set: 'Язык: русский' },
+  lang: { ask: 'Language / Язык', set: 'Язык: русский' },
   stopped: 'Ок, больше не пишу. /start — чтобы вернуться.',
   reactivated: 'С возвращением — профиль на месте.',
   locationSaved: 'Позиция сохранена — вечерний прогноз в 19:00 будет для неё.',

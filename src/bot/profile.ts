@@ -37,9 +37,9 @@ export function profileSummary(p: Profile, s: Strings): string {
     : fill(s.profile.locationCustom, { lat: p.location.lat.toFixed(3), lon: p.location.lon.toFixed(3) });
   return fill(s.profile.summary, {
     level: s.levels[p.level], board: s.boards[p.board],
-    start: fmtTime(p.workHours.start, p.lang), end: fmtTime(p.workHours.end, p.lang), location,
+    start: fmtTime(p.workHours.start), end: fmtTime(p.workHours.end), location,
   });
 }
 
 export const welcomeText = (p: Profile, s: Strings): string =>
-  fill(s.onboarding.welcome, { home: DEFAULT_LOCATION_NAME, start: fmtTime(p.workHours.start, p.lang), end: fmtTime(p.workHours.end, p.lang) });
+  fill(s.onboarding.welcome, { home: DEFAULT_LOCATION_NAME, start: fmtTime(p.workHours.start), end: fmtTime(p.workHours.end) });

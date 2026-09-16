@@ -10,7 +10,7 @@ import { MemoryKV } from '../helpers/memoryKv';
 import { openMeteoServer } from '../helpers/openMeteoServer';
 
 const ready = (chatId: number, over: Partial<Profile> = {}): Profile => ({
-  chatId, lang: 'fr', level: 'intermediate', board: 'shortboard', workHours: { start: '09:00', end: '18:00' },
+  chatId, lang: 'en', level: 'intermediate', board: 'shortboard', workHours: { start: '09:00', end: '18:00' },
   location: { lat: -34.1085, lon: 18.4715, source: 'default' }, active: true, createdAt: '2026-09-15T19:00', ...over,
 });
 const JOBURG = { lat: -26.2, lon: 28.04, source: 'custom' as const };
@@ -42,10 +42,10 @@ describe('runEvening', () => {
     expect(result).toEqual({ skipped: false, sent: 3, failed: 0, date: '2026-09-16' });
     expect(omCalls).toHaveLength(2); // une région, le profil de Johannesburg est loin de tout
     expect(sent().map((m) => m.chat_id)).toEqual([1, 2, 5]);
-    expect(sent()[0].text.startsWith('🟢 <b>NE VA PAS TRAVAILLER DEMAIN</b> (mer. 16 sept.)')).toBe(true);
+    expect(sent()[0].text.startsWith("🟢 <b>DON'T GO TO WORK TOMORROW</b> (Wed 16 Sept)")).toBe(true);
     expect(sent()[1].text).toContain('ЗАВТРА НЕ ИДИ НА РАБОТУ');
-    expect(sent()[2].text.startsWith('📍 Aucun spot connu')).toBe(true);
-    expect(sent()[0].reply_markup).toEqual({ inline_keyboard: [[{ text: '📋 Tous les spots', callback_data: 'rep:2026-09-16' }]] });
+    expect(sent()[2].text.startsWith('📍 No known spot')).toBe(true);
+    expect(sent()[0].reply_markup).toEqual({ inline_keyboard: [[{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }]] });
     expect(sent()[2].reply_markup).toBeUndefined();
     const reports = await store.getReports('2026-09-16');
     expect(Object.keys(reports).sort()).toEqual(['1', '2', '5']);
@@ -79,7 +79,7 @@ describe('runEvening', () => {
     const { deps, sent, seed } = setup({ now: '2026-09-15T19:00', failMarine: true });
     await seed([ready(1)]);
     await runEvening(deps);
-    expect(sent()[0].text).toBe('⚠️ Pas de données (Open-Meteo injoignable). Réessaie /now plus tard.');
+    expect(sent()[0].text).toBe('⚠️ No data (Open-Meteo unreachable). Try /now later.');
   });
   it('escapes HTML in admin notifications', async () => {
     const { deps, sent } = setup({ now: '2026-09-15T19:00' });
@@ -100,8 +100,8 @@ describe('runMorning', () => {
     const result = await runMorning(deps);
     expect(result).toEqual({ skipped: false, sent: 2, failed: 0, date: '2026-09-16' });
     expect(sent().map((m) => m.chat_id)).toEqual([1, 2]);
-    expect(sent()[0].text).toBe('✅ Confirmé : 🟢 Kommetjie – Long Beach 7h–12h');
-    expect(sent()[1].text.startsWith('⚠️ Changement : 🔴 va bosser → 🟢 Kommetjie – Long Beach 7h–12h')).toBe(true);
+    expect(sent()[0].text).toBe('✅ Confirmed: 🟢 Kommetjie – Long Beach 7:00–12:00');
+    expect(sent()[1].text.startsWith('⚠️ Change: 🔴 go to work → 🟢 Kommetjie – Long Beach 7:00–12:00')).toBe(true);
     const reports = await store.getReports('2026-09-16');
     expect(reports['1'].mode).toBe('morning');
     expect(reports['5'].mode).toBe('morning');
@@ -113,7 +113,7 @@ describe('runMorning', () => {
     const writesBeforeRun = kv.writes.filter((k) => k === 'reports:2026-09-16').length;
     await runMorning(deps);
     expect(sent().map((m) => m.chat_id)).toEqual([1]);
-    expect(sent()[0].text).toBe("⚠️ Pas de données ce matin — le verdict d'hier soir reste : 🟢 Kommetjie – Long Beach 7h–12h");
+    expect(sent()[0].text).toBe("⚠️ No data this morning — last night's verdict stands: 🟢 Kommetjie – Long Beach 7:00–12:00");
     expect((await store.getReports('2026-09-16'))['1'].mode).toBe('evening');
     // un envoi a eu lieu (chat 1) : le run fait bien ses deux écritures (première + sentAt).
     expect(kv.writes.filter((k) => k === 'reports:2026-09-16').length - writesBeforeRun).toBe(2);
@@ -122,7 +122,7 @@ describe('runMorning', () => {
     const { deps, sent, seed } = setup({ now: '2026-09-16T06:00' });
     await seed([ready(1)]);
     await runMorning(deps);
-    expect(sent()[0].text.startsWith('⚠️ Changement : 🔴 va bosser → 🟢')).toBe(true);
+    expect(sent()[0].text.startsWith('⚠️ Change: 🔴 go to work → 🟢')).toBe(true);
   });
   it('writes reports only once when nothing is sent (silent run: Johannesburg is out of coverage evening and morning)', async () => {
     const { deps, kv, sent, seed } = setup({ now: '2026-09-16T06:00' });

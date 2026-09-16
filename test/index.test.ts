@@ -68,7 +68,7 @@ describe('webhook', () => {
     await handleWebhookRequest(post({ ...update, message: { ...update.message, text: '/now' } }, 's3cret'), env, ctx, deps);
     await flush();
     const bodies = tgCalls.map((c) => JSON.parse(String(c.init?.body)) as { chat_id: number; text: string });
-    expect(bodies.find((b) => b.chat_id === 1)?.text).toBe('⚠️ Erreur, réessaie.');
+    expect(bodies.find((b) => b.chat_id === 1)?.text).toBe('⚠️ Error, try again.');
     expect(bodies.find((b) => b.chat_id === 999)?.text).toContain('kv down');
   });
   it('reports a handler crash to the user in their own language (RU)', async () => {
@@ -85,7 +85,7 @@ describe('webhook', () => {
 describe('crons', () => {
   it('dispatches the evening and morning crons and ignores unknown ones', async () => {
     const { deps, kv } = setup();
-    await deps.store.putProfiles({ '1': { chatId: 1, lang: 'fr', level: 'intermediate', board: 'both', workHours: { start: '09:00', end: '18:00' }, location: { lat: -34.1085, lon: 18.4715, source: 'default' }, active: true, createdAt: 'x' } });
+    await deps.store.putProfiles({ '1': { chatId: 1, lang: 'en', level: 'intermediate', board: 'both', workHours: { start: '09:00', end: '18:00' }, location: { lat: -34.1085, lon: 18.4715, source: 'default' }, active: true, createdAt: 'x' } });
     await runCron('0 17 * * *', deps);
     expect(kv.data.has('run:2026-09-16:evening')).toBe(true);
     await runCron('0 4 * * *', deps);

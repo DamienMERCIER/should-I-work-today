@@ -32,5 +32,5 @@ export const profileKeyboard = (s: Strings): ReplyMarkup => ({
 });
 
 export const langKeyboard = (): ReplyMarkup => ({
-  inline_keyboard: [[{ text: 'Français', callback_data: 'lang:fr' }, { text: 'Русский', callback_data: 'lang:ru' }]],
+  inline_keyboard: [[{ text: 'English', callback_data: 'lang:en' }, { text: 'Русский', callback_data: 'lang:ru' }]],
 });

@@ -1,10 +1,10 @@
 import type { Lang } from '../../types';
-import { fr } from './fr';
+import { en } from './en';
 import { ru } from './ru';
 import type { Strings } from './types';
 
 export type { Strings };
-export const STRINGS: Record<Lang, Strings> = { fr, ru };
+export const STRINGS: Record<Lang, Strings> = { en, ru };
 
 /** Remplace chaque `{clé}` ; une clé absente est un bug de template → erreur. */
 export function fill(template: string, vars: Record<string, string | number>): string {
@@ -17,5 +17,5 @@ export function fill(template: string, vars: Record<string, string | number>): s
 
 /** `language_code` Telegram → langue du bot (§2, décision 11). */
 export function detectLang(languageCode?: string): Lang {
-  return languageCode?.toLowerCase().startsWith('ru') ? 'ru' : 'fr';
+  return languageCode?.toLowerCase().startsWith('ru') ? 'ru' : 'en';
 }

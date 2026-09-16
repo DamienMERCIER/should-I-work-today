@@ -24,10 +24,10 @@ export interface BotDeps {
 
 const LEVELS: readonly Level[] = ['beginner', 'intermediate', 'advanced'];
 const BOARDS: readonly Board[] = ['longboard', 'shortboard', 'both'];
-const LANGS: readonly Lang[] = ['fr', 'ru'];
+const LANGS: readonly Lang[] = ['en', 'ru'];
 
 const isButton = (text: string, key: 'backHome' | 'now'): boolean =>
-  text === STRINGS.fr.buttons[key] || text === STRINGS.ru.buttons[key];
+  text === STRINGS.en.buttons[key] || text === STRINGS.ru.buttons[key];
 
 /** Un chat_id Telegram est toujours un entier ; refuse toute autre valeur (ex. "__proto__") avant tout accès au store. */
 const isChatId = (x: unknown): x is number => Number.isInteger(x);

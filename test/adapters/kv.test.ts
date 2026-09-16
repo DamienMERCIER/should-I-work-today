@@ -5,7 +5,7 @@ import { makeReport } from '../helpers/reports';
 import type { Profile } from '../../src/types';
 
 const profile = (chatId: number): Profile => ({
-  chatId, lang: 'fr', level: 'intermediate', board: 'both', workHours: { start: '09:00', end: '18:00' },
+  chatId, lang: 'en', level: 'intermediate', board: 'both', workHours: { start: '09:00', end: '18:00' },
   location: { lat: -34.1085, lon: 18.4715, source: 'default' }, active: true, createdAt: '2026-09-15T19:00',
 });
 

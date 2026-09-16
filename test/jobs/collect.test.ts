@@ -7,7 +7,7 @@ import { openMeteoServer } from '../helpers/openMeteoServer';
 import { GOLDEN_DAILY, GOLDEN_DATE, GOLDEN_SPOTS, goldenSwell, goldenWind } from '../helpers/golden';
 
 const profile = (over: Partial<Profile> = {}): Profile => ({
-  chatId: 1, lang: 'fr', level: 'intermediate', board: 'shortboard', workHours: { start: '09:00', end: '18:00' },
+  chatId: 1, lang: 'en', level: 'intermediate', board: 'shortboard', workHours: { start: '09:00', end: '18:00' },
   location: { lat: -34.1085, lon: 18.4715, source: 'default' }, active: true, createdAt: '2026-09-15T19:00', ...over,
 });
 const server = (over: Partial<Parameters<typeof openMeteoServer>[0]> = {}) =>

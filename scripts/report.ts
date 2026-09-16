@@ -41,7 +41,7 @@ const mode = choice('mode', ['evening', 'now'] as const, date === dateOf(now) ? 
 const custom = arg('lat') !== undefined || arg('lon') !== undefined;
 const profile: Profile = {
   chatId: 0,
-  lang: choice('lang', ['fr', 'ru'] as const, 'fr'),
+  lang: choice('lang', ['en', 'ru'] as const, 'en'),
   level: choice('level', ['beginner', 'intermediate', 'advanced'] as const, 'intermediate'),
   board: choice('board', ['longboard', 'shortboard', 'both'] as const, 'both'),
   workHours: { ...DEFAULT_WORK_HOURS },

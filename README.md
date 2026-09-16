@@ -4,7 +4,7 @@ Bot Telegram qui dit chaque soir à 19h (SAST) s'il faut aller travailler le len
 
 ## Commandes du bot
 
-`/start <code>` · `📍 Utilise ma position` · `🏠 Retour à Muizenberg` · `🔎 Maintenant` / `/now` · `/profil` · `/lang` · `/stop` · bouton `📋 Tous les spots`.
+`/start <code>` · `📍 Use my location` · `🏠 Back to Muizenberg` · `🔎 Right now` / `/now` · `/profil` · `/lang` · `/stop` · bouton `📋 All spots`.
 
 ## Développement
 
@@ -22,12 +22,12 @@ Variables locales dans `.dev.vars` (ignoré par git) : `TELEGRAM_BOT_TOKEN`, `WE
 
 ## Mise en production (une fois)
 
-1. BotFather → `/newbot` → token. `/setcommands` : `now - le reste de la journée`, `profil - niveau, planche, heures`, `lang - langue`, `stop - plus de messages`.
+1. BotFather → `/newbot` → token. `/setcommands` : `now - the rest of the day`, `profil - level, board, hours`, `lang - language`, `stop - no more messages`.
 2. `npx wrangler login`, puis `npx wrangler kv namespace create KV` → coller l'`id` dans `wrangler.toml`.
 3. Secrets : `npx wrangler secret put TELEGRAM_BOT_TOKEN`, `WEBHOOK_SECRET` (chaîne aléatoire, ex. `openssl rand -hex 24`), `INVITE_CODE` (**obligatoire** — le bot refuse tout `/start` sans lui ; ex. `openssl rand -hex 8`), `ADMIN_CHAT_ID` (ton `chat_id` — envoie `/start` au bot, lis `wrangler tail`, ou utilise @userinfobot).
 4. `npm run deploy` → URL `https://should-i-work.<sous-domaine>.workers.dev`.
 5. `TELEGRAM_BOT_TOKEN=… WEBHOOK_SECRET=… WORKER_URL=https://… npm run set-webhook`.
-6. Depuis Telegram : `https://t.me/<bot>?start=<INVITE_CODE>`, deux taps, puis `🔎 Maintenant`.
+6. Depuis Telegram : `https://t.me/<bot>?start=<INVITE_CODE>`, deux taps, puis `🔎 Right now`.
 7. GitHub (repo privé) → secrets `CLOUDFLARE_API_TOKEN` (template « Edit Cloudflare Workers ») et `CLOUDFLARE_ACCOUNT_ID` → chaque push sur `main` déploie.
 
 ## Exploitation

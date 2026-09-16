@@ -1,6 +1,6 @@
 export type Level = 'beginner' | 'intermediate' | 'advanced';
 export type Board = 'longboard' | 'shortboard' | 'both';
-export type Lang = 'fr' | 'ru';
+export type Lang = 'en' | 'ru';
 export type TideState = 'low' | 'mid' | 'high';
 export type TideTrend = 'rising' | 'falling';
 export type WindRelation = 'offshore' | 'cross' | 'onshore';
