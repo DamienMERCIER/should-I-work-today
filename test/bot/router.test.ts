@@ -10,6 +10,7 @@ import { GOLDEN_DAILY, GOLDEN_SPOTS, goldenReport, goldenSwell, goldenWind } fro
 import { MemoryKV } from '../helpers/memoryKv';
 import { openMeteoServer } from '../helpers/openMeteoServer';
 import { OUTER_KOM } from '../helpers/spots';
+import { ALL_SPOTS_CAP } from '../../src/render/messages';
 
 const NOW = '2026-09-16T08:30';
 
@@ -77,7 +78,8 @@ describe('/start and onboarding', () => {
     expect(p?.board).toBe('both');
     expect(p?.onboarding).toBeUndefined();
     expect(sent()[2].text.startsWith('Готово.')).toBe(true);
-    expect(sent()[2].reply_markup.keyboard[0][0]).toEqual({ text: '📍 Использовать моё местоположение', request_location: true });
+    expect(sent()[2].reply_markup.keyboard[0][0]).toEqual({ text: '🔎 Сейчас' });
+    expect(sent()[2].reply_markup.keyboard[1][1]).toEqual({ text: '📍 Использовать моё местоположение', request_location: true });
     expect(answered()).toBe(2);
   });
   it('refuses every /start when no invite code is configured', async () => {
@@ -101,7 +103,8 @@ describe('/start and onboarding', () => {
     expect((await store.getProfile(1))?.active).toBe(true);
     expect(sent()[1].text.startsWith('Good to see you again — your profile is still here.')).toBe(true);
     expect(sent()[1].text).toContain('Level: Intermediate');
-    expect(sent()[1].reply_markup.keyboard[1].map((b: { text: string }) => b.text)).toEqual(['🏠 Back to Muizenberg', '🔎 Right now']);
+    expect(sent()[1].reply_markup.keyboard[0].map((b: { text: string }) => b.text)).toEqual(['🔎 Right now']);
+    expect(sent()[1].reply_markup.keyboard[1].map((b: { text: string }) => b.text)).toEqual(['🏠 Back to Muizenberg', '📍 Use my location']);
   });
 });
 
@@ -187,7 +190,7 @@ describe('/profil, hours, /lang, help', () => {
     await handleUpdate(cb('lang:ru'), deps);
     expect((await store.getProfile(1))?.lang).toBe('ru');
     expect(sent()[1].text).toBe('Язык: русский');
-    expect(sent()[1].reply_markup.keyboard[1][1].text).toBe('🔎 Сейчас');
+    expect(sent()[1].reply_markup.keyboard[0][0].text).toBe('🔎 Сейчас');
   });
   it('unknown text gets the help, unknown users and groups get nothing', async () => {
     const { deps, store, sent } = setup();
@@ -255,6 +258,33 @@ describe('/all, /<spot> and /about', () => {
         [{ text: '📍 Go to Muizenberg', url: 'https://www.google.com/maps/search/?api=1&query=-34.1085%2C18.4715' }],
       ],
     });
+  });
+
+  it('/all in a dense cluster caps at ALL_SPOTS_CAP rows and keeps the trailing command line in exact sync with them (§report "Resilience, wiring and dedupe")', async () => {
+    const n = 80;
+    const manySpots: Spot[] = Array.from({ length: n }, (_, i) => ({
+      id: `world-${i}`, name: `World Spot ${i}`, short: `W${i}`, region: 'cape-peninsula', lat: 0, lon: 0, facing: 0,
+      swellWindow: [0, 90], exposure: 0.7, tide: { best: [], forbidden: [] }, levels: {}, character: 'punchy', verified: false,
+    }));
+    const manyResults: SpotResult[] = manySpots.map((s, i) => ({ spotId: s.id, distanceKm: 1, open: true, hours: [], windows: [], best: undefined, maxScore: n - i }));
+
+    const { deps, store, sent } = setup({ spots: manySpots });
+    await store.putProfiles({ '1': ready() });
+    // verdict: 'red' (no spotId pick) so openSpotOrder falls back to the highest-scoring OPEN spot in
+    // `spots` (world-0) — goldenReport()'s default verdict picks kommetjie-long-beach, which isn't in
+    // this report's (fully replaced) spots array at all.
+    await store.putReports('2026-09-16', { '1': goldenReport({ spots: manyResults, verdict: { kind: 'red' } }) });
+    await handleUpdate(msg('/all'), deps);
+
+    const text = sent()[0].text;
+    expect(text.length).toBeLessThan(2500); // comfortably under Telegram's 4096-char limit
+    expect(text).toContain('+49 more open spots not shown'); // 80 - 1 primary - 30 shown
+
+    const commandLine = text.trim().split('\n').pop()!;
+    const commands = commandLine.split(' · ');
+    expect(commands).toHaveLength(1 + ALL_SPOTS_CAP); // primary + capped others, never all 80
+    expect(commands[0]).toBe('/w0'); // primary: highest score
+    expect(commands[commands.length - 1]).toBe(`/w${ALL_SPOTS_CAP}`); // the ALL_SPOTS_CAP-th other — same set as the rows above
   });
 
   it('/<spot> renders that spot\'s day for a spot with a window (fresh now-mode computation, nothing stored)', async () => {

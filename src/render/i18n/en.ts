@@ -19,7 +19,9 @@ export const en: Strings = {
     welcome:
       'All set. Every evening at 19:00 I tell you whether to work tomorrow.\n' +
       'Location: {home} · work {start}–{end}.\n' +
-      '📍 send your location if you move · 🔎 conditions right now · /profile to change level, board or hours\n' +
+      '📍 send your location if you move\n' +
+      '🔎 conditions right now\n' +
+      '/profile to change level, board or hours\n' +
       'Data: Open-Meteo.com (CC-BY 4.0)',
   },
   privateBot: 'Private bot — you need the invite link.',
@@ -79,6 +81,7 @@ export const en: Strings = {
     bestAt: 'best at {time} — {reasons}',
     fadesFrom: 'fades from {time} — {reasons}',
     flatSpots: '{n} spots flat all day',
+    moreSpots: '+{n} more open spots not shown — try /<spot>',
     sun: '🌅 {sunrise} · 🌇 {sunset}',
     closedSpot: 'closed for your level',
     reasons: {

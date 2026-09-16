@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { SPOTS } from '../../src/data/index';
-import { matchSpot, spotSlug } from '../../src/bot/spotMatch';
+import { allWorldTuples, worldSpotId } from '../../src/data/world';
+import type { SpotTuple } from '../../src/data/world';
+import { matchSpot, spotSlug, totalSpotCount } from '../../src/bot/spotMatch';
 
 const byId = (id: string) => {
   const spot = SPOTS.find((s) => s.id === id);
@@ -93,5 +95,90 @@ describe('matchSpot against the real 35-spot database', () => {
 
   it('returns none for empty input', () => {
     expect(matchSpot('', SPOTS)).toEqual({ kind: 'none' });
+  });
+});
+
+describe('matchSpot against a synthetic world set (§report "Resilience, wiring and dedupe")', () => {
+  const WORLD: SpotTuple[] = [
+    ['Praia do Guincho', 'Guincho', -38.7325, -9.4723, 280, 0],
+    ['Kalk Bay Left', 'Kalk Left', -34.5, 18.6, 150, 1], // shares a "kalk_bay"-ish prefix with curated Kalk Bay
+  ];
+
+  it('matches an exact slug that only exists in the world set', () => {
+    const m = matchSpot('guincho', SPOTS, WORLD);
+    expect(m.kind).toBe('one');
+    if (m.kind === 'one') expect(m.spot.name).toBe('Praia do Guincho');
+  });
+
+  it('matches an exact id-with-underscores that only exists in the world set — id and slug differ, so this isolates the id tier', () => {
+    const [name, , lat, lon] = WORLD[0];
+    const idQuery = worldSpotId(name, lat, lon).replace(/-/g, '_'); // e.g. "praia-do-guincho-s38...-w9..." -> underscored
+    expect(idQuery).not.toBe('guincho'); // sanity: genuinely a different string from the slug tier
+    const m = matchSpot(idQuery, SPOTS, WORLD);
+    expect(m).toEqual({ kind: 'one', spot: expect.objectContaining({ name: 'Praia do Guincho' }) });
+  });
+
+  it('a substring match reaches the world set, not just curated', () => {
+    const m = matchSpot('praia', SPOTS, WORLD);
+    expect(m.kind).toBe('one');
+    if (m.kind === 'one') expect(m.spot.name).toBe('Praia do Guincho');
+  });
+
+  it('a query matching one curated AND one world spot at the same tier is ambiguous — a real collision risk since world data is unverified', () => {
+    // "reef" already matches two curated spots (kalk-bay-reef, nahoon-reef) as a substring (see above).
+    // Add a world spot whose slug also contains "reef" and confirm the ambiguous set grows to include it.
+    const worldReef: SpotTuple = ['World Reef Spot', 'World Reef', 10, 10, 0, 1];
+    const m = matchSpot('reef', SPOTS, [worldReef]);
+    expect(m.kind).toBe('ambiguous');
+    if (m.kind === 'ambiguous') {
+      expect(m.spots.map((s) => s.name).sort()).toEqual(['Kalk Bay Reef', 'Nahoon Reef (East London)', 'World Reef Spot'].sort());
+    }
+  });
+
+  it('an exact slug in the world set still wins over a fuzzy curated candidate (tier ordering preserved)', () => {
+    // "kalk_left" is an exact slug for the world spot and not a substring/prefix collision with curated
+    // Kalk Bay's slug ("kalk_bay") — confirms the exact-tier check runs (and can resolve) before fuzzy.
+    const m = matchSpot('kalk_left', SPOTS, WORLD);
+    expect(m).toEqual({ kind: 'one', spot: expect.objectContaining({ name: 'Kalk Bay Left' }) });
+  });
+
+  it('with the real (currently empty) spots-world.json, matchSpot is unchanged from curated-only behaviour', () => {
+    expect(allWorldTuples()).toEqual([]);
+    expect(matchSpot('long_beach', SPOTS)).toEqual(matchSpot('long_beach', SPOTS, []));
+    expect(matchSpot('kom', SPOTS)).toEqual(matchSpot('kom', SPOTS, []));
+  });
+});
+
+describe('matchSpot performance against an 8000-entry world set (§report "Resilience, wiring and dedupe")', () => {
+  const longNames = ['Praia do Guincho – Norte', 'Île de Ré, Pointe du Grouin', 'São Conrado – Barra da Tijuca', 'Işıklar Plajı Sahili', 'Кабардинка – Центральный пляж'];
+  const bigWorld: SpotTuple[] = Array.from({ length: 8000 }, (_, i) => {
+    const name = `${longNames[i % longNames.length]} #${i}`;
+    return [name, name.slice(0, 11), -80 + ((i * 37) % 160), -180 + ((i * 71) % 360), (i * 13) % 360, i % 4];
+  });
+
+  it('a query matching nothing (every tier scanned — the worst case) still resolves correctly against 8000 tuples', () => {
+    expect(matchSpot('zzznotfound', SPOTS, bigWorld)).toEqual({ kind: 'none' });
+  });
+
+  it('steady state (the id-slug cache warm — the overwhelming majority of real calls on a long-lived Worker isolate, since the world tuple array never changes) stays well under the 10 ms budget even on the worst-case (no-match) query', () => {
+    matchSpot('zzznotfound', SPOTS, bigWorld); // prime worldTupleIdSlug's per-tuple cache (§world.ts)
+    const t0 = performance.now();
+    for (let i = 0; i < 20; i++) matchSpot('zzznotfound', SPOTS, bigWorld);
+    const meanMs = (performance.now() - t0) / 20;
+    expect(meanMs).toBeLessThan(5);
+  });
+});
+
+describe('totalSpotCount (/about, §report "Resilience, wiring and dedupe")', () => {
+  it('adds the world tuple count to the curated spot count', () => {
+    const world: SpotTuple[] = [
+      ['A', 'A', 0, 0, 0, 0],
+      ['B', 'B', 1, 1, 0, 0],
+    ];
+    expect(totalSpotCount(SPOTS, world)).toBe(SPOTS.length + 2);
+  });
+
+  it('with the real (currently empty) spots-world.json, the count is unchanged (curated only)', () => {
+    expect(totalSpotCount(SPOTS)).toBe(SPOTS.length);
   });
 });

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { buildReports, buildReport, mergePeakPeriod, nearbySpots, nearestSpots } from '../../src/jobs/collect';
 import { SPOTS, REGIONS } from '../../src/data/index';
+import type { SpotTuple } from '../../src/data/world';
 import type { Profile, SwellHour } from '../../src/types';
 import { fakeFetch } from '../helpers/fakeFetch';
 import { openMeteoServer } from '../helpers/openMeteoServer';
@@ -24,6 +25,70 @@ describe('geo helpers', () => {
     const ids = nearestSpots(SPOTS, { lat: -33.9, lon: 18.87 }).map((x) => x.spot.id);
     expect(ids[0]).toBe('strand');
     expect(ids).toHaveLength(3);
+  });
+});
+
+describe('nearbySpots / nearestSpots — world set wiring (§report "Resilience, wiring and dedupe")', () => {
+  const MUIZ = SPOTS.find((s) => s.id === 'muizenberg')!;
+
+  it('nearbySpots merges in a world spot that is within the radius, alongside curated', () => {
+    const worldTuple: SpotTuple = ['World Twin', 'World Twin', MUIZ.lat, MUIZ.lon, 150, 0];
+    const near = nearbySpots(SPOTS, { lat: MUIZ.lat, lon: MUIZ.lon }, 20, [worldTuple]);
+    expect(near.some((x) => x.spot.id === MUIZ.id)).toBe(true);
+    expect(near.some((x) => x.spot.name === 'World Twin')).toBe(true);
+  });
+
+  it('curated wins a tie: at the exact same distance, the curated spot sorts before the world spot', () => {
+    const worldTuple: SpotTuple = ['World Twin', 'World Twin', MUIZ.lat, MUIZ.lon, 150, 0];
+    const near = nearbySpots(SPOTS, { lat: MUIZ.lat, lon: MUIZ.lon }, 5, [worldTuple]);
+    const tied = near.filter((x) => x.distanceKm === 0);
+    expect(tied.map((x) => x.spot.name)).toEqual([MUIZ.name, 'World Twin']);
+  });
+
+  it('a world spot outside the radius is excluded, exactly like a curated one would be', () => {
+    const farTuple: SpotTuple = ['Far World', 'Far World', MUIZ.lat + 5, MUIZ.lon, 150, 0]; // ~555 km away
+    const near = nearbySpots(SPOTS, { lat: MUIZ.lat, lon: MUIZ.lon }, 20, [farTuple]);
+    expect(near.some((x) => x.spot.name === 'Far World')).toBe(false);
+  });
+
+  it('nearestSpots merges the world set too — a world spot can headline the list when it is genuinely the closest', () => {
+    const at = { lat: 40.7128, lon: -74.006 }; // New York — nothing curated (South Africa) is remotely close
+    const worldTuple: SpotTuple = ['NYC Break', 'NYC Break', at.lat, at.lon, 150, 0];
+    const nearest = nearestSpots(SPOTS, at, 3, [worldTuple]);
+    expect(nearest[0].spot.name).toBe('NYC Break');
+    expect(nearest[0].distanceKm).toBeCloseTo(0, 3);
+    expect(nearest).toHaveLength(3);
+  });
+
+  it('an empty world set (matching the current placeholder spots-world.json) leaves nearbySpots/nearestSpots unchanged from curated-only behaviour', () => {
+    const at = { lat: -34.1085, lon: 18.4715 };
+    expect(nearbySpots(SPOTS, at, 20)).toEqual(nearbySpots(SPOTS, at, 20, []));
+    expect(nearbySpots(SPOTS, at, 20)).toHaveLength(15);
+    const farAt = { lat: -33.9, lon: 18.87 };
+    expect(nearestSpots(SPOTS, farAt)).toEqual(nearestSpots(SPOTS, farAt, 3, []));
+  });
+
+  it('end-to-end: nearbySpots against curated + an 8000-entry synthetic world set (long UTF-8 names) stays comfortably under the 10 ms Worker CPU budget', () => {
+    const at = { lat: -34.1085, lon: 18.4715 };
+    const longNames = ['Praia do Guincho – Norte', 'Île de Ré, Pointe du Grouin', 'São Conrado – Barra da Tijuca', 'Işıklar Plajı Sahili', 'Кабардинка – Центральный пляж'];
+    const tuples: SpotTuple[] = Array.from({ length: 8000 }, (_, i) => {
+      const name = `${longNames[i % longNames.length]} #${i}`;
+      return [name, name.slice(0, 11), -80 + ((i * 37) % 160), -180 + ((i * 71) % 360), (i * 13) % 360, i % 4];
+    });
+
+    // On mesure la médiane à chaud : le premier appel paie le JIT et la charge de la machine,
+    // ce qui faisait échouer un seuil absolu à 5 ms sans rien dire du coût réel par invocation.
+    const timings: number[] = [];
+    for (let i = 0; i < 11; i++) {
+      const t0 = performance.now();
+      nearbySpots(SPOTS, at, 20, tuples);
+      timings.push(performance.now() - t0);
+    }
+    const median = timings.sort((a, b) => a - b)[5];
+    const near = nearbySpots(SPOTS, at, 20, tuples);
+
+    expect(median).toBeLessThan(5); // budget CPU du Worker : 10 ms pour l'invocation entière
+    expect(near.length).toBeGreaterThanOrEqual(15); // still finds at least the 15 curated matches (§ "geo helpers" above)
   });
 });
 

@@ -1,5 +1,6 @@
 import { fetchForecast, fetchMarine, fetchPeakPeriod, OpenMeteoError, type FetchLike, type ForecastSeries, type PeakPeriodHour } from '../adapters/openMeteo';
 import { FAR_FROM_COAST_KM, RADIUS_KM } from '../config';
+import { nearestWorldSpots, worldSpots, type SpotTuple } from '../data/world';
 import { haversineKm } from '../engine/geo';
 import { evaluateSpot } from '../engine/score';
 import { computeTide, type TideInfo } from '../engine/tide';
@@ -16,12 +17,28 @@ interface RegionData { swell: SwellHour[]; forecasts: Map<string, ForecastSeries
 const byDistance = (spots: Spot[], at: LatLon): Near[] =>
   spots.map((spot) => ({ spot, distanceKm: haversineKm(at, spot) })).sort((a, b) => a.distanceKm - b.distanceKm);
 
-export function nearbySpots(spots: Spot[], at: LatLon, radiusKm: number): Near[] {
-  return byDistance(spots, at).filter((x) => x.distanceKm <= radiusKm);
+const toNear = (spots: Spot[], at: LatLon): Near[] => spots.map((spot) => ({ spot, distanceKm: haversineKm(at, spot) }));
+
+/**
+ * Curated + world, curated first on ties (§report "Resilience, wiring and dedupe"): `curated` is
+ * concatenated *before* `world`, and `Array.prototype.sort` is stable, so two entries at the exact
+ * same distance keep curated ahead of world without any extra tie-break logic. `worldTuples`/
+ * `curatedRegions` are optional DI hooks (mirroring `worldSpots`' own signature) purely for tests —
+ * production call sites never pass them, so `worldSpots`'s own defaults (the real, currently-empty
+ * `spots-world.json`) apply and behaviour is byte-for-byte unchanged until the owner runs the import.
+ */
+export function nearbySpots(spots: Spot[], at: LatLon, radiusKm: number, worldTuples?: SpotTuple[], curatedRegions?: readonly Region[]): Near[] {
+  const curated = byDistance(spots, at).filter((x) => x.distanceKm <= radiusKm);
+  const world = toNear(worldSpots(at, radiusKm, worldTuples, curatedRegions), at);
+  return [...curated, ...world].sort((a, b) => a.distanceKm - b.distanceKm);
 }
 
-export function nearestSpots(spots: Spot[], at: LatLon, n = 3): Near[] {
-  return byDistance(spots, at).slice(0, n);
+/** Same curated-first-on-ties merge as `nearbySpots`, for "closest N regardless of distance" (the
+ * out-of-coverage path, §`outOfCoverage`) instead of a radius. */
+export function nearestSpots(spots: Spot[], at: LatLon, n = 3, worldTuples?: SpotTuple[], curatedRegions?: readonly Region[]): Near[] {
+  const curated = byDistance(spots, at).slice(0, n);
+  const world = toNear(nearestWorldSpots(at, n, worldTuples, curatedRegions), at);
+  return [...curated, ...world].sort((a, b) => a.distanceKm - b.distanceKm).slice(0, n);
 }
 
 const toError = (err: unknown): OpenMeteoError => (err instanceof OpenMeteoError ? err : new OpenMeteoError(String(err)));

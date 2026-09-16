@@ -53,7 +53,7 @@ export interface Strings {
   /**
    * The 📋 day-view chart (`renderSpotDay` / `renderDayView`), § day-view.md.
    * title: {date} (the default, non-`all` title — `details.title` "All spots" is used when `opts.all`)
-   * peak: {score} {time} · bestAt/fadesFrom: {time} {reasons} · flatSpots: {n} · sun: {sunrise} {sunset}
+   * peak: {score} {time} · bestAt/fadesFrom: {time} {reasons} · flatSpots/moreSpots: {n} · sun: {sunrise} {sunset}
    * reasons.windDrops/windBuilds: {kt} · reasons.sizePeaks: {ft} · reasons.groundswell: {s}
    */
   dayView: {
@@ -62,6 +62,8 @@ export interface Strings {
     bestAt: string;
     fadesFrom: string;
     flatSpots: string;
+    /** /all only, when a dense cluster of open spots exceeds `ALL_SPOTS_CAP` (`src/render/messages.ts`): {n} */
+    moreSpots: string;
     sun: string;
     closedSpot: string;
     reasons: {

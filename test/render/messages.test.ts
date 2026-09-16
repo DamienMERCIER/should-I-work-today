@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   esc, fmtTime, fmtDate, renderEvening, renderShortVerdict, renderMorning, renderDetails, renderSpotDay, renderDayView,
-  detailsMarkupFor, goButtons, goButtonsMarkup, type RenderCtx,
+  detailsMarkupFor, goButtons, goButtonsMarkup, openSpotOrder, allSpotOrder, ALL_SPOTS_CAP, type RenderCtx,
 } from '../../src/render/messages';
 import { SPOTS } from '../../src/data/index';
 import type { Report, SpotHour, SpotResult, TideTrend, Verdict, Window } from '../../src/types';
@@ -488,6 +488,61 @@ describe('renderDayView', () => {
     const rowsBlock = `<pre>${expectedRow('inner-kom', 4.0)}\n${expectedRow('outer-kom', 3.5)}</pre>`;
     expect(out).toContain(rowsBlock);
     expect(rowsBlock).not.toContain('Kommetjie – ');
+  });
+});
+
+describe('renderDayView / allSpotOrder — /all cap in a dense cluster (§report "Resilience, wiring and dedupe")', () => {
+  function manySpots(n: number): { report: Report; ctx: RenderCtx } {
+    const map = new Map(SPOTS.map((s) => [s.id, s]));
+    const results: SpotResult[] = [];
+    for (let i = 0; i < n; i++) {
+      const id = `world-${i}`;
+      map.set(id, {
+        id, name: `World Spot ${i}`, short: `W${i}`, region: 'cape-peninsula', lat: 0, lon: 0, facing: 0,
+        swellWindow: [0, 90], exposure: 0.7, tide: { best: [], forbidden: [] }, levels: {}, character: 'punchy', verified: false,
+      });
+      results.push(flatSpot(id, n - i)); // strictly descending scores: world-0 highest (becomes primary)
+    }
+    const report = makeReport({ spots: results, verdict: { kind: 'red' } });
+    return { report, ctx: { lang: 'en', spots: map } };
+  }
+
+  it('allSpotOrder caps at ALL_SPOTS_CAP others (plus the primary), in the same score order as openSpotOrder', () => {
+    const { report } = manySpots(80);
+    const order = allSpotOrder(report);
+    expect(order).toHaveLength(1 + ALL_SPOTS_CAP);
+    expect(order).toEqual(openSpotOrder(report).slice(0, 1 + ALL_SPOTS_CAP));
+    expect(order[0]).toBe('world-0');
+    expect(order[order.length - 1]).toBe(`world-${ALL_SPOTS_CAP}`);
+  });
+
+  it('under the cap, allSpotOrder is identical to openSpotOrder — no truncation when nothing needs hiding', () => {
+    const { report } = manySpots(5);
+    expect(allSpotOrder(report)).toEqual(openSpotOrder(report));
+  });
+
+  it('renderDayView({ all: true }) shows at most ALL_SPOTS_CAP rows and a "+N more" tail once a cluster exceeds it, never the flat-spots wording', () => {
+    const { report, ctx } = manySpots(80);
+    const out = renderDayView(report, ctx, { all: true });
+    // Two <pre> blocks: the primary spot's own 2-line ruler+sparkline chart, then the secondary-rows
+    // block (one row per other open spot) — only the second is bounded by ALL_SPOTS_CAP.
+    const preBlocks = [...out.matchAll(/<pre>([\s\S]*?)<\/pre>/g)];
+    expect(preBlocks).toHaveLength(2);
+    expect(preBlocks[1][1].split('\n')).toHaveLength(ALL_SPOTS_CAP);
+    expect(out).toContain('+49 more open spots not shown'); // 80 - 1 primary - 30 shown = 49 hidden
+    expect(out).not.toContain('flat all day');
+  });
+
+  it('the capped /all message stays comfortably under Telegram\'s 4096-char limit even in an extreme, worse-than-realistic cluster', () => {
+    const { report, ctx } = manySpots(200);
+    const body = renderDetails(report, ctx, { all: true });
+    expect(body.length).toBeLessThan(2500);
+  });
+
+  it('a cluster with no hidden spots (exactly at the cap) shows no "+N more" tail', () => {
+    const { report, ctx } = manySpots(1 + ALL_SPOTS_CAP); // primary + exactly ALL_SPOTS_CAP others
+    const out = renderDayView(report, ctx, { all: true });
+    expect(out).not.toContain('more open spots');
   });
 });
 

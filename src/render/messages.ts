@@ -361,6 +361,36 @@ export function openSpotOrder(report: Report): string[] {
   return primaryId ? [primaryId, ...others] : others;
 }
 
+/**
+ * Hard cap on how many non-primary spots the `/all` surface shows or lists. `/all`'s spot list is
+ * bounded only by the caller's radius query (`nearbySpots`), and once that query considers curated +
+ * world spots (§report "Resilience, wiring and dedupe"), a dense real-world cluster of adjacent breaks
+ * can put dozens of open spots in one report — uncapped, both the `<pre>` row block (≤ 34 chars/row,
+ * § "row width budget" below) and the trailing command line would grow without bound and risk
+ * exceeding Telegram's 4096-character message limit.
+ *
+ * 30 is chosen with real margin, not just "under the limit": 30 rows × 34 chars ≈ 1050 chars, plus 31
+ * command-line entries (primary + 30) × ~17 chars ≈ 530 chars, leaving well over 2000 characters of
+ * headroom for the primary spot's own block, the closed-spots line, tide and sun lines even in a
+ * pathological cluster (verified in this session up to 200 synthetic open spots — see the report for
+ * the measured message length).
+ */
+export const ALL_SPOTS_CAP = 30;
+
+/**
+ * `openSpotOrder`, capped for `/all`: the primary spot, then at most `ALL_SPOTS_CAP` more. Both
+ * `renderDayView({ all: true })`'s row block and the router's trailing command line
+ * (`allSpotsCommandLine`, `src/bot/router.ts`) must derive their spot list from *this*, never from
+ * `openSpotOrder` directly, so the two can never disagree on which spots are shown ("one single
+ * definition, not two that derive" — the same rule `openSpotOrder` itself already follows for the
+ * un-capped case).
+ */
+export function allSpotOrder(report: Report): string[] {
+  const [primaryId, ...others] = openSpotOrder(report);
+  const capped = others.slice(0, ALL_SPOTS_CAP);
+  return primaryId !== undefined ? [primaryId, ...capped] : capped;
+}
+
 export function renderDayView(report: Report, ctx: RenderCtx, opts: { all?: boolean } = {}): string {
   const s = STRINGS[ctx.lang];
   const primaryId = openSpotOrder(report)[0];
@@ -369,15 +399,13 @@ export function renderDayView(report: Report, ctx: RenderCtx, opts: { all?: bool
   if (primaryId) blocks.push(renderSpotDay(report, primaryId, ctx));
 
   const others = report.spots.filter((r) => r.open && r.spotId !== primaryId).sort((a, b) => b.maxScore - a.maxScore);
-  const shown = opts.all ? others : others.filter((r) => r.maxScore >= 2.5);
+  const shown = opts.all ? others.slice(0, ALL_SPOTS_CAP) : others.filter((r) => r.maxScore >= 2.5);
   const hours = chartHours(report);
   if (shown.length > 0) blocks.push(`<pre>${shown.map((r) => spotRow(r, hours, report.date, ctx, s)).join('\n')}</pre>`);
 
   const tail: string[] = [];
-  if (!opts.all) {
-    const hidden = others.length - shown.length;
-    if (hidden > 0) tail.push(fill(s.dayView.flatSpots, { n: hidden }));
-  }
+  const hidden = others.length - shown.length;
+  if (hidden > 0) tail.push(fill(opts.all ? s.dayView.moreSpots : s.dayView.flatSpots, { n: hidden }));
   const closed = report.spots.filter((r) => !r.open).map((r) => spotName(r.spotId, ctx, s));
   if (closed.length > 0) tail.push(fill(s.details.closed, { spots: closed.join(', ') }));
   if (report.tides.length > 0) {

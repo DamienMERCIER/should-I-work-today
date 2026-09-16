@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { haversineKm, norm360, angularDistance, inArc, distanceOutsideArc, cardinal8 } from '../../src/engine/geo';
+import { haversineKm, norm360, angularDistance, inArc, distanceOutsideArc, cardinal8, destinationPoint } from '../../src/engine/geo';
 
 const MUIZENBERG = { lat: -34.1085, lon: 18.4715 };
 
@@ -42,5 +42,29 @@ describe('angles', () => {
     expect(cardinal8(225)).toBe(5);
     expect(cardinal8(337)).toBe(7);
     expect(cardinal8(338)).toBe(0);
+  });
+});
+
+describe('destinationPoint', () => {
+  it('moving 0 km returns the same point', () => {
+    const p = destinationPoint(MUIZENBERG.lat, MUIZENBERG.lon, 123, 0);
+    expect(p.lat).toBeCloseTo(MUIZENBERG.lat, 6);
+    expect(p.lon).toBeCloseTo(MUIZENBERG.lon, 6);
+  });
+  it('moving due north ~111.2 km shifts latitude by ~1°, longitude unchanged', () => {
+    const p = destinationPoint(0, 0, 0, 111.195);
+    expect(p.lat).toBeCloseTo(1, 2);
+    expect(p.lon).toBeCloseTo(0, 6);
+  });
+  it('moving due east on the equator shifts longitude by ~1°, latitude unchanged', () => {
+    const p = destinationPoint(0, 0, 90, 111.195);
+    expect(p.lat).toBeCloseTo(0, 6);
+    expect(p.lon).toBeCloseTo(1, 2);
+  });
+  it('haversineKm back to the origin matches the requested distance, for any bearing', () => {
+    for (const bearing of [0, 45, 90, 142, 220, 300]) {
+      const p = destinationPoint(MUIZENBERG.lat, MUIZENBERG.lon, bearing, 2);
+      expect(haversineKm(MUIZENBERG, p)).toBeCloseTo(2, 2);
+    }
   });
 });

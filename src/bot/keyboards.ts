@@ -2,7 +2,8 @@ import type { ReplyMarkup } from '../adapters/telegram';
 import type { Strings } from '../render/i18n';
 
 export const persistentKeyboard = (s: Strings): ReplyMarkup => ({
-  keyboard: [[{ text: s.buttons.useMyLocation, request_location: true }], [{ text: s.buttons.backHome }, { text: s.buttons.now }]],
+  // « Right now » occupe la rangée pleine largeur : c'est le bouton de loin le plus utilisé.
+  keyboard: [[{ text: s.buttons.now }], [{ text: s.buttons.backHome }, { text: s.buttons.useMyLocation, request_location: true }]],
   resize_keyboard: true,
   is_persistent: true,
 });

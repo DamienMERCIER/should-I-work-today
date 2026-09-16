@@ -4,3 +4,8 @@ node_modules/
 dist/
 coverage/
 .DS_Store
+
+# scripts/import-spots.ts resumable-run progress (scripts/lib/progress.ts) — a real crawl over ~8032
+# slugs churns this file every chunk; it must never sit untracked next to tracked docs in .superpowers/.
+.superpowers/import-spots-progress.json
+*.progress.json

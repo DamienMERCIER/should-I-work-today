@@ -6,11 +6,11 @@ import { haversineKm } from '../engine/geo';
 import { addDays, dateOf, floorHour } from '../engine/time';
 import { buildReport, type CollectDeps } from '../jobs/collect';
 import { detectLang, fill, STRINGS } from '../render/i18n';
-import { detailsMarkupFor, goButtonsMarkup, renderDetails, renderEvening, renderSpotDay, spotName, type RenderCtx, openSpotOrder } from '../render/messages';
+import { detailsMarkupFor, goButtonsMarkup, renderDetails, renderEvening, renderSpotDay, spotName, type RenderCtx, allSpotOrder } from '../render/messages';
 import type { Board, Lang, Level, Profile, Region, Report, Spot } from '../types';
 import { boardKeyboard, langKeyboard, levelKeyboard, persistentKeyboard, profileKeyboard } from './keyboards';
 import { newProfile, parseHours, profileSummary, welcomeText } from './profile';
-import { matchSpot, spotSlug } from './spotMatch';
+import { matchSpot, spotSlug, totalSpotCount } from './spotMatch';
 
 export interface BotDeps {
   telegram: Telegram;
@@ -56,11 +56,12 @@ async function todayReport(chatId: number, profile: Profile, deps: BotDeps): Pro
 
 /**
  * Telegram does not linkify a command inside a `<pre>` block, so `/all`'s per-spot sparkline rows
- * are not tappable there — this plain-text line after the block repeats them as `/slug` commands,
- * in the same order, so they are.
+ * are not tappable there — this plain-text line after the block repeats them as `/slug` commands, in
+ * the same order, so they are. Uses `allSpotOrder` (capped), not `openSpotOrder`, so this line can
+ * never list more spots than the rows shown above it — see `ALL_SPOTS_CAP`.
  */
 function allSpotsCommandLine(report: Report, ctx: RenderCtx): string {
-  return openSpotOrder(report)
+  return allSpotOrder(report)
     .map((id) => ctx.spots.get(id))
     .filter((spot): spot is Spot => spot !== undefined)
     .map((spot) => `/${spotSlug(spot)}`)
@@ -167,7 +168,7 @@ export async function handleUpdate(update: TgUpdate, deps: BotDeps): Promise<voi
     return;
   }
   if (text.startsWith('/about')) {
-    await telegram.sendMessage(chatId, fill(s.about.text, { count: deps.spots.length }));
+    await telegram.sendMessage(chatId, fill(s.about.text, { count: totalSpotCount(deps.spots) }));
     return;
   }
   if (text.startsWith('/')) {
