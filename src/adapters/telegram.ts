@@ -1,6 +1,14 @@
 import { sleep as defaultSleep, type FetchLike } from './http';
 
-export interface InlineButton { text: string; callback_data: string }
+/**
+ * A button is either a callback (handled by the bot) or a url button (opened by the client) — never
+ * both, never neither. The `?: never` on the opposite field is what actually enforces "never both":
+ * a plain two-arm union accepts `{ text, callback_data, url }`, because excess-property checking on
+ * an untagged union tests against the union of every arm's keys, so `url` does not read as excess.
+ */
+export type InlineButton =
+  | { text: string; callback_data: string; url?: never }
+  | { text: string; url: string; callback_data?: never };
 export interface KeyboardButton { text: string; request_location?: boolean }
 export type ReplyMarkup =
   | { inline_keyboard: InlineButton[][] }

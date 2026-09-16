@@ -4,7 +4,8 @@ export interface Strings {
   locale: string;
   /** N, NE, E, SE, S, SW, W, NW */
   cardinal: readonly [string, string, string, string, string, string, string, string];
-  buttons: { useMyLocation: string; backHome: string; now: string; allSpots: string };
+  /** goTo: {spot} — the 📍 "go to this spot" map button (`src/render/messages.ts` `goButtons`). */
+  buttons: { useMyLocation: string; backHome: string; now: string; allSpots: string; goTo: string };
   levels: Record<Level, string>;
   boards: Record<Board, string>;
   relations: Record<WindRelation, string>;

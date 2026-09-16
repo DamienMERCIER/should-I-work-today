@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   esc, fmtTime, fmtDate, renderEvening, renderShortVerdict, renderMorning, renderDetails, renderSpotDay, renderDayView,
-  detailsButton, detailsMarkupFor, type RenderCtx,
+  detailsMarkupFor, goButtons, goButtonsMarkup, type RenderCtx,
 } from '../../src/render/messages';
 import { SPOTS } from '../../src/data/index';
 import type { Report, SpotHour, SpotResult, TideTrend, Verdict, Window } from '../../src/types';
@@ -27,13 +27,101 @@ describe('formatting', () => {
   it('esc', () => {
     expect(esc('a < b & c > d')).toBe('a &lt; b &amp; c &gt; d');
   });
-  it('detailsButton', () => {
-    expect(detailsButton(GOLDEN_DATE, 'en')).toEqual({ inline_keyboard: [[{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }]] });
+  it('detailsMarkupFor: go buttons (ordered by peak) then the 📋 row, for a verdict with windows', () => {
+    expect(detailsMarkupFor(goldenReport(), EN)).toEqual({
+      inline_keyboard: [
+        [{ text: '📍 Go to Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
+        [{ text: '📍 Go to Muizenberg', url: 'https://www.google.com/maps/search/?api=1&query=-34.1085%2C18.4715' }],
+        [{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }],
+      ],
+    });
   });
-  it('detailsMarkupFor only attaches the 📋 button when there is a verdict', () => {
-    expect(detailsMarkupFor(goldenReport(), 'en')).toEqual({ inline_keyboard: [[{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }]] });
-    expect(detailsMarkupFor(goldenReport({ spots: [], tides: [], verdict: { kind: 'outOfCoverage', nearest: [] } }), 'en')).toBeUndefined();
-    expect(detailsMarkupFor(goldenReport({ verdict: { kind: 'noData', reason: 'x' } }), 'en')).toBeUndefined();
+  it('detailsMarkupFor: a red verdict with no windowed spot still gets its 📋 row alone — the two gates are independent', () => {
+    const noWindow = goldenReport({ spots: [flatSpot('kommetjie-long-beach', 3.0), flatSpot('muizenberg', 2.0)], verdict: { kind: 'red' } });
+    expect(detailsMarkupFor(noWindow, EN)).toEqual({ inline_keyboard: [[{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }]] });
+  });
+  it('detailsMarkupFor: no button at all for outOfCoverage/noData (real reports never carry spots there — §9)', () => {
+    expect(detailsMarkupFor(goldenReport({ spots: [], tides: [], verdict: { kind: 'outOfCoverage', nearest: [] } }), EN)).toBeUndefined();
+    expect(detailsMarkupFor(goldenReport({ spots: [], verdict: { kind: 'noData', reason: 'x' } }), EN)).toBeUndefined();
+  });
+});
+
+describe('go buttons (📍 "go to this spot" map link)', () => {
+  const W6 = (peak: number): Window => ({ start: `${GOLDEN_DATE}T07:00`, end: `${GOLDEN_DATE}T08:00`, peak, mean: peak });
+  const windowed = (spotId: string, peak: number): SpotResult => ({
+    spotId, distanceKm: 1, open: true, hours: [], windows: [W6(peak)], best: W6(peak), maxScore: peak,
+  });
+
+  it('the url is the documented Google Maps search form, coordinates through encodeURIComponent', () => {
+    expect(goButtons(goldenReport(), EN, { spotId: 'kommetjie-long-beach' })).toEqual([
+      [{ text: '📍 Go to Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
+    ]);
+  });
+
+  it('opts.spotId: exactly one button, unconditionally — even for a spot absent from the report entirely', () => {
+    expect(goButtons(goldenReport(), EN, { spotId: 'outer-kom' })).toEqual([
+      [{ text: '📍 Go to Outer Kom', url: 'https://www.google.com/maps/search/?api=1&query=-34.142%2C18.319' }],
+    ]);
+  });
+
+  it('opts.spotId: still the one button for a spot that is closed or flat in the report', () => {
+    const closed: SpotResult = { spotId: 'outer-kom', distanceKm: 14.5, open: false, hours: [], windows: [], best: undefined, maxScore: 0 };
+    const flat: SpotResult = { spotId: 'muizenberg', distanceKm: 0, open: true, hours: [], windows: [], best: undefined, maxScore: 3.0 };
+    const r = goldenReport({ spots: [closed, flat] });
+    expect(goButtons(r, EN, { spotId: 'outer-kom' })).toEqual([[{ text: '📍 Go to Outer Kom', url: 'https://www.google.com/maps/search/?api=1&query=-34.142%2C18.319' }]]);
+    expect(goButtons(r, EN, { spotId: 'muizenberg' })).toEqual([[{ text: '📍 Go to Muizenberg', url: 'https://www.google.com/maps/search/?api=1&query=-34.1085%2C18.4715' }]]);
+  });
+
+  it('uses the ≈ prefix on the short label for an unverified spot, same rule as spotName', () => {
+    expect(goButtons(goldenReport(), EN, { spotId: 'victoria-bay' })).toEqual([
+      [{ text: '📍 Go to ≈ Vic Bay', url: 'https://www.google.com/maps/search/?api=1&query=-34.005%2C22.548' }],
+    ]);
+  });
+
+  it('RU: the button text uses the localized template', () => {
+    expect(goButtons(goldenReport(), RU, { spotId: 'kommetjie-long-beach' })).toEqual([
+      [{ text: '📍 Маршрут до Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
+    ]);
+  });
+
+  it('no opts: one button per interesting (windowed) spot, ordered by peak, capped at 5', () => {
+    const r = makeReport({
+      spots: [
+        windowed('outer-kom', 3.0),
+        windowed('muizenberg', 9.0),
+        windowed('clovelly', 7.5),
+        windowed('kalk-bay-reef', 8.5),
+        windowed('strandfontein', 2.0),
+        windowed('noordhoek', 6.0),
+        windowed('kommetjie-long-beach', 10.0),
+      ],
+    });
+    expect(goButtons(r, EN)).toEqual([
+      [{ text: '📍 Go to Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
+      [{ text: '📍 Go to Muizenberg', url: 'https://www.google.com/maps/search/?api=1&query=-34.1085%2C18.4715' }],
+      [{ text: '📍 Go to Kalk Bay', url: 'https://www.google.com/maps/search/?api=1&query=-34.129%2C18.451' }],
+      [{ text: '📍 Go to Clovelly', url: 'https://www.google.com/maps/search/?api=1&query=-34.129%2C18.4386' }],
+      [{ text: '📍 Go to The Hoek', url: 'https://www.google.com/maps/search/?api=1&query=-34.1%2C18.352' }],
+    ]);
+  });
+
+  it('no opts: empty array when no spot has a window today', () => {
+    const r = goldenReport({ spots: [flatSpot('kommetjie-long-beach', 3.0), flatSpot('muizenberg', 2.0)] });
+    expect(goButtons(r, EN)).toEqual([]);
+  });
+
+  it('goButtonsMarkup collapses an empty row list to undefined, not an empty inline_keyboard', () => {
+    const r = goldenReport({ spots: [flatSpot('kommetjie-long-beach', 3.0)] });
+    expect(goButtonsMarkup(r, EN)).toBeUndefined();
+  });
+
+  it('goButtonsMarkup: the /all surface — go buttons only, no 📋 row', () => {
+    expect(goButtonsMarkup(goldenReport(), EN)).toEqual({
+      inline_keyboard: [
+        [{ text: '📍 Go to Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
+        [{ text: '📍 Go to Muizenberg', url: 'https://www.google.com/maps/search/?api=1&query=-34.1085%2C18.4715' }],
+      ],
+    });
   });
 });
 

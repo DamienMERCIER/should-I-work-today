@@ -25,6 +25,12 @@ export interface JobResult { skipped: boolean; sent: number; failed: number; dat
 
 const KV_SAME_KEY_INTERVAL_MS = 1100;
 
+// Les boutons « 📍 Go to » du push portent des coordonnées figées à l'envoi : un message lu le
+// lendemain matin garde le lien tel quel, et rien ne permet de le corriger après coup (le bot
+// n'édite jamais un markup déjà envoyé). Accepté : une correction de coordonnée est rare et se
+// compte en centaines de mètres, alors que le push est justement le moment où le bouton sert le
+// plus. Le bouton 📋, lui, est un callback : il recalcule à chaque appui.
+
 export async function notifyAdmin(deps: Pick<JobDeps, 'telegram' | 'adminChatId'>, text: string): Promise<void> {
   if (deps.adminChatId === undefined) return;
   await deps.telegram.sendMessage(deps.adminChatId, `⚙️ ${esc(text)}`);
@@ -88,14 +94,14 @@ async function runJob(kind: RunKind, date: string, deps: JobDeps): Promise<JobRe
     const ctx = renderCtx(profile.lang, deps);
     if (kind === 'evening') {
       toStore[key] = report;
-      outbox.push({ profile, text: renderEvening(report, ctx), markup: detailsMarkupFor(report, profile.lang) });
+      outbox.push({ profile, text: renderEvening(report, ctx), markup: detailsMarkupFor(report, ctx) });
       continue;
     }
     const evening = previous[key];
     const delta = compareReports(evening, report);
     // un matin sans données garde le rapport du soir (§7.6)
     if (!(report.verdict.kind === 'noData' && evening)) toStore[key] = report;
-    if (delta.send) outbox.push({ profile, text: renderMorning(report, delta, evening, ctx), markup: detailsMarkupFor(report, profile.lang) });
+    if (delta.send) outbox.push({ profile, text: renderMorning(report, delta, evening, ctx), markup: detailsMarkupFor(report, ctx) });
   }
 
   // 2. première écriture : le bouton 📋 fonctionne dès la réception

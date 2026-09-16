@@ -3,7 +3,7 @@ import type { Strings } from './types';
 export const en: Strings = {
   locale: 'en-GB',
   cardinal: ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'],
-  buttons: { useMyLocation: '📍 Use my location', backHome: '🏠 Back to Muizenberg', now: '🔎 Right now', allSpots: '📋 All spots' },
+  buttons: { useMyLocation: '📍 Use my location', backHome: '🏠 Back to Muizenberg', now: '🔎 Right now', allSpots: '📋 All spots', goTo: '📍 Go to {spot}' },
   levels: { beginner: 'Beginner', intermediate: 'Intermediate', advanced: 'Advanced' },
   boards: { longboard: 'Longboard', shortboard: 'Shortboard', both: 'Both' },
   relations: { offshore: 'offshore', cross: 'cross', onshore: 'onshore' },

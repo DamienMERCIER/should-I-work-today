@@ -45,7 +45,14 @@ describe('runEvening', () => {
     expect(sent()[0].text.startsWith("🟢 <b>DON'T GO TO WORK TOMORROW</b> (Wed 16 Sept)")).toBe(true);
     expect(sent()[1].text).toContain('ЗАВТРА НЕ ИДИ НА РАБОТУ');
     expect(sent()[2].text.startsWith('📍 No known spot')).toBe(true);
-    expect(sent()[0].reply_markup).toEqual({ inline_keyboard: [[{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }]] });
+    // the evening push carries the 📍 go buttons (ordered by peak) before the 📋 row — same verdict rendering path as /now.
+    expect(sent()[0].reply_markup).toEqual({
+      inline_keyboard: [
+        [{ text: '📍 Go to Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
+        [{ text: '📍 Go to Muizenberg', url: 'https://www.google.com/maps/search/?api=1&query=-34.1085%2C18.4715' }],
+        [{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }],
+      ],
+    });
     expect(sent()[2].reply_markup).toBeUndefined();
     const reports = await store.getReports('2026-09-16');
     expect(Object.keys(reports).sort()).toEqual(['1', '2', '5']);
@@ -102,6 +109,14 @@ describe('runMorning', () => {
     expect(sent().map((m) => m.chat_id)).toEqual([1, 2]);
     expect(sent()[0].text).toBe('✅ Confirmed: 🟢 Kommetjie – Long Beach 7:00–12:00');
     expect(sent()[1].text.startsWith('⚠️ Change: 🔴 go to work → 🟢 Kommetjie – Long Beach 7:00–12:00')).toBe(true);
+    // the morning push is the same rendering path as the evening one — it carries the go buttons too.
+    expect(sent()[0].reply_markup).toEqual({
+      inline_keyboard: [
+        [{ text: '📍 Go to Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
+        [{ text: '📍 Go to Muizenberg', url: 'https://www.google.com/maps/search/?api=1&query=-34.1085%2C18.4715' }],
+        [{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }],
+      ],
+    });
     const reports = await store.getReports('2026-09-16');
     expect(reports['1'].mode).toBe('morning');
     expect(reports['5'].mode).toBe('morning');

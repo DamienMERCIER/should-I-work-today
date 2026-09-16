@@ -1,4 +1,4 @@
-import type { ReplyMarkup } from '../adapters/telegram';
+import type { InlineButton, ReplyMarkup } from '../adapters/telegram';
 import { FAR_FROM_COAST_KM } from '../config';
 import type { Delta } from '../engine/delta';
 import { cardinal8 } from '../engine/geo';
@@ -401,10 +401,58 @@ export function renderDetails(report: Report, ctx: RenderCtx, opts: { all?: bool
   return `${title}\n${renderDayView(report, ctx, opts)}`;
 }
 
-export const detailsButton = (date: string, lang: Lang): ReplyMarkup => ({
-  inline_keyboard: [[{ text: STRINGS[lang].buttons.allSpots, callback_data: `rep:${date}` }]],
-});
+const detailsButtonRow = (date: string, lang: Lang): InlineButton[] => [{ text: STRINGS[lang].buttons.allSpots, callback_data: `rep:${date}` }];
 
-/** Pas de verdict (hors-couverture, pas de données) → pas de bouton 📋 : le panneau qu'il ouvrirait serait fabriqué (§9). */
-export const detailsMarkupFor = (report: Report, lang: Lang): ReplyMarkup | undefined =>
-  (report.verdict.kind === 'green' || report.verdict.kind === 'yellow' || report.verdict.kind === 'red' ? detailsButton(report.date, lang) : undefined);
+
+/** Rows → `undefined` rather than `{ inline_keyboard: [] }` — Telegram rejects an empty keyboard. */
+const toMarkup = (rows: InlineButton[][]): ReplyMarkup | undefined => (rows.length > 0 ? { inline_keyboard: rows } : undefined);
+
+/**
+ * 📍 "go to this spot" map buttons — one row per button (spot names are long). Opens Google's documented
+ * URL API (`/maps/search/?api=1&query=<lat>,<lon>`), which opens the Google Maps app on iOS/Android and
+ * falls back to the browser; Telegram's `url` button only accepts http(s), so a `geo:` URI is not an option.
+ *
+ * `opts.spotId` (a per-spot command, e.g. `/long_beach`): exactly that spot's button, unconditionally —
+ * even closed or flat, and even absent from `report.spots` entirely (only `ctx.spots` is consulted).
+ * Otherwise: one button per *interesting* spot — a spot whose day has a window (`SpotResult.best` set,
+ * the existing `SCORING.windowMin` threshold via `evaluateSpot`/`findWindows`) — ordered by `best.peak`
+ * descending, capped at 5 so the keyboard stays usable. Possibly `[]`.
+ */
+export function goButtons(report: Report, ctx: RenderCtx, opts: { spotId?: string } = {}): InlineButton[][] {
+  const s = STRINGS[ctx.lang];
+  const row = (spotId: string): InlineButton[] | undefined => {
+    const spot = ctx.spots.get(spotId);
+    if (!spot) return undefined;
+    const text = fill(s.buttons.goTo, { spot: spotShort(spotId, ctx, s) });
+    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${spot.lat},${spot.lon}`)}`;
+    return [{ text, url }];
+  };
+
+  if (opts.spotId !== undefined) {
+    const one = row(opts.spotId);
+    return one ? [one] : [];
+  }
+
+  return report.spots
+    .filter((r) => r.best)
+    .sort((a, b) => (b.best?.peak ?? 0) - (a.best?.peak ?? 0))
+    .slice(0, 5)
+    .map((r) => row(r.spotId))
+    .filter((r): r is InlineButton[] => r !== undefined);
+}
+
+/** `goButtons` wrapped into a `ReplyMarkup` — the `/all` and per-spot surfaces (no 📋 row involved). */
+export const goButtonsMarkup = (report: Report, ctx: RenderCtx, opts: { spotId?: string } = {}): ReplyMarkup | undefined =>
+  toMarkup(goButtons(report, ctx, opts));
+
+/**
+ * The verdict surface (`/now`, the location reply, and the evening/morning push — same rendering path):
+ * go buttons first (own rows — spot names are long), then the 📋 row. Pas de verdict (hors-couverture,
+ * pas de données) → pas de bouton 📋 : le panneau qu'il ouvrirait serait fabriqué (§9) — and in practice
+ * those reports never carry `spots` either, so no go buttons show there anyway.
+ */
+export function detailsMarkupFor(report: Report, ctx: RenderCtx): ReplyMarkup | undefined {
+  const hasDetails = report.verdict.kind === 'green' || report.verdict.kind === 'yellow' || report.verdict.kind === 'red';
+  const rows = [...goButtons(report, ctx), ...(hasDetails ? [detailsButtonRow(report.date, ctx.lang)] : [])];
+  return toMarkup(rows);
+}

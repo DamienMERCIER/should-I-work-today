@@ -4,10 +4,9 @@ import type { Telegram, TgCallbackQuery, TgMessage, TgUpdate } from '../adapters
 import { BOARDS, LANGS, LEVELS, DEFAULT_LOCATION, RADIUS_KM } from '../config';
 import { haversineKm } from '../engine/geo';
 import { addDays, dateOf, floorHour } from '../engine/time';
-import { primaryPick } from '../engine/verdict';
 import { buildReport, type CollectDeps } from '../jobs/collect';
 import { detectLang, fill, STRINGS } from '../render/i18n';
-import { detailsMarkupFor, renderDetails, renderEvening, renderSpotDay, spotName, type RenderCtx, openSpotOrder } from '../render/messages';
+import { detailsMarkupFor, goButtonsMarkup, renderDetails, renderEvening, renderSpotDay, spotName, type RenderCtx, openSpotOrder } from '../render/messages';
 import type { Board, Lang, Level, Profile, Region, Report, Spot } from '../types';
 import { boardKeyboard, langKeyboard, levelKeyboard, persistentKeyboard, profileKeyboard } from './keyboards';
 import { newProfile, parseHours, profileSummary, welcomeText } from './profile';
@@ -96,7 +95,7 @@ async function handleSpotCommand(chatId: number, query: string, profile: Profile
   }
 
   const report = await todayReport(chatId, profile, deps);
-  await deps.telegram.sendMessage(chatId, renderSpotDay(report, spot.id, ctx));
+  await deps.telegram.sendMessage(chatId, renderSpotDay(report, spot.id, ctx), goButtonsMarkup(report, ctx, { spotId: spot.id }));
   return true;
 }
 
@@ -131,12 +130,14 @@ export async function handleUpdate(update: TgUpdate, deps: BotDeps): Promise<voi
     const { latitude: lat, longitude: lon } = msg.location;
     const updated = await store.updateProfile(chatId, (cur) => ({ ...(cur ?? profile!), location: { lat, lon, source: 'custom' } }));
     const report = await nowReport(updated, deps);
-    await telegram.sendMessage(chatId, `${renderEvening(report, renderCtx(profile.lang, deps))}\n\n${s.locationSaved}`, detailsMarkupFor(report, profile.lang));
+    const ctx = renderCtx(profile.lang, deps);
+    await telegram.sendMessage(chatId, `${renderEvening(report, ctx)}\n\n${s.locationSaved}`, detailsMarkupFor(report, ctx));
     return;
   }
   if (text === '/now' || isButton(text, 'now')) {
     const report = await nowReport(profile, deps);
-    await telegram.sendMessage(chatId, renderEvening(report, renderCtx(profile.lang, deps)), detailsMarkupFor(report, profile.lang));
+    const ctx = renderCtx(profile.lang, deps);
+    await telegram.sendMessage(chatId, renderEvening(report, ctx), detailsMarkupFor(report, ctx));
     return;
   }
   if (isButton(text, 'backHome')) {
@@ -162,7 +163,7 @@ export async function handleUpdate(update: TgUpdate, deps: BotDeps): Promise<voi
     const ctx = renderCtx(profile.lang, deps);
     const body = renderDetails(report, ctx, { all: true });
     const commandLine = allSpotsCommandLine(report, ctx);
-    await telegram.sendMessage(chatId, commandLine ? `${body}\n\n${commandLine}` : body);
+    await telegram.sendMessage(chatId, commandLine ? `${body}\n\n${commandLine}` : body, goButtonsMarkup(report, ctx));
     return;
   }
   if (text.startsWith('/about')) {

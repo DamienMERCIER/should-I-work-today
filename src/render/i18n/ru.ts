@@ -3,7 +3,7 @@ import type { Strings } from './types';
 export const ru: Strings = {
   locale: 'ru-RU',
   cardinal: ['С', 'СВ', 'В', 'ЮВ', 'Ю', 'ЮЗ', 'З', 'СЗ'],
-  buttons: { useMyLocation: '📍 Использовать моё местоположение', backHome: '🏠 Вернуться в Muizenberg', now: '🔎 Сейчас', allSpots: '📋 Все споты' },
+  buttons: { useMyLocation: '📍 Использовать моё местоположение', backHome: '🏠 Вернуться в Muizenberg', now: '🔎 Сейчас', allSpots: '📋 Все споты', goTo: '📍 Маршрут до {spot}' },
   levels: { beginner: 'Начинающий', intermediate: 'Средний', advanced: 'Продвинутый' },
   boards: { longboard: 'Лонгборд', shortboard: 'Шортборд', both: 'Обе' },
   relations: { offshore: 'оффшор', cross: 'кросс', onshore: 'оншор' },

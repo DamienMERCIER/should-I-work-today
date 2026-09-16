@@ -4,11 +4,12 @@ import { Telegram, type TgMessage, type TgUpdate } from '../../src/adapters/tele
 import { handleUpdate, type BotDeps } from '../../src/bot/router';
 import { parseHours } from '../../src/bot/profile';
 import { REGIONS, SPOTS } from '../../src/data/index';
-import type { Profile, Spot } from '../../src/types';
+import type { Profile, Spot, SpotResult } from '../../src/types';
 import { fakeFetch, jsonResponse } from '../helpers/fakeFetch';
 import { GOLDEN_DAILY, GOLDEN_SPOTS, goldenReport, goldenSwell, goldenWind } from '../helpers/golden';
 import { MemoryKV } from '../helpers/memoryKv';
 import { openMeteoServer } from '../helpers/openMeteoServer';
+import { OUTER_KOM } from '../helpers/spots';
 
 const NOW = '2026-09-16T08:30';
 
@@ -113,7 +114,14 @@ describe('location and /now', () => {
     expect(omCalls).toHaveLength(3); // marine + forecast + période pic
     expect(sent()[0].text.startsWith('🟢 <b>GO SURF</b> (today)')).toBe(true);
     expect(sent()[0].text.endsWith('Location saved — the 19:00 verdict will use it.')).toBe(true);
-    expect(sent()[0].reply_markup).toEqual({ inline_keyboard: [[{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }]] });
+    // go buttons (ordered by peak) before the 📋 row — same verdict rendering path as the evening/morning push.
+    expect(sent()[0].reply_markup).toEqual({
+      inline_keyboard: [
+        [{ text: '📍 Go to Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
+        [{ text: '📍 Go to Muizenberg', url: 'https://www.google.com/maps/search/?api=1&query=-34.1085%2C18.4715' }],
+        [{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }],
+      ],
+    });
   });
   it('the home button resets the location', async () => {
     const { deps, store, sent } = setup();
@@ -240,6 +248,13 @@ describe('/all, /<spot> and /about', () => {
     expect(text.startsWith('📋 <b>All spots</b> (Wed 16 Sept)')).toBe(true);
     expect(text).toContain('🏄 Kommetjie – Long Beach');
     expect(text.trim().endsWith('/long_beach · /muizenberg')).toBe(true);
+    // go buttons (ordered by peak), no 📋 row — /all already lists everything, so opening the same panel again would be redundant.
+    expect(sent()[0].reply_markup).toEqual({
+      inline_keyboard: [
+        [{ text: '📍 Go to Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
+        [{ text: '📍 Go to Muizenberg', url: 'https://www.google.com/maps/search/?api=1&query=-34.1085%2C18.4715' }],
+      ],
+    });
   });
 
   it('/<spot> renders that spot\'s day for a spot with a window (fresh now-mode computation, nothing stored)', async () => {
@@ -249,6 +264,38 @@ describe('/all, /<spot> and /about', () => {
     expect(sent()).toHaveLength(1);
     expect(sent()[0].text.startsWith('🏄 Kommetjie – Long Beach · 8:00–12:00')).toBe(true);
     expect(omCalls.length).toBeGreaterThan(0);
+    // the per-spot command's go button, in English.
+    expect(sent()[0].reply_markup).toEqual({
+      inline_keyboard: [[{ text: '📍 Go to Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }]],
+    });
+  });
+
+  it('Russian: the per-spot go button uses the localized template', async () => {
+    const { deps, store, sent } = setup();
+    await store.putProfiles({ '1': ready({ lang: 'ru' }) });
+    await handleUpdate(msg('/long_beach'), deps);
+    expect(sent()[0].reply_markup).toEqual({
+      inline_keyboard: [[{ text: '📍 Маршрут до Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }]],
+    });
+  });
+
+  it('a per-spot command always yields exactly one go button, even for a closed spot or a spot flat today', async () => {
+    const { deps, store, sent } = setup({ spots: [...GOLDEN_SPOTS, OUTER_KOM] });
+    await store.putProfiles({ '1': ready() });
+    const closed: SpotResult = { spotId: 'outer-kom', distanceKm: 14.5, open: false, hours: [], windows: [], best: undefined, maxScore: 0 };
+    const flat: SpotResult = { spotId: 'muizenberg', distanceKm: 0, open: true, hours: [], windows: [], best: undefined, maxScore: 3.0 };
+    await store.putReports('2026-09-16', { '1': goldenReport({ spots: [closed, flat] }) });
+
+    await handleUpdate(msg('/outer_kom'), deps);
+    expect(sent()[0].text).toContain('closed for your level');
+    expect(sent()[0].reply_markup).toEqual({
+      inline_keyboard: [[{ text: '📍 Go to Outer Kom', url: 'https://www.google.com/maps/search/?api=1&query=-34.142%2C18.319' }]],
+    });
+
+    await handleUpdate(msg('/muizenberg'), deps);
+    expect(sent()[1].reply_markup).toEqual({
+      inline_keyboard: [[{ text: '📍 Go to Muizenberg', url: 'https://www.google.com/maps/search/?api=1&query=-34.1085%2C18.4715' }]],
+    });
   });
 
   it('matches by exact slug, exact id, unique prefix and unique substring', async () => {
