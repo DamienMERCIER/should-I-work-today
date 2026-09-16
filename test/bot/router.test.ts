@@ -6,21 +6,25 @@ import { parseHours } from '../../src/bot/profile';
 import { REGIONS, SPOTS } from '../../src/data/index';
 import type { Profile, Spot, SpotResult } from '../../src/types';
 import { fakeFetch, jsonResponse } from '../helpers/fakeFetch';
-import { GOLDEN_DAILY, GOLDEN_SPOTS, goldenReport, goldenSwell, goldenWind } from '../helpers/golden';
+import { GOLDEN_DAILY, GOLDEN_DATE, GOLDEN_SPOTS, goldenReport, goldenSwell, goldenWind } from '../helpers/golden';
 import { MemoryKV } from '../helpers/memoryKv';
 import { openMeteoServer } from '../helpers/openMeteoServer';
 import { OUTER_KOM } from '../helpers/spots';
-import { ALL_SPOTS_CAP } from '../../src/render/messages';
+import { ALL_SPOTS_CAP, fmtDate } from '../../src/render/messages';
 
 const NOW = '2026-09-16T08:30';
+const TOMORROW = '2026-09-17';
 
-function setup(opts: { inviteCode?: string; spots?: Spot[] } = {}) {
+function setup(opts: { inviteCode?: string; spots?: Spot[]; now?: string } = {}) {
   const store = new Store(new MemoryKV());
   const tg = fakeFetch(() => jsonResponse({ ok: true }));
-  const om = fakeFetch(openMeteoServer({ swell: goldenSwell(), wind: goldenWind(), daily: GOLDEN_DAILY }));
+  // Vent sur aujourd'hui ET demain : un rapport bascule sur le lendemain (§nowReport) n'a de
+  // données que si la série les couvre, sinon il retombe en noData et le test ne prouve rien.
+  const wind = [...goldenWind(), ...goldenWind(TOMORROW)];
+  const om = fakeFetch(openMeteoServer({ swell: goldenSwell(), wind, daily: GOLDEN_DAILY }));
   const deps: BotDeps = {
     telegram: new Telegram('t', tg.fn), store, spots: opts.spots ?? GOLDEN_SPOTS, regions: REGIONS, fetchFn: om.fn,
-    inviteCode: opts.inviteCode, now: () => NOW,
+    inviteCode: opts.inviteCode, now: () => opts.now ?? NOW,
   };
   const sent = () => tg.calls.filter((c) => c.url.endsWith('/sendMessage')).map((c) => JSON.parse(String(c.init?.body)) as { chat_id: number; text: string; reply_markup?: any });
   const answered = () => tg.calls.filter((c) => c.url.endsWith('/answerCallbackQuery')).length;
@@ -140,6 +144,56 @@ describe('location and /now', () => {
     await handleUpdate(msg('🔎 Сейчас'), deps);
     expect(sent()).toHaveLength(2);
     expect(sent()[1].text).toContain('Kommetjie – Long Beach · 8:00–12:00 · 10.0/10');
+  });
+});
+
+describe('/now once the light has gone', () => {
+  // 19:30 : le soleil s'est couché à 18:38, donc plus une seule heure de la journée ne passe le
+  // seuil des 45 min de jour. Répondre « pour le reste d'aujourd'hui » ne peut donner que des zéros.
+  const evening = { now: `${GOLDEN_DATE}T19:30` };
+
+  it('answers for tomorrow, and says so, instead of a wall of zeros', async () => {
+    const { deps, store, sent } = setup(evening);
+    await store.putProfiles({ '1': ready() });
+    await handleUpdate(msg('/now'), deps);
+    expect(sent()[0].text).toContain('Today is done');
+    expect(sent()[0].text).toContain(fmtDate(TOMORROW, 'en'));
+  });
+
+  it('the tomorrow report actually has data (not a silent noData fallback)', async () => {
+    const { deps, store, sent } = setup(evening);
+    await store.putProfiles({ '1': ready() });
+    await handleUpdate(msg('/now'), deps);
+    expect(sent()[0].text).not.toContain('No data');
+    expect(sent()[0].reply_markup?.inline_keyboard?.length).toBeGreaterThan(0);
+  });
+
+  it('says it in Russian for a Russian profile', async () => {
+    const { deps, store, sent } = setup(evening);
+    await store.putProfiles({ '1': ready({ lang: 'ru' }) });
+    await handleUpdate(msg('/now'), deps);
+    expect(sent()[0].text).toContain('На сегодня всё');
+  });
+
+  it('a live location sent after dark also answers for tomorrow', async () => {
+    const { deps, store, sent } = setup(evening);
+    await store.putProfiles({ '1': ready() });
+    await handleUpdate(msg(undefined, { location: { latitude: -34.1085, longitude: 18.4715 } }), deps);
+    expect(sent()[0].text).toContain('Today is done');
+  });
+
+  it('still answers for today while a daylight hour remains', async () => {
+    const { deps, store, sent } = setup({ now: `${GOLDEN_DATE}T17:00` }); // coucher 18:38 : 17:00 et 18:00 comptent encore
+    await store.putProfiles({ '1': ready() });
+    await handleUpdate(msg('/now'), deps);
+    expect(sent()[0].text).not.toContain('Today is done');
+  });
+
+  it('does not roll over before sunrise — the whole day is still ahead', async () => {
+    const { deps, store, sent } = setup({ now: `${GOLDEN_DATE}T04:00` });
+    await store.putProfiles({ '1': ready() });
+    await handleUpdate(msg('/now'), deps);
+    expect(sent()[0].text).not.toContain('Today is done');
   });
 });
 

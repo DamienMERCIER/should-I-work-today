@@ -2,10 +2,11 @@ import { safeEqual, type FetchLike } from '../adapters/http';
 import type { Store } from '../adapters/kv';
 import type { Telegram, TgCallbackQuery, TgMessage, TgUpdate } from '../adapters/telegram';
 import { BOARDS, LANGS, LEVELS, DEFAULT_LOCATION, RADIUS_KM } from '../config';
+import { hasDaylightLeft } from '../engine/factors';
 import { haversineKm } from '../engine/geo';
 import { addDays, dateOf, floorHour } from '../engine/time';
 import { buildReport, type CollectDeps } from '../jobs/collect';
-import { detectLang, fill, STRINGS } from '../render/i18n';
+import { detectLang, fill, STRINGS, type Strings } from '../render/i18n';
 import { detailsMarkupFor, goButtonsMarkup, renderDetails, renderEvening, renderSpotDay, spotName, type RenderCtx, allSpotOrder } from '../render/messages';
 import type { Board, Lang, Level, Profile, Region, Report, Spot } from '../types';
 import { boardKeyboard, langKeyboard, levelKeyboard, persistentKeyboard, profileKeyboard } from './keyboards';
@@ -38,10 +39,25 @@ const renderCtx = (lang: Lang, deps: BotDeps): RenderCtx => ({ lang, spots: new 
 const collectDeps = (deps: BotDeps, now: string): CollectDeps =>
   ({ spots: deps.spots, regions: deps.regions, fetchFn: deps.fetchFn, radiusKm: deps.radiusKm, now });
 
+/**
+ * « Maintenant » n'a de sens que tant qu'il reste du jour : passe la derniere heure surfable, chaque
+ * creneau restant vaut 0 et le rapport n'est qu'un mur de zeros qui n'apprend rien. On repond alors
+ * pour demain (mode soiree), et l'appelant prefixe `dayIsDone` puisque la date n'est plus celle du
+ * jour. Un rapport sans aucun spot evalue (Open-Meteo muet, hors couverture) n'est pas bascule :
+ * demain serait tout aussi vide, et ce serait une seconde serie d'appels pour rien.
+ */
 async function nowReport(profile: Profile, deps: BotDeps): Promise<Report> {
   const now = deps.now();
-  return buildReport({ profile, date: dateOf(now), mode: 'now', fromTime: floorHour(now) }, collectDeps(deps, now));
+  const today = dateOf(now);
+  const fromTime = floorHour(now);
+  const report = await buildReport({ profile, date: today, mode: 'now', fromTime }, collectDeps(deps, now));
+  if (report.spots.length === 0 || hasDaylightLeft(fromTime, report.sun.sunrise, report.sun.sunset)) return report;
+  return buildReport({ profile, date: addDays(today, 1), mode: 'evening' }, collectDeps(deps, now));
 }
+
+/** Le prefixe a coller devant un rapport « maintenant » que `nowReport` a bascule sur demain. */
+const rolloverPrefix = (report: Report, deps: BotDeps, s: Strings): string =>
+  report.date === dateOf(deps.now()) ? '' : `${s.dayIsDone}\n\n`;
 
 /**
  * The report `/all`, `/<spot>` and the `rep:<today>` callback all show: today's report from KV if a
@@ -96,7 +112,9 @@ async function handleSpotCommand(chatId: number, query: string, profile: Profile
   }
 
   const report = await todayReport(chatId, profile, deps);
-  await deps.telegram.sendMessage(chatId, renderSpotDay(report, spot.id, ctx), goButtonsMarkup(report, ctx, { spotId: spot.id }));
+  // `renderSpotDay` ne porte aucune date : sans ce prefixe, un rapport bascule sur demain passerait
+  // pour celui d'aujourd'hui.
+  await deps.telegram.sendMessage(chatId, `${rolloverPrefix(report, deps, s)}${renderSpotDay(report, spot.id, ctx)}`, goButtonsMarkup(report, ctx, { spotId: spot.id }));
   return true;
 }
 
@@ -132,13 +150,13 @@ export async function handleUpdate(update: TgUpdate, deps: BotDeps): Promise<voi
     const updated = await store.updateProfile(chatId, (cur) => ({ ...(cur ?? profile!), location: { lat, lon, source: 'custom' } }));
     const report = await nowReport(updated, deps);
     const ctx = renderCtx(profile.lang, deps);
-    await telegram.sendMessage(chatId, `${renderEvening(report, ctx)}\n\n${s.locationSaved}`, detailsMarkupFor(report, ctx));
+    await telegram.sendMessage(chatId, `${rolloverPrefix(report, deps, s)}${renderEvening(report, ctx)}\n\n${s.locationSaved}`, detailsMarkupFor(report, ctx));
     return;
   }
   if (text === '/now' || isButton(text, 'now')) {
     const report = await nowReport(profile, deps);
     const ctx = renderCtx(profile.lang, deps);
-    await telegram.sendMessage(chatId, renderEvening(report, ctx), detailsMarkupFor(report, ctx));
+    await telegram.sendMessage(chatId, `${rolloverPrefix(report, deps, s)}${renderEvening(report, ctx)}`, detailsMarkupFor(report, ctx));
     return;
   }
   if (isButton(text, 'backHome')) {

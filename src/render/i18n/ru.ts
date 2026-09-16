@@ -45,6 +45,7 @@ export const ru: Strings = {
   reactivated: 'С возвращением — профиль на месте.',
   locationSaved: 'Позиция сохранена — вечерний прогноз в 19:00 будет для неё.',
   backHomeDone: 'Позиция: снова Muizenberg.',
+  dayIsDone: '🌙 На сегодня всё, света уже нет. Вот завтра:',
   verdict: {
     green: '🟢 <b>ЗАВТРА НЕ ИДИ НА РАБОТУ</b> ({date})',
     greenEpicSuffix: ' — будет эпично',

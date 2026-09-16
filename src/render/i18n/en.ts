@@ -45,6 +45,7 @@ export const en: Strings = {
   reactivated: 'Good to see you again — your profile is still here.',
   locationSaved: 'Location saved — the 19:00 verdict will use it.',
   backHomeDone: 'Location: back to Muizenberg.',
+  dayIsDone: '🌙 Today is done, the light has gone. Here is tomorrow:',
   verdict: {
     green: "🟢 <b>DON'T GO TO WORK TOMORROW</b> ({date})",
     greenEpicSuffix: " — it's firing",

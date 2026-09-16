@@ -31,6 +31,8 @@ export interface Strings {
   reactivated: string;
   locationSaved: string;
   backHomeDone: string;
+  /** en tete d'un rapport « maintenant » bascule sur demain, faute de jour restant aujourd'hui */
+  dayIsDone: string;
   /** titres : {date} ; redBody : {radius} ; redBest : {spot} {score} {reason} */
   verdict: {
     green: string; greenEpicSuffix: string; greenWeekend: string; greenNow: string;
