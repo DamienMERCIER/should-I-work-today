@@ -23,7 +23,12 @@ export function extractBreakSlugs(xml: string): string[] {
 // on which global `Buffer`/`ArrayBuffer` declaration wins — `TextDecoder` is unambiguous either way.
 export function decompressGzip(bytes: ArrayBuffer | Uint8Array): string {
   const buf = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-  return new TextDecoder('utf-8').decode(gunzipSync(buf));
+  // L'URL finit en .xml.gz, mais `fetch` annonce `accept-encoding: gzip` et le serveur répond
+  // `Content-Encoding: gzip` : la couche HTTP a déjà décompressé, et le corps arrive en clair.
+  // On ne décompresse donc que si les octets portent vraiment la signature gzip (0x1f 0x8b),
+  // sinon gunzip échoue sur « incorrect header check ».
+  const isGzip = buf.length >= 2 && buf[0] === 0x1f && buf[1] === 0x8b;
+  return new TextDecoder('utf-8').decode(isGzip ? gunzipSync(buf) : buf);
 }
 
 /** Fetches and parses one letter's sitemap. A 404 (no sitemap for that letter) yields `[]`, not a crash. */

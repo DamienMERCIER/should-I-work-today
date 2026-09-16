@@ -34,6 +34,20 @@ describe('decompressGzip', () => {
   });
 });
 
+describe('decompressGzip on an already-decompressed body', () => {
+  it('passes plain XML through instead of trying to gunzip it', () => {
+    // fetch envoie `accept-encoding: gzip` ; le serveur répond `Content-Encoding: gzip` et la
+    // couche HTTP décompresse déjà. Le corps arrive donc en clair malgré l'URL en .xml.gz,
+    // et gunzip échouait alors sur « incorrect header check » (Z_DATA_ERROR).
+    const xml = '<?xml version="1.0"?><urlset><url><loc>https://x/breaks/Aan/forecasts/latest</loc></url></urlset>';
+    expect(decompressGzip(new TextEncoder().encode(xml))).toBe(xml);
+  });
+  it('still gunzips a body that really is gzipped', () => {
+    const xml = '<urlset><loc>ok</loc></urlset>';
+    expect(decompressGzip(gzipSync(Buffer.from(xml, 'utf8')))).toBe(xml);
+  });
+});
+
 describe('fetchSitemapSlugs', () => {
   it('fetches, decompresses and parses a letter\'s sitemap', async () => {
     const compressed = gzipSync(Buffer.from(sampleXml, 'utf8'));
