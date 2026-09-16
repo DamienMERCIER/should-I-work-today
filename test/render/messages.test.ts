@@ -256,15 +256,15 @@ describe('renderDetails', () => {
         '📋 <b>Your day</b> (Wed 16 Sept)',
         `🏄 ${KOM} · 7:00–12:00`,
         '',
-        '<pre>7  10 13 16',
-        '████▇▄▁▁▁▁▁</pre>',
+        '<code>6  9  12 15 18</code>',
+        '<code>·████▇▄▁▁▁▁▁·</code>',
         '',
         'peak 10.0 at 7:00',
         '5 ft · SW 13 s · offshore SE 8→30 kt · incoming tide, high 9:00',
         'best at 7:00 — wind drops to 8 kt, tide still high',
         'fades from 12:00 — wind builds to 24 kt',
         '',
-        '<pre>Muizenberg    ▅▅▅▃·······  6.1</pre>',
+        '<code>Muizenberg    ·▅▅▅▃········  6.1</code>',
         '',
         'tide: low 3:00 · high 9:00 · low 15:00 · high 21:00',
         '🌅 6:44 · 🌇 18:38',
@@ -332,7 +332,7 @@ function komResult(hours: SpotHour[], best: Window | undefined): SpotResult {
   };
 }
 
-const KOM_CHART = '<pre>7  10 13 16\n▇██▄▄▃▃▃▄▄▄</pre>';
+const KOM_CHART = '<code>6  9  12 15 18</code>\n<code>·▇██▄▄▃▃▃▄▄▄·</code>';
 const KOM_BLOCK = [
   `🏄 ${KOM} · 7:00–10:00`,
   '',
@@ -369,9 +369,9 @@ describe('renderSpotDay', () => {
     const report = makeReport({ spots: [komResult(hours, undefined)], tides: [{ time: `${GOLDEN_DATE}T09:00`, kind: 'high', heightM: 0.5 }] });
     expect(renderSpotDay(report, 'kommetjie-long-beach', EN)).toBe(
       [
-        `🏄 ${KOM}`,
+        `🏄 ${KOM} · 5.0/10`, // sans fenêtre, l'en-tête chiffre quand même la journée
         '',
-        '<pre>7  10 13 16\n▅▅▅▅▅▅▅▅▅▅▅</pre>',
+        '<code>6  9  12 15 18</code>\n<code>·▅▅▅▅▅▅▅▅▅▅▅·</code>',
         '',
         '6 ft · SW 12 s · offshore SE 10 kt · incoming tide, high 9:00',
       ].join('\n'),
@@ -380,7 +380,7 @@ describe('renderSpotDay', () => {
   it('a spot closed for the level: chart of zeros, says it is closed', () => {
     const report = makeReport({ spots: [{ spotId: 'outer-kom', distanceKm: 14.5, open: false, hours: [], windows: [], best: undefined, maxScore: 0 }] });
     expect(renderSpotDay(report, 'outer-kom', EN)).toBe(
-      ['🏄 Kommetjie – Outer Kom', '', '<pre>7  10 13 16\n···········</pre>', '', 'closed for your level'].join('\n'),
+      ['🏄 Kommetjie – Outer Kom · 0.0/10', '', '<code>6  9  12 15 18</code>\n<code>·············</code>', '', 'closed for your level'].join('\n'),
     );
   });
   it('says nothing when the day is flat: a window exists but every factor is steady all day', () => {
@@ -417,7 +417,7 @@ describe('renderSpotDay', () => {
 function flatSpot(id: string, maxScore: number, open = true): SpotResult {
   return { spotId: id, distanceKm: 5, open, hours: [], windows: [], best: undefined, maxScore };
 }
-const DEAD_11 = '·'.repeat(11);
+const DEAD_COLS = '·'.repeat(13); // 13 colonnes depuis que le graphique couvre les heures partiellement éclairées
 /**
  * Same short-label/padding rule as `renderDayView`'s spot rows, re-derived independently for the test:
  * label (≤ 13 chars, own field — no truncation, § defect 2) padEnd(13) + 1 space + sparkline + 2 spaces + score.
@@ -425,7 +425,7 @@ const DEAD_11 = '·'.repeat(11);
 function expectedRow(id: string, score: number): string {
   const spot = SPOTS.find((sp) => sp.id === id)!;
   const label = spot.verified ? spot.short : `${spot.short}`;
-  return `${label.padEnd(13, ' ')} ${DEAD_11}  ${score.toFixed(1)}`;
+  return `${label.padEnd(13, ' ')} ${DEAD_COLS}  ${score.toFixed(1)}`;
 }
 const DAY_VIEW_TIDES = [
   { time: `${GOLDEN_DATE}T05:50`, kind: 'high' as const, heightM: -0.17 },
@@ -446,7 +446,7 @@ describe('renderDayView', () => {
     expect(renderDayView(dayViewReport(), EN)).toBe(
       [
         KOM_BLOCK,
-        `<pre>${expectedRow('muizenberg', 7.0)}\n${expectedRow('clovelly', 3.0)}</pre>`,
+        `<code>${expectedRow('muizenberg', 7.0)}</code>\n<code>${expectedRow('clovelly', 3.0)}</code>`,
         ['2 spots flat all day', ...DAY_VIEW_TAIL].join('\n'),
       ].join('\n\n'),
     );
@@ -456,10 +456,10 @@ describe('renderDayView', () => {
       [
         KOM_BLOCK,
         [
-          '<pre>' + expectedRow('muizenberg', 7.0),
-          expectedRow('clovelly', 3.0),
-          expectedRow('fish-hoek', 2.0),
-          expectedRow('glen-beach', 1.0) + '</pre>',
+          `<code>${expectedRow('muizenberg', 7.0)}</code>`,
+          `<code>${expectedRow('clovelly', 3.0)}</code>`,
+          `<code>${expectedRow('fish-hoek', 2.0)}</code>`,
+          `<code>${expectedRow('glen-beach', 1.0)}</code>`,
         ].join('\n'),
         DAY_VIEW_TAIL.join('\n'),
       ].join('\n\n'),
@@ -485,7 +485,7 @@ describe('renderDayView', () => {
     // both used to naively truncate to the identical "Kommetjie – " prefix — now each gets its own short
     // label; scoped to the secondary-rows block since the primary spot's own title legitimately uses the
     // full "Kommetjie – Long Beach" name.
-    const rowsBlock = `<pre>${expectedRow('inner-kom', 4.0)}\n${expectedRow('outer-kom', 3.5)}</pre>`;
+    const rowsBlock = `<code>${expectedRow('inner-kom', 4.0)}</code>\n<code>${expectedRow('outer-kom', 3.5)}</code>`;
     expect(out).toContain(rowsBlock);
     expect(rowsBlock).not.toContain('Kommetjie – ');
   });
@@ -524,11 +524,10 @@ describe('renderDayView / allSpotOrder — /all cap in a dense cluster (§report
   it('renderDayView({ all: true }) shows at most ALL_SPOTS_CAP rows and a "+N more" tail once a cluster exceeds it, never the flat-spots wording', () => {
     const { report, ctx } = manySpots(80);
     const out = renderDayView(report, ctx, { all: true });
-    // Two <pre> blocks: the primary spot's own 2-line ruler+sparkline chart, then the secondary-rows
-    // block (one row per other open spot) — only the second is bounded by ALL_SPOTS_CAP.
-    const preBlocks = [...out.matchAll(/<pre>([\s\S]*?)<\/pre>/g)];
-    expect(preBlocks).toHaveLength(2);
-    expect(preBlocks[1][1].split('\n')).toHaveLength(ALL_SPOTS_CAP);
+    // Chaque ligne a son propre <code> : les deux premiers sont la règle et le sparkline du spot
+    // principal, les suivants sont une ligne par autre spot ouvert — seuls ceux-là sont plafonnés.
+    const codeLines = [...out.matchAll(/<code>([\s\S]*?)<\/code>/g)].map((m) => m[1]);
+    expect(codeLines).toHaveLength(2 + ALL_SPOTS_CAP);
     expect(out).toContain('+49 more open spots not shown'); // 80 - 1 primary - 30 shown = 49 hidden
     expect(out).not.toContain('flat all day');
   });
@@ -560,10 +559,10 @@ describe('renderDayView — row width budget (≤ 34 chars, § day-view.md "Widt
     ['8-hour day', '09:00', '17:00'],
     ['11-hour day', '06:44', '18:38'],
     ['14-hour day', '05:32', '19:58'],
-  ])('keeps every line inside a <pre> block ≤ 34 chars on a %s (worst case: a 10.0 score)', (_name, sunrise, sunset) => {
+  ])('keeps every monospace line ≤ 34 chars on a %s (worst case: a 10.0 score)', (_name, sunrise, sunset) => {
     const out = renderDayView(withDaylight(sunrise, sunset), EN);
-    const preLines = [...out.matchAll(/<pre>([\s\S]*?)<\/pre>/g)].flatMap((m) => m[1].split('\n'));
-    expect(preLines.length).toBeGreaterThan(0);
-    preLines.forEach((line) => expect(line.length).toBeLessThanOrEqual(34));
+    const monoLines = [...out.matchAll(/<code>([\s\S]*?)<\/code>/g)].flatMap((m) => m[1].split('\n'));
+    expect(monoLines.length).toBeGreaterThan(0);
+    monoLines.forEach((line) => expect(line.length).toBeLessThanOrEqual(34));
   });
 });

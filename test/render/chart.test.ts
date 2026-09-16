@@ -51,20 +51,20 @@ describe('hourRuler', () => {
     Array.from({ length: end - start + 1 }, (_, i) => start + i);
 
   it.each([
-    ['8-hour day', range(9, 16)],
-    ['11-hour day', range(7, 17)],
-    ['14-hour day', range(6, 19)],
-  ])('labels every third hour so its character index is 1 × its array index (%s)', (_name, hours) => {
+    ['8-hour day', 8],
+    ['11-hour day', 11],
+    ['14-hour day', 14],
+  ])('aligns every label it writes on its own hour column, and never exceeds the sparkline (%s)', (_n, len) => {
+    const hours = Array.from({ length: len }, (_, i) => 6 + i);
     const ruler = hourRuler(hours);
-    hours.forEach((h, i) => {
-      if (i % 3 === 0) {
-        expect(ruler.slice(1 * i, 1 * i + String(h).length)).toBe(String(h));
-      }
-    });
+    expect(ruler.length).toBeLessThanOrEqual(hours.length + 2); // un repère à 2 chiffres sur la dernière colonne dépasse
+    for (const m of ruler.matchAll(/\d+/g)) {
+      expect(hours[m.index!]).toBe(Number(m[0]));
+    }
   });
 
-  it('renders the documented example (7..17) as "7  10 13 16"', () => {
-    expect(hourRuler(range(7, 17))).toBe('7  10 13 16');
+  it('always labels the first and the last hour (7..17)', () => {
+    expect(hourRuler(range(7, 17))).toBe('7  10 13  17');
   });
 
   it('is ≤ 34 characters for an 11-hour day', () => {
@@ -76,13 +76,13 @@ describe('hourRuler', () => {
 });
 
 describe('chartHours', () => {
-  it('is 7..17 (11 h) on a September day (sunrise 6:44, sunset 18:38)', () => {
+  it('is 6..18 (13 h) on a September day (sunrise 6:44, sunset 18:38)', () => {
     const report = makeReport({ spots: [] });
-    expect(chartHours(report)).toEqual([7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]);
+    expect(chartHours(report)).toEqual([6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]);
   });
-  it('is ~14 h on a December day (sunrise 5:32, sunset 19:58)', () => {
+  it('is capped at 14 h on a December day (sunrise 5:32, sunset 19:58)', () => {
     const report = makeReport({ spots: [], sun: { sunrise: `${DATE}T05:32`, sunset: `${DATE}T19:58` } });
-    expect(chartHours(report)).toEqual([6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
+    expect(chartHours(report)).toEqual([5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]);
   });
   it('caps at 14 h, centred on the highest-scoring part of the day, when daylight would give more', () => {
     // sunrise 4:00 / sunset 21:00 → 17 raw daylight hours (4..20); scores peak at 16:00.
@@ -97,15 +97,15 @@ describe('chartHours', () => {
     hours.forEach((h) => expect(h).toBeGreaterThanOrEqual(4));
     hours.forEach((h) => expect(h).toBeLessThanOrEqual(20));
   });
-  it.each([7, 8, 9, 10, 11, 12, 13, 14])('never renders wider than its sparkline (%i h)', (n) => {
+  it.each([7, 8, 9, 10, 11, 12, 13, 14])('never overhangs its sparkline by more than a closing label (%i h)', (n) => {
     // un label à deux chiffres sur le dernier index labellisé débordait la grille
     const hours = Array.from({ length: n }, (_, i) => 6 + i);
-    expect(hourRuler(hours).length).toBeLessThanOrEqual(hours.length);
+    expect(hourRuler(hours).length).toBeLessThanOrEqual(hours.length + 2);
   });
-  it('drops a label that would run past the last column rather than truncating it', () => {
+  it('always writes the closing label, even when it overhangs the last column', () => {
     // 10 h (hiver au Cap : 8h→17h) : "17" tombe à l'index 9, il déborderait la grille
-    expect(hourRuler([8, 9, 10, 11, 12, 13, 14, 15, 16, 17])).toBe('8  11 14');
-    expect(hourRuler([6, 7, 8, 9, 10, 11, 12])).toBe('6  9');
+    expect(hourRuler([8, 9, 10, 11, 12, 13, 14, 15, 16, 17])).toBe('8  11 14 17');
+    expect(hourRuler([6, 7, 8, 9, 10, 11, 12])).toBe('6  9  12');
   });
 
   it('still caps at 14 h when the day is entirely flat (deterministic, no crash)', () => {

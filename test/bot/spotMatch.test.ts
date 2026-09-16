@@ -162,10 +162,16 @@ describe('matchSpot performance against an 8000-entry world set (§report "Resil
 
   it('steady state (the id-slug cache warm — the overwhelming majority of real calls on a long-lived Worker isolate, since the world tuple array never changes) stays well under the 10 ms budget even on the worst-case (no-match) query', () => {
     matchSpot('zzznotfound', SPOTS, bigWorld); // prime worldTupleIdSlug's per-tuple cache (§world.ts)
-    const t0 = performance.now();
-    for (let i = 0; i < 20; i++) matchSpot('zzznotfound', SPOTS, bigWorld);
-    const meanMs = (performance.now() - t0) / 20;
-    expect(meanMs).toBeLessThan(5);
+    // Médiane plutôt que moyenne : sur une machine chargée, un seul appel ralenti par le
+    // ramasse-miettes suffisait à faire échouer le seuil sans rien dire du coût habituel.
+    const timings: number[] = [];
+    for (let i = 0; i < 21; i++) {
+      const t0 = performance.now();
+      matchSpot('zzznotfound', SPOTS, bigWorld);
+      timings.push(performance.now() - t0);
+    }
+    const medianMs = timings.sort((a, b) => a - b)[10];
+    expect(medianMs).toBeLessThan(5);
   });
 });
 

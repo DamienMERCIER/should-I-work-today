@@ -301,7 +301,7 @@ function explanationLines(r: SpotResult, peak: SpotHour, plotted: SpotHour[], s:
 }
 
 /**
- * The detailed chart block for one spot: title (+ its best window, if any), ruler + sparkline in a `<pre>`
+ * The detailed chart block for one spot: title (+ its best window, if any), ruler + sparkline in `<code>` lines
  * block, then the peak/conditions/explanation lines. Works with no window (skips peak/best-at/fades-from,
  * keeps the chart and conditions) and for a spot closed at the user's level (chart of zeros, says so) —
  * also called directly by the follow-up `/spot` command.
@@ -312,8 +312,12 @@ export function renderSpotDay(report: Report, spotId: string, ctx: RenderCtx): s
   const name = spotName(spotId, ctx, s);
   const hours = chartHours(report);
   const aligned = r ? alignedHours(r, report.date, hours) : hours.map(() => undefined);
-  const chart = `<pre>${hourRuler(hours)}\n${sparkline(aligned.map((h) => h?.score ?? 0))}</pre>`;
-  const title = `🏄 ${name}${r?.best ? ` · ${fmtWindow(r.best)}` : ''}`;
+  // `<code>` ligne à ligne plutôt qu'un bloc `<pre>` : sur téléphone, Telegram enferme un `<pre>`
+  // dans un conteneur défilant avec bouton copier qui rognait la dernière colonne de la règle.
+  const chart = [`<code>${hourRuler(hours)}</code>`, `<code>${sparkline(aligned.map((h) => h?.score ?? 0))}</code>`].join('\n');
+  // avec une fenêtre, le créneau ; sans fenêtre, la note du jour — sinon l'en-tête ne chiffrait rien
+  const headline = r?.best ? fmtWindow(r.best) : r ? `${r.maxScore.toFixed(1)}/10` : '';
+  const title = `🏄 ${name}${headline ? ` · ${headline}` : ''}`;
 
   if (!r || !r.open) return [title, chart, s.dayView.closedSpot].join('\n\n');
 
@@ -365,7 +369,7 @@ export function openSpotOrder(report: Report): string[] {
  * Hard cap on how many non-primary spots the `/all` surface shows or lists. `/all`'s spot list is
  * bounded only by the caller's radius query (`nearbySpots`), and once that query considers curated +
  * world spots (§report "Resilience, wiring and dedupe"), a dense real-world cluster of adjacent breaks
- * can put dozens of open spots in one report — uncapped, both the `<pre>` row block (≤ 34 chars/row,
+ * can put dozens of open spots in one report — uncapped, both the row block (≤ 34 chars/row,
  * § "row width budget" below) and the trailing command line would grow without bound and risk
  * exceeding Telegram's 4096-character message limit.
  *
@@ -401,7 +405,7 @@ export function renderDayView(report: Report, ctx: RenderCtx, opts: { all?: bool
   const others = report.spots.filter((r) => r.open && r.spotId !== primaryId).sort((a, b) => b.maxScore - a.maxScore);
   const shown = opts.all ? others.slice(0, ALL_SPOTS_CAP) : others.filter((r) => r.maxScore >= 2.5);
   const hours = chartHours(report);
-  if (shown.length > 0) blocks.push(`<pre>${shown.map((r) => spotRow(r, hours, report.date, ctx, s)).join('\n')}</pre>`);
+  if (shown.length > 0) blocks.push(shown.map((r) => `<code>${spotRow(r, hours, report.date, ctx, s)}</code>`).join('\n'));
 
   const tail: string[] = [];
   const hidden = others.length - shown.length;

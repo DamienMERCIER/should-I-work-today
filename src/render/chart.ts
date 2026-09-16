@@ -1,18 +1,25 @@
-import { daylightFactor } from '../engine/factors';
+import { toMs } from '../engine/time';
 import type { Report } from '../types';
 
-/** Longest day we ever plot — keeps a phone-width `<pre>` block readable (§ design doc). */
+/** Longest day we ever plot — keeps a phone-width chart readable (§ design doc). */
 const MAX_CHART_HOURS = 14;
 
 const pad2 = (h: number): string => String(h).padStart(2, '0');
 const slotAt = (date: string, h: number): string => `${date}T${pad2(h)}:00`;
 
-/** Every hour of `date` whose slot has ≥ 45 min of daylight (same rule the engine scores on). */
+/**
+ * Toute heure du jour dont le créneau touche la lumière, même partiellement. Le moteur, lui, ne
+ * note que les créneaux qui ont ≥ 45 min de jour : on trace donc une colonne de plus de chaque
+ * côté, à zéro, ce qui montre où la journée s'ouvre et se ferme plutôt que de couper net.
+ */
 function daylightHours(report: Report): number[] {
   const { date } = report;
+  const sunrise = toMs(report.sun.sunrise);
+  const sunset = toMs(report.sun.sunset);
   const hours: number[] = [];
   for (let h = 0; h < 24; h++) {
-    if (daylightFactor(slotAt(date, h), report.sun.sunrise, report.sun.sunset) === 1) hours.push(h);
+    const start = toMs(slotAt(date, h));
+    if (Math.min(start + 3_600_000, sunset) > Math.max(start, sunrise)) hours.push(h);
   }
   return hours;
 }
@@ -73,23 +80,26 @@ export function sparkline(scores: number[]): string {
 }
 
 /**
- * The ruler line above a sparkline: every third hour (array index 0, 3, 6, …) is labelled, written
- * into a 1-character-per-hour grid so the label for `hours[i]` starts at character index `i` —
- * lining up with that hour's glyph in the sparkline (glyph `i` also sits at character `i`, since
- * `sparkline` now joins single-character glyphs with no separator). A label can be 2 characters
- * wide (e.g. "16"); it spills into the next column, which is otherwise blank since labelled
- * indices are 3 apart (e.g. "7  10 13 16" for 7..17). A label that would run past the last
- * column is dropped rather than truncated or shifted: the ruler must never be wider than the
- * sparkline it sits above, and a shifted label would read as one number glued to the previous
- * one ("1417"). Reachable on real dates — a 10-hour Cape Town midwinter day labels index 9.
+ * La règle au-dessus d'un sparkline, sur une grille d'un caractère par heure : le repère de
+ * `hours[i]` commence au caractère `i`, donc au-dessus de son glyphe. La première et la dernière
+ * heure sont toujours écrites, et les repères intermédiaires (tous les 3) ne sont posés que s'ils
+ * gardent une colonne vide de chaque côté. Un repère à deux chiffres sur la dernière colonne fait
+ * dépasser la règle d'un caractère : c'est voulu, rien ne s'aligne sur son bord droit, et l'heure
+ * de fin de journée compte plus qu'un bord net.
  */
 export function hourRuler(hours: number[]): string {
-  let ruler = ' '.repeat(hours.length);
-  hours.forEach((h, i) => {
-    if (i % 3 !== 0) return;
-    const label = String(h);
-    if (i + label.length > hours.length) return;
-    ruler = ruler.slice(0, i) + label + ruler.slice(i + label.length);
-  });
-  return ruler.trimEnd();
+  const width = hours.length + 2; // un repère à deux chiffres sur la dernière colonne déborde d'un cran
+  const cells = Array.from({ length: width }, () => ' ');
+  const place = (i: number, label: string): boolean => {
+    if (i < 0 || i + label.length > width) return false;
+    for (let k = i - 1; k <= i + label.length; k++) if (k >= 0 && k < width && cells[k] !== ' ') return false;
+    for (let k = 0; k < label.length; k++) cells[i + k] = label[k];
+    return true;
+  };
+  place(0, String(hours[0]));
+  if (hours.length > 1) place(hours.length - 1, String(hours[hours.length - 1]));
+  for (let i = 3; i < hours.length - 1; i += 3) place(i, String(hours[i]));
+  return cells.join('').trimEnd();
 }
+
+
