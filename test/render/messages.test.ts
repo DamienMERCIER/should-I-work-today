@@ -132,26 +132,31 @@ describe('renderEvening — golden 🟢', () => {
     expect(renderEvening(goldenReport(), EN)).toBe(
       [
         "🟢 <b>DON'T GO TO WORK TOMORROW</b> (Wed 16 Sept) — it's firing",
-        `🏄 ${KOM} · 7:00–12:00 · 10.0/10`,
-        '   5 ft · SW 13 s · offshore SE 8 kt · incoming tide, high 9:00',
-        // le graphe du jour sous chaque spot : le verdict dit quand y aller, la courbe montre à quoi
-        // ressemble le reste de la journée sans avoir à ouvrir 📋
-        '<code>6  9  12 15 18</code>',
-        '<code>·████▇▄▁▁▁▁▁·</code>',
-        '   ☀️ 22° · sunrise 6:44',
-        `🥈 ${MUIZ} · 7:00–10:00 · 6.1/10`,
-        '   3 ft · onshore SE 8 kt',
-        '<code>6  9  12 15 18</code>',
-        '<code>·▅▅▅▃········</code>',
-      ].join('\n'),
+        // un bloc par spot, separe par une ligne vide : ses lignes de conditions puis son graphe du
+        // jour — le verdict dit quand y aller, la courbe montre le reste de la journee sans ouvrir 📋
+        [
+          `🏄 ${KOM} · 7:00–11:00 · 10.0/10`,
+          '   5 ft · SW 13 s · offshore SE 8 kt · incoming tide, high 9:00',
+          '   ☀️ 22° · sunrise 6:44',
+          '<code>6  9  12 15 18</code>',
+          '<code>·████▅▂······</code>',
+        ].join('\n'),
+        [
+          `🥈 ${MUIZ} · 7:00–10:00 · 6.1/10`,
+          '   3 ft · onshore SE 8 kt',
+          '<code>6  9  12 15 18</code>',
+          '<code>·▅▅▅▃········</code>',
+        ].join('\n'),
+      ].join('\n\n'),
     );
   });
   it('RU', () => {
     const lines = renderEvening(goldenReport(), RU).split('\n');
     expect(lines[0]).toContain('ЗАВТРА НЕ ИДИ НА РАБОТУ');
     expect(lines[0]).toContain('16 сент.');
-    expect(lines[1]).toBe(`🏄 ${KOM} · 7:00–12:00 · 10.0/10`);
-    expect(lines[2]).toBe('   5 ft · ЮЗ 13 с · оффшор ЮВ 8 kt · прилив, полная 9:00');
+    expect(lines[1]).toBe(''); // le titre est un bloc a lui seul
+    expect(lines[2]).toBe(`🏄 ${KOM} · 7:00–11:00 · 10.0/10`);
+    expect(lines[3]).toBe('   5 ft · ЮЗ 13 с · оффшор ЮВ 8 kt · прилив, полная 9:00');
   });
   it('adds the epic suffix, the weekend and now titles', () => {
     const r = goldenReport();
@@ -185,8 +190,8 @@ describe('renderEvening — golden 🟢', () => {
   it('mentions the wind change at the end of the window', () => {
     const r = goldenReport();
     const kom = r.spots.find((x) => x.spotId === 'kommetjie-long-beach')!;
-    kom.hours.find((h) => h.time === `${GOLDEN_DATE}T11:00`)!.windRelation = 'onshore';
-    expect(renderEvening(r, EN).split('\n')[2]).toBe('   5 ft · SW 13 s · offshore SE 8 kt then onshore · incoming tide, high 9:00');
+    kom.hours.find((h) => h.time === `${GOLDEN_DATE}T10:00`)!.windRelation = 'onshore';
+    expect(renderEvening(r, EN).split('\n')).toContain('   5 ft · SW 13 s · offshore SE 8 kt then onshore · incoming tide, high 9:00');
   });
 });
 
@@ -196,7 +201,7 @@ describe('renderEvening — other verdicts', () => {
     // Muizenberg's maxScore is now 6.1 (size 0.87, period 1.0), and wind (0.7) is its weakest factor —
     // size, at 0.87, is no longer the lowest now that period no longer drags it down (was 0.549 · 0.86 before).
     expect(renderEvening(r, EN)).toBe(
-      ['🔴 <b>GO TO WORK TOMORROW</b> (Wed 16 Sept)', 'Nothing ≥ 7/10 within 20 km.', `Best: ${MUIZ} 6.1/10 (onshore SE 8 kt)`].join('\n'),
+      ['🔴 <b>GO TO WORK TOMORROW</b> (Wed 16 Sept)', ['Nothing ≥ 7/10 within 20 km.', `Best: ${MUIZ} 6.1/10 (onshore SE 8 kt)`].join('\n')].join('\n\n'),
     );
   });
   it('🌅 dawn block', () => {
@@ -253,21 +258,21 @@ describe('renderEvening — other verdicts', () => {
 describe('renderMorning', () => {
   const evening = goldenReport();
   it('confirmed', () => {
-    expect(renderMorning(goldenReport({ mode: 'morning' }), { send: true, changed: false }, evening, EN)).toBe(`✅ Confirmed: 🟢 ${KOM} 7:00–12:00`);
+    expect(renderMorning(goldenReport({ mode: 'morning' }), { send: true, changed: false }, evening, EN)).toBe(`✅ Confirmed: 🟢 ${KOM} 7:00–11:00`);
   });
   it('changed with cause and the new conditions line', () => {
-    const morning: Report = goldenReport({ mode: 'morning', verdict: { kind: 'green', spotId: 'kommetjie-long-beach', window: W('07:00', '11:00', 8.0), epic: false } });
+    const morning: Report = goldenReport({ mode: 'morning', verdict: { kind: 'green', spotId: 'kommetjie-long-beach', window: W('07:00', '10:00', 8.0), epic: false } });
     expect(renderMorning(morning, { send: true, changed: true, cause: 'wind' }, evening, EN)).toBe(
-      [`⚠️ Change: 🟢 ${KOM} 7:00–12:00 → 🟢 ${KOM} 7:00–11:00`, '5 ft · SW 13 s · offshore SE 8 kt · incoming tide, high 9:00', 'cause: wind'].join('\n'),
+      [`⚠️ Change: 🟢 ${KOM} 7:00–11:00 → 🟢 ${KOM} 7:00–10:00`, '5 ft · SW 13 s · offshore SE 8 kt · incoming tide, high 9:00', 'cause: wind'].join('\n'),
     );
   });
   it('degraded to red', () => {
     const morning = goldenReport({ mode: 'morning', verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } });
-    expect(renderMorning(morning, { send: true, changed: true }, evening, EN)).toBe(`⚠️ Change: 🟢 ${KOM} 7:00–12:00 → 🔴 go to work`);
+    expect(renderMorning(morning, { send: true, changed: true }, evening, EN)).toBe(`⚠️ Change: 🟢 ${KOM} 7:00–11:00 → 🔴 go to work`);
   });
   it('noData keeps last night verdict', () => {
     const morning = goldenReport({ mode: 'morning', verdict: { kind: 'noData', reason: 'x' } });
-    expect(renderMorning(morning, { send: true, changed: false }, evening, EN)).toBe(`⚠️ No data this morning — last night's verdict stands: 🟢 ${KOM} 7:00–12:00`);
+    expect(renderMorning(morning, { send: true, changed: false }, evening, EN)).toBe(`⚠️ No data this morning — last night's verdict stands: 🟢 ${KOM} 7:00–11:00`);
   });
   it('short verdict of a missing report is red', () => {
     expect(renderShortVerdict(undefined, EN)).toBe('🔴 go to work');
@@ -278,21 +283,21 @@ describe('renderDetails', () => {
   it('is now the 📋 title line + the day view: primary spot chart, spot rows, tides, sun', () => {
     // Captured from the real implementation against goldenReport() and spot-checked against numbers the
     // OLD renderDetails/renderEvening golden tests already trusted (same engine, same fixtures — only the
-    // rendering changed): Kommetjie's window (7:00–12:00, peak 10.0), its "5 ft · SW 13 s" conditions and
+    // rendering changed): Kommetjie's window (7:00–11:00, peak 10.0), its "5 ft · SW 13 s" conditions and
     // "incoming tide, high 9:00" all match the pre-existing 🟢 EN golden test above; the wind range
     // 8→30 kt is exactly goldenWindKt's min/max over 7..17; Muizenberg's 6.1 matches the 🥈 golden test.
     expect(renderDetails(goldenReport(), EN)).toBe(
       [
         '📋 <b>Your day</b> (Wed 16 Sept)',
-        `🏄 ${KOM} · 7:00–12:00`,
+        `🏄 ${KOM} · 7:00–11:00`,
         '',
         '<code>6  9  12 15 18</code>',
-        '<code>·████▇▄▁▁▁▁▁·</code>',
+        '<code>·████▅▂······</code>',
         '',
         'peak 10.0 at 7:00',
         '5 ft · SW 13 s · offshore SE 8→30 kt · incoming tide, high 9:00',
         'best at 7:00 — wind drops to 8 kt, tide still high',
-        'fades from 12:00 — wind builds to 24 kt',
+        'fades from 11:00 — wind builds to 18 kt',
         '',
         '<code>Muizenberg    ·▅▅▅▃········  6.1</code>',
         '',

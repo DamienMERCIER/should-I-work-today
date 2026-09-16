@@ -18,10 +18,47 @@ const wind = windSeries('2026-09-16T00:00', '2026-09-16T23:00', (time) => ({
 const tide = computeTide(swell, DATE);
 const base = { level: 'intermediate' as const, board: 'shortboard' as const, date: DATE, swell, wind, sun: SUN_SEPT, tide, distanceKm: 13.4 };
 
+/**
+ * Le 17 septembre 2026 a Kommetjie, le bot annoncait 9,8/10 « ca envoie » sur une journee que
+ * surf-forecast notait 0/10, sur exactement la meme houle (2,2 m 12 s SW). Toute la difference etait
+ * dans le vent : un SE de 16 kt en rafales a 31 kt, que l'ancien modele comptait comme un offshore
+ * parfait (courbe pleine jusqu'a 15 kt, rafales jamais lues).
+ */
+describe('evaluateSpot — a gale that happens to blow offshore (defect: Kommetjie, 17 Sept 2026)', () => {
+  const gale = (windKt: number, gustKt: number) =>
+    evaluateSpot({
+      ...base,
+      spot: KOMMETJIE_LONG_BEACH,
+      wind: windSeries(`${DATE}T00:00`, `${DATE}T23:00`, () => ({ windKt, windDirDeg: 135, gustKt })),
+    });
+  const at8 = (windKt: number, gustKt: number) => gale(windKt, gustKt).hours.find((h) => h.time === `${DATE}T08:00`)!;
+
+  it('a light offshore still scores a perfect 10 — the fix must not flatten good days', () => {
+    expect(at8(8, 14).score).toBeCloseTo(10.0, 1);
+  });
+
+  it('16 kt offshore gusting 31 cannot reach the epic threshold, let alone 9.8', () => {
+    const h = at8(16, 31);
+    expect(h.windRelation).toBe('offshore'); // le SE reste bien offshore ici : c'est sa force, pas sa direction
+    expect(h.score).toBeLessThan(6);
+    expect(h.score).toBeGreaterThan(3); // et pas un zero non plus : la houle, elle, est bonne
+  });
+
+  it('the same sustained wind without the gust scores clearly higher — the gust is what costs', () => {
+    expect(at8(16, 18).score).toBeGreaterThan(at8(16, 31).score);
+  });
+
+  it('a 22 kt offshore gusting 43 is unsurfable, and no window survives it', () => {
+    const r = gale(22, 43);
+    expect(r.maxScore).toBeLessThan(1.5);
+    expect(r.windows).toEqual([]);
+  });
+});
+
 describe('evaluateSpot — golden scenario', () => {
   // Tp (peakPeriodS) = 13 s here (mean periodS stays 10.2, only used as fallback — see engine/swell.ts):
   // k(13) = clamp(1 + 0.05·(13−8), 0.9, 1.3) = 1.25 ; periodFactor(13) = 1.0 (≥ periodFullS 11, was 0.86 at 10.2).
-  it('Kommetjie Long Beach: offshore SE, 4.9 ft, window 07:00→12:00 peak 10.0 (epic)', () => {
+  it('Kommetjie Long Beach: offshore SE, 4.9 ft, window 07:00→11:00 peak 10.0 (epic)', () => {
     const r = evaluateSpot({ ...base, spot: KOMMETJIE_LONG_BEACH });
     const at = (h: string) => r.hours.find((x) => x.time === `${DATE}T${h}`)!;
     expect(r.open).toBe(true);
@@ -32,16 +69,18 @@ describe('evaluateSpot — golden scenario', () => {
     expect(at('06:00').score).toBe(0); // 16 min de jour seulement
     // size(1) × period(1.0) × wind(1) × tide(1) × day(1) × weather(1) = 1.0 → 10×1.0 = 10.0
     expect(at('07:00').score).toBeCloseTo(10.0, 1);
-    expect(at('10:00').score).toBeCloseTo(10.0, 1);
-    // 11:00 wind 18 kt offshore → windFactor 0.82 ; 1.0 × 0.82 = 0.82 → 8.2
-    expect(at('11:00').score).toBeCloseTo(8.2, 1);
-    // 12:00 wind 24 kt offshore → windFactor 0.46 ; 1.0 × 0.46 = 0.46 → 4.6
-    expect(at('12:00').score).toBeCloseTo(4.6, 1);
-    // 13:00 wind 30 kt offshore → windFactor 0.2, tide drops to 0.6 ; 1.0 × 0.2 × 0.6 = 0.12 → 1.2
-    expect(at('13:00').score).toBeCloseTo(1.2, 1);
+    // 10:00 wind 12 kt offshore → windFactor 0.90 (l'offshore n'est plein que jusqu'à 10 kt) → 9.0
+    expect(at('10:00').score).toBeCloseTo(9.0, 1);
+    // 11:00 wind 18 kt offshore → windFactor 0.57 ; 1.0 × 0.57 = 0.57 → 5.7
+    expect(at('11:00').score).toBeCloseTo(5.7, 1);
+    // 12:00 wind 24 kt offshore → windFactor 0.21 ; 1.0 × 0.21 = 0.21 → 2.1
+    expect(at('12:00').score).toBeCloseTo(2.1, 1);
+    // 13:00 wind 30 kt offshore → windFactor 0 : au-delà de 30 kt l'offshore ne se surfe plus
+    expect(at('13:00').score).toBe(0);
     expect(r.windows).toHaveLength(1);
-    // mean of [10.0, 10.0, 10.0, 10.0, 8.2] (07:00→11:00) = 48.2/5 = 9.64 → round1 → 9.6
-    expect(r.best).toEqual({ start: `${DATE}T07:00`, end: `${DATE}T12:00`, peak: 10.0, mean: 9.6 });
+    // 11:00 tombe sous windowMin (6), donc la fenêtre se ferme à 11:00 et non plus à 12:00
+    // mean of [10.0, 10.0, 10.0, 9.0] (07:00→10:00) = 39/4 = 9.75 → round1 → 9.8
+    expect(r.best).toEqual({ start: `${DATE}T07:00`, end: `${DATE}T11:00`, peak: 10.0, mean: 9.8 });
     expect(r.maxScore).toBeCloseTo(10.0, 1);
   });
 
@@ -72,8 +111,8 @@ describe('evaluateSpot — golden scenario', () => {
   it('fromTime drops earlier slots (/now)', () => {
     const r = evaluateSpot({ ...base, spot: KOMMETJIE_LONG_BEACH, fromTime: `${DATE}T08:00` });
     expect(r.hours[0].time).toBe(`${DATE}T08:00`);
-    // mean of [10.0, 10.0, 10.0, 8.2] (08:00→11:00) = 38.2/4 = 9.55 → round1 → 9.6
-    expect(r.best).toEqual({ start: `${DATE}T08:00`, end: `${DATE}T12:00`, peak: 10.0, mean: 9.6 });
+    // mean of [10.0, 10.0, 9.0] (08:00→10:00) = 29/3 = 9.67 → round1 → 9.7
+    expect(r.best).toEqual({ start: `${DATE}T08:00`, end: `${DATE}T11:00`, peak: 10.0, mean: 9.7 });
   });
 
   it('ignores hours of another day', () => {

@@ -10,6 +10,8 @@ export interface Strings {
   boards: Record<Board, string>;
   relations: Record<WindRelation, string>;
   glassy: string;
+  /** rafale citee seulement quand elle coute des points : {kt} */
+  gusting: string;
   then: string;
   today: string;
   tideStates: Record<TideState, string>;
@@ -37,10 +39,10 @@ export interface Strings {
   verdict: {
     green: string; greenEpicSuffix: string; greenWeekend: string; greenNow: string;
     dawn: string; dusk: string;
-    red: string; redWeekend: string; redNow: string; redBody: string; redBest: string;
+    red: string; redWeekend: string; redNow: string; redBody: string; redTooShort: string; redBest: string;
   };
   /** wind: {relation} {dir} {kt} · size: {ft} · period: {s} · tide: {state} */
-  reasons: { wind: string; size: string; period: string; tide: string; dark: string };
+  reasons: { size: string; period: string; tide: string; dark: string };
   /** conditions: {ft} {dir} {s} {wind} {tide} · sun: {temp} {sunrise} */
   spotLine: { conditions: string; sun: string };
   /** {mm} */

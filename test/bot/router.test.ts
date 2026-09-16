@@ -143,7 +143,7 @@ describe('location and /now', () => {
     await handleUpdate(msg('/now'), deps);
     await handleUpdate(msg('🔎 Сейчас'), deps);
     expect(sent()).toHaveLength(2);
-    expect(sent()[1].text).toContain('Kommetjie – Long Beach · 8:00–12:00 · 10.0/10');
+    expect(sent()[1].text).toContain('Kommetjie – Long Beach · 8:00–11:00 · 10.0/10');
   });
 });
 
@@ -346,7 +346,7 @@ describe('/all, /<spot> and /about', () => {
     await store.putProfiles({ '1': ready() });
     await handleUpdate(msg('/long_beach'), deps);
     expect(sent()).toHaveLength(1);
-    expect(sent()[0].text.startsWith('🏄 Kommetjie – Long Beach · 8:00–12:00')).toBe(true);
+    expect(sent()[0].text.startsWith('🏄 Kommetjie – Long Beach · 8:00–11:00')).toBe(true);
     expect(omCalls.length).toBeGreaterThan(0);
     // the per-spot command's go button, in English.
     expect(sent()[0].reply_markup).toEqual({

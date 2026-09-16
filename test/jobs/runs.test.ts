@@ -107,8 +107,8 @@ describe('runMorning', () => {
     const result = await runMorning(deps);
     expect(result).toEqual({ skipped: false, sent: 2, failed: 0, date: '2026-09-16' });
     expect(sent().map((m) => m.chat_id)).toEqual([1, 2]);
-    expect(sent()[0].text).toBe('✅ Confirmed: 🟢 Kommetjie – Long Beach 7:00–12:00');
-    expect(sent()[1].text.startsWith('⚠️ Change: 🔴 go to work → 🟢 Kommetjie – Long Beach 7:00–12:00')).toBe(true);
+    expect(sent()[0].text).toBe('✅ Confirmed: 🟢 Kommetjie – Long Beach 7:00–11:00');
+    expect(sent()[1].text.startsWith('⚠️ Change: 🔴 go to work → 🟢 Kommetjie – Long Beach 7:00–11:00')).toBe(true);
     // the morning push is the same rendering path as the evening one — it carries the go buttons too.
     expect(sent()[0].reply_markup).toEqual({
       inline_keyboard: [
@@ -128,7 +128,7 @@ describe('runMorning', () => {
     const writesBeforeRun = kv.writes.filter((k) => k === 'reports:2026-09-16').length;
     await runMorning(deps);
     expect(sent().map((m) => m.chat_id)).toEqual([1]);
-    expect(sent()[0].text).toBe("⚠️ No data this morning — last night's verdict stands: 🟢 Kommetjie – Long Beach 7:00–12:00");
+    expect(sent()[0].text).toBe("⚠️ No data this morning — last night's verdict stands: 🟢 Kommetjie – Long Beach 7:00–11:00");
     expect((await store.getReports('2026-09-16'))['1'].mode).toBe('evening');
     // un envoi a eu lieu (chat 1) : le run fait bien ses deux écritures (première + sentAt).
     expect(kv.writes.filter((k) => k === 'reports:2026-09-16').length - writesBeforeRun).toBe(2);

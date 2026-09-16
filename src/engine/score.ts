@@ -42,7 +42,7 @@ export function evaluateSpot(input: EvaluateSpotInput): SpotResult {
     const factors = {
       size: band ? sizeFactor(faceFt, band) : 0,
       period: periodFactor(eff.periodS),
-      wind: windFactor(w.windKt, relation),
+      wind: windFactor(w.windKt, relation, w.gustKt),
       tide: tideFactor(tide.state, spot.tide),
       day: daylightFactor(w.time, input.sun.sunrise, input.sun.sunset),
       weather: weatherFactor(w.weatherCode),

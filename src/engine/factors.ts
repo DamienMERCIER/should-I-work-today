@@ -56,8 +56,21 @@ export function windRelation(windFromDeg: number, facingDeg: number): WindRelati
   return 'onshore';
 }
 
-export function windFactor(windKt: number, relation: WindRelation): number {
-  return piecewise(SCORING.wind[relation], windKt);
+/**
+ * La penalite de rafale, independante de la direction : un offshore de 16 kt qui tape a 31 kt en
+ * rafale ne donne pas la meme mer qu'un offshore regulier de 16 kt. 1 = la rafale ne coute rien,
+ * ce qui sert aussi de test d'affichage (`windText`) : on ne cite la rafale que quand elle compte.
+ */
+export function gustFactor(gustKt: number): number {
+  return piecewise(SCORING.wind.gust, gustKt);
+}
+
+/**
+ * Vent soutenu (selon la direction) multiplie par la rafale. Un seul facteur plutot que deux :
+ * le verdict rouge n'a qu'une raison « vent » a nommer, et le moteur de delta une seule cause.
+ */
+export function windFactor(windKt: number, relation: WindRelation, gustKt = 0): number {
+  return piecewise(SCORING.wind[relation], windKt) * gustFactor(gustKt);
 }
 
 export function tideFactor(state: TideState, tide: Spot['tide']): number {

@@ -30,9 +30,17 @@ export const SCORING = {
   wind: {
     offshoreMaxAngle: 45,
     crossMaxAngle: 100,
-    offshore: [[15, 1], [25, 0.4], [35, 0]] as Curve,
+    // L'offshore n'est pas « gratuit » : au-dela d'une dizaine de noeuds il tient la levre debout,
+    // envoie les embruns dans les yeux et rend la rame et le decollage tres durs. L'ancienne courbe
+    // donnait 1,0 plein jusqu'a 15 kt, si bien qu'un SE de 16 kt a Kommetjie sortait a 9,8/10 quand
+    // surf-forecast donnait 0/10 sur exactement la meme houle (2,2 m 12 s SW).
+    offshore: [[10, 1], [15, 0.75], [20, 0.45], [25, 0.15], [30, 0]] as Curve,
     cross: [[8, 1], [15, 0.5], [25, 0]] as Curve,
     onshore: [[5, 1], [10, 0.5], [18, 0]] as Curve,
+    // La rafale, toutes directions confondues : c'est elle qui hache la surface et fait rater les
+    // decollages. Elle etait relevee a chaque heure et n'entrait dans aucun facteur. En dessous de
+    // 25 kt c'est le bruit de fond d'une brise, donc sans effet.
+    gust: [[25, 1], [35, 0.6], [45, 0.25], [55, 0]] as Curve,
   },
   tideOffPreferenceFactor: 0.6,
   daylightMinMinutes: 45,

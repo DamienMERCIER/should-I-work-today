@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  piecewise, effectiveBand, sizeFactor, periodFactor, windRelation, windFactor, tideFactor, daylightFactor, hasDaylightLeft, weatherFactor,
+  piecewise, effectiveBand, sizeFactor, periodFactor, windRelation, windFactor, gustFactor, tideFactor, daylightFactor, hasDaylightLeft, weatherFactor,
 } from '../../src/engine/factors';
 import { SCORING } from '../../src/config';
 import type { Spot } from '../../src/types';
@@ -13,12 +13,14 @@ const spot = (levels: Spot['levels']): Spot => ({
 describe('piecewise', () => {
   it('interpolates the offshore wind curve', () => {
     const c = SCORING.wind.offshore;
+    expect(piecewise(c, 8)).toBe(1);
     expect(piecewise(c, 10)).toBe(1);
-    expect(piecewise(c, 15)).toBe(1);
-    expect(piecewise(c, 18)).toBeCloseTo(0.82, 6);
-    expect(piecewise(c, 25)).toBeCloseTo(0.4, 6);
-    expect(piecewise(c, 30)).toBeCloseTo(0.2, 6);
-    expect(piecewise(c, 35)).toBe(0);
+    expect(piecewise(c, 12)).toBeCloseTo(0.9, 6);
+    expect(piecewise(c, 15)).toBeCloseTo(0.75, 6);
+    expect(piecewise(c, 18)).toBeCloseTo(0.57, 6);
+    expect(piecewise(c, 20)).toBeCloseTo(0.45, 6);
+    expect(piecewise(c, 25)).toBeCloseTo(0.15, 6);
+    expect(piecewise(c, 30)).toBe(0);
     expect(piecewise(c, 40)).toBe(0);
   });
 });
@@ -94,6 +96,36 @@ describe('tideFactor', () => {
     expect(tideFactor('low', { best: [], forbidden: [] })).toBe(1);
     expect(tideFactor('mid', { best: ['mid', 'high'], forbidden: [] })).toBe(1);
     expect(tideFactor('low', { best: ['mid', 'high'], forbidden: [] })).toBe(0.6);
+  });
+});
+
+describe('gustFactor and its place in windFactor', () => {
+  it('ignores gusts below 25 kt — the background noise of any sea breeze', () => {
+    expect(gustFactor(0)).toBe(1);
+    expect(gustFactor(20)).toBe(1);
+    expect(gustFactor(25)).toBe(1);
+  });
+
+  it('bites above 25 kt and reaches zero at 55', () => {
+    expect(gustFactor(30)).toBeCloseTo(0.8, 6);
+    expect(gustFactor(35)).toBeCloseTo(0.6, 6);
+    expect(gustFactor(45)).toBeCloseTo(0.25, 6);
+    expect(gustFactor(55)).toBe(0);
+    expect(gustFactor(70)).toBe(0);
+  });
+
+  it('multiplies the direction curve: a 16 kt offshore gusting 31 is not a 16 kt offshore', () => {
+    // Le cas Kommetjie du 17 septembre : la meme direction, le meme vent soutenu, mais une rafale
+    // qui double — c'est ce que l'ancien modele ne voyait pas et qui sortait la journee a 9,8/10.
+    const steady = windFactor(16, 'offshore', 16);
+    const gusty = windFactor(16, 'offshore', 31);
+    expect(steady).toBeCloseTo(0.69, 2);
+    expect(gusty).toBeCloseTo(0.69 * 0.76, 2);
+    expect(gusty).toBeLessThan(steady);
+  });
+
+  it('defaults to no gust penalty when no gust is given', () => {
+    expect(windFactor(8, 'offshore')).toBe(1);
   });
 });
 

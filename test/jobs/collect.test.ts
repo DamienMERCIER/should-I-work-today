@@ -93,14 +93,14 @@ describe('nearbySpots / nearestSpots — world set wiring (§report "Resilience,
 });
 
 describe('buildReports', () => {
-  it('golden: 3 calls for one region (marine + forecast + peak period), 🟢 Kommetjie 07:00→12:00', async () => {
+  it('golden: 3 calls for one region (marine + forecast + peak period), 🟢 Kommetjie 07:00→11:00', async () => {
     const { fn, calls } = server();
     const reports = await buildReports([{ profile: profile(), date: GOLDEN_DATE, mode: 'evening' }], deps(fn));
     const r = reports.get(1)!;
     expect(calls).toHaveLength(3);
     expect(calls.find((c) => c.url.includes('marine-api'))!.url).toContain('latitude=-34.5000');
     expect(calls.find((c) => c.url.includes('/v1/forecast'))!.url).toContain('latitude=-34.1085%2C-34.1330');
-    expect(r.verdict).toMatchObject({ kind: 'green', spotId: 'kommetjie-long-beach', window: { start: `${GOLDEN_DATE}T07:00`, end: `${GOLDEN_DATE}T12:00`, peak: 10.0 } });
+    expect(r.verdict).toMatchObject({ kind: 'green', spotId: 'kommetjie-long-beach', window: { start: `${GOLDEN_DATE}T07:00`, end: `${GOLDEN_DATE}T11:00`, peak: 10.0 } });
     expect(r.spots.map((s) => s.spotId)).toEqual(['muizenberg', 'kommetjie-long-beach']);
     expect(r.tides.map((t) => t.time)).toEqual([`${GOLDEN_DATE}T03:00`, `${GOLDEN_DATE}T09:00`, `${GOLDEN_DATE}T15:00`, `${GOLDEN_DATE}T21:00`]);
     expect(r.sun).toEqual({ sunrise: `${GOLDEN_DATE}T06:44`, sunset: `${GOLDEN_DATE}T18:38` });
@@ -119,9 +119,11 @@ describe('buildReports', () => {
   });
   it('now mode truncates from fromTime', async () => {
     const { fn } = server();
-    const r = await buildReport({ profile: profile(), date: GOLDEN_DATE, mode: 'now', fromTime: `${GOLDEN_DATE}T10:00` }, deps(fn));
+    // 08:00 et non 10:00 : depuis que l'offshore se paie dès 10 kt, la journée golden n'a plus
+    // qu'une heure au-dessus de windowMin après 10:00, trop courte pour une session (sessionMinH).
+    const r = await buildReport({ profile: profile(), date: GOLDEN_DATE, mode: 'now', fromTime: `${GOLDEN_DATE}T08:00` }, deps(fn));
     expect(r.mode).toBe('now');
-    expect(r.verdict).toMatchObject({ kind: 'green', window: { start: `${GOLDEN_DATE}T10:00`, end: `${GOLDEN_DATE}T12:00` } });
+    expect(r.verdict).toMatchObject({ kind: 'green', window: { start: `${GOLDEN_DATE}T08:00`, end: `${GOLDEN_DATE}T11:00` } });
   });
   it('out of coverage near the coast: raw conditions at the user position, 3 nearest spots', async () => {
     const { fn, calls } = server();

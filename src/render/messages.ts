@@ -1,6 +1,7 @@
 import type { InlineButton, ReplyMarkup } from '../adapters/telegram';
-import { FAR_FROM_COAST_KM } from '../config';
+import { FAR_FROM_COAST_KM, SCORING } from '../config';
 import type { Delta } from '../engine/delta';
+import { gustFactor } from '../engine/factors';
 import { cardinal8 } from '../engine/geo';
 import { isWeekend, toMs } from '../engine/time';
 import { primaryPick } from '../engine/verdict';
@@ -57,11 +58,22 @@ function ftRange(hours: SpotHour[]): string {
   return min === max ? String(min) : `${min}–${max}`;
 }
 
-const relationText = (h: SpotHour, s: Strings): string => (h.windKt < 5 ? s.glassy : s.relations[h.windRelation]);
+/**
+ * La rafale n'est citee que quand elle coute des points, c'est-a-dire exactement quand le moteur la
+ * penalise : en dessous de 25 kt c'est le bruit de fond d'une brise et l'afficher n'apprendrait rien.
+ * Un « offshore SE 15 kt » qui tape a 30 kt en rafale se lisait comme une journee parfaite.
+ */
+const gustText = (h: SpotHour, s: Strings): string | undefined =>
+  (gustFactor(h.gustKt) < 1 ? fill(s.gusting, { kt: Math.round(h.gustKt) }) : undefined);
+
+const isCalm = (h: SpotHour): boolean => h.windKt < 5 && gustFactor(h.gustKt) === 1;
+
+const relationText = (h: SpotHour, s: Strings): string => (isCalm(h) ? s.glassy : s.relations[h.windRelation]);
 
 function windText(h: SpotHour, s: Strings): string {
-  if (h.windKt < 5) return s.glassy;
-  return `${s.relations[h.windRelation]} ${cardinal(h.windDirDeg, s)} ${Math.round(h.windKt)} kt`;
+  if (isCalm(h)) return s.glassy;
+  const gust = gustText(h, s);
+  return `${s.relations[h.windRelation]} ${cardinal(h.windDirDeg, s)} ${Math.round(h.windKt)} kt${gust ? ` (${gust})` : ''}`;
 }
 
 /** Vent à l'heure du pic, « puis <relation> » si la fin de fenêtre diffère. */
@@ -117,8 +129,8 @@ function primaryBlock(pick: SpotPick, report: Report, ctx: RenderCtx, s: Strings
   const r = report.spots.find((x) => x.spotId === pick.spotId);
   const lines = [`🏄 ${spotName(pick.spotId, ctx, s)} · ${fmtWindow(pick.window)} · ${score1(pick.window.peak)}/10`];
   if (r) lines.push(`   ${conditionsLine(r, pick.window, report, s)}`);
-  if (opts.chart !== false) lines.push(...spotChart(report, pick.spotId));
   lines.push(`   ${sunLine(report, s)}`);
+  if (opts.chart !== false) lines.push(...spotChart(report, pick.spotId));
   return lines;
 }
 
@@ -160,7 +172,9 @@ function lowestFactorReason(r: SpotResult, s: Strings): string {
     case 'day':
       return s.reasons.dark;
     case 'wind':
-      return fill(s.reasons.wind, { relation: s.relations[h.windRelation], dir: cardinal(h.windDirDeg, s), kt: Math.round(h.windKt) });
+      // meme texte que partout ailleurs : sur une journee ventee, « offshore SE 15 kt » seul se
+      // lisait comme une bonne nouvelle alors que c'est la raison du rouge.
+      return windText(h, s);
     case 'size':
       return fill(s.reasons.size, { ft: h.faceFt.toFixed(1) });
     case 'period':
@@ -170,26 +184,43 @@ function lowestFactorReason(r: SpotResult, s: Strings): string {
   }
 }
 
+/**
+ * Un message de verdict est une suite de blocs separes par une ligne vide : le titre, puis un bloc
+ * par spot (ses lignes de conditions et son graphe). Tout colle sinon, et on ne voit plus quelle
+ * courbe appartient a quel spot.
+ */
 export function renderEvening(report: Report, ctx: RenderCtx): string {
   const s = STRINGS[ctx.lang];
   const v = report.verdict;
-  const lines: string[] = [];
+  const blocks: string[] = [];
+  const push = (...lines: string[]): void => {
+    if (lines.length > 0) blocks.push(lines.join('\n'));
+  };
   switch (v.kind) {
     case 'green':
-      lines.push(greenTitle(report, v.epic, ctx, s), ...primaryBlock({ spotId: v.spotId, window: v.window }, report, ctx, s), ...runnerUp(report, v.spotId, ctx, s));
+      push(greenTitle(report, v.epic, ctx, s));
+      push(...primaryBlock({ spotId: v.spotId, window: v.window }, report, ctx, s));
+      push(...runnerUp(report, v.spotId, ctx, s));
       break;
     case 'yellow':
-      if (v.dawn) lines.push(fill(s.verdict.dawn, dateVars(report, ctx)), ...primaryBlock(v.dawn, report, ctx, s));
-      if (v.dusk) lines.push(fill(s.verdict.dusk, dateVars(report, ctx)), ...primaryBlock(v.dusk, report, ctx, s, { chart: v.dusk.spotId !== v.dawn?.spotId }));
+      if (v.dawn) push(fill(s.verdict.dawn, dateVars(report, ctx)), ...primaryBlock(v.dawn, report, ctx, s));
+      if (v.dusk) push(fill(s.verdict.dusk, dateVars(report, ctx)), ...primaryBlock(v.dusk, report, ctx, s, { chart: v.dusk.spotId !== v.dawn?.spotId }));
       break;
     case 'red': {
-      lines.push(redTitle(report, ctx, s), fill(s.verdict.redBody, { radius: report.radiusKm }));
+      push(redTitle(report, ctx, s));
       const best = v.bestSpotId ? report.spots.find((x) => x.spotId === v.bestSpotId) : undefined;
-      if (best) lines.push(fill(s.verdict.redBest, { spot: spotName(best.spotId, ctx, s), score: score1(best.maxScore), reason: lowestFactorReason(best, s) }));
+      // Un rouge a deux causes distinctes : rien d'assez bon, ou bien une fenetre assez bonne mais
+      // trop courte (ou tombant en plein travail). Dire « rien ≥ 7/10 » puis afficher « 7,3/10 »
+      // juste en dessous se contredisait a l'ecran.
+      const tooShort = (best?.maxScore ?? 0) >= SCORING.good;
+      push(
+        fill(tooShort ? s.verdict.redTooShort : s.verdict.redBody, { radius: report.radiusKm }),
+        ...(best ? [fill(s.verdict.redBest, { spot: spotName(best.spotId, ctx, s), score: score1(best.maxScore), reason: lowestFactorReason(best, s) })] : []),
+      );
       break;
     }
-    case 'outOfCoverage':
-      lines.push(fill(s.coverage.none, { radius: report.radiusKm }));
+    case 'outOfCoverage': {
+      const lines = [fill(s.coverage.none, { radius: report.radiusKm })];
       if (v.raw) {
         lines.push(fill(s.coverage.raw, {
           swell: v.raw.swellHeightM.toFixed(1), s: Math.round(v.raw.periodS), dir: cardinal(v.raw.swellDirDeg, s),
@@ -201,12 +232,14 @@ export function renderEvening(report: Report, ctx: RenderCtx): string {
       if (v.nearest.length > 0) {
         lines.push(fill(s.coverage.nearest, { list: v.nearest.map((n) => fill(s.coverage.nearestItem, { spot: spotName(n.spotId, ctx, s), km: Math.round(n.distanceKm) })).join(', ') }));
       }
+      push(...lines);
       break;
+    }
     case 'noData':
-      lines.push(s.noData);
+      push(s.noData);
       break;
   }
-  return lines.join('\n');
+  return blocks.join('\n\n');
 }
 
 export function renderShortVerdict(report: Report | undefined, ctx: RenderCtx): string {
@@ -248,12 +281,13 @@ function alignedHours(r: SpotResult, date: string, hours: number[]): (SpotHour |
 
 /** Wind for the day view: relation/direction from the peak hour, kt as a range across every plotted hour. */
 function windRangeText(plotted: SpotHour[], peak: SpotHour, s: Strings): string {
-  if (peak.windKt < 5) return s.glassy;
+  if (isCalm(peak)) return s.glassy;
   const kts = plotted.length > 0 ? plotted.map((h) => h.windKt) : [peak.windKt];
   const lo = Math.round(Math.min(...kts));
   const hi = Math.round(Math.max(...kts));
   const base = `${s.relations[peak.windRelation]} ${cardinal(peak.windDirDeg, s)}`;
-  return lo === hi ? `${base} ${lo} kt` : `${base} ${lo}→${hi} kt`;
+  const gust = gustText(peak, s);
+  return `${lo === hi ? `${base} ${lo} kt` : `${base} ${lo}→${hi} kt`}${gust ? ` (${gust})` : ''}`;
 }
 
 type ExplainKey = 'wind' | 'tide' | 'size' | 'period' | 'day';
