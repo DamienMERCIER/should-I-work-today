@@ -37,12 +37,16 @@ describe('formatting', () => {
 
 describe('renderEvening — golden 🟢', () => {
   it('EN', () => {
+    // Kommetjie is now epic (window peak 10.0 ≥ 9, 5 h ≥ 1.5 h) since Tp=13 s maxes out periodFactor and k(T) —
+    // and Muizenberg's own window (peak 6.1, driven by size+period) now clears windowMin, so it shows as runner-up.
     expect(renderEvening(goldenReport(), EN)).toBe(
       [
-        "🟢 <b>DON'T GO TO WORK TOMORROW</b> (Wed 16 Sept)",
-        `🏄 ${KOM} · 7:00–12:00 · 8.6/10`,
-        '   4 ft · SW 10 s · offshore SE 8 kt · incoming tide, high 9:00',
+        "🟢 <b>DON'T GO TO WORK TOMORROW</b> (Wed 16 Sept) — it's firing",
+        `🏄 ${KOM} · 7:00–12:00 · 10.0/10`,
+        '   5 ft · SW 13 s · offshore SE 8 kt · incoming tide, high 9:00',
         '   ☀️ 22° · sunrise 6:44',
+        `🥈 ${MUIZ} · 7:00–10:00 · 6.1/10`,
+        '   3 ft · onshore SE 8 kt',
       ].join('\n'),
     );
   });
@@ -50,15 +54,19 @@ describe('renderEvening — golden 🟢', () => {
     const lines = renderEvening(goldenReport(), RU).split('\n');
     expect(lines[0]).toContain('ЗАВТРА НЕ ИДИ НА РАБОТУ');
     expect(lines[0]).toContain('16 сент.');
-    expect(lines[1]).toBe(`🏄 ${KOM} · 7:00–12:00 · 8.6/10`);
-    expect(lines[2]).toBe('   4 ft · ЮЗ 10 с · оффшор ЮВ 8 kt · прилив, полная 9:00');
+    expect(lines[1]).toBe(`🏄 ${KOM} · 7:00–12:00 · 10.0/10`);
+    expect(lines[2]).toBe('   5 ft · ЮЗ 13 с · оффшор ЮВ 8 kt · прилив, полная 9:00');
   });
   it('adds the epic suffix, the weekend and now titles', () => {
     const r = goldenReport();
-    const epic: Verdict = { ...(r.verdict as Extract<Verdict, { kind: 'green' }>), epic: true };
+    const green = r.verdict as Extract<Verdict, { kind: 'green' }>;
+    const epic: Verdict = { ...green, epic: true };
     expect(renderEvening({ ...r, verdict: epic }, EN).split('\n')[0]).toBe("🟢 <b>DON'T GO TO WORK TOMORROW</b> (Wed 16 Sept) — it's firing");
-    expect(renderEvening({ ...r, date: '2026-09-19' }, EN).split('\n')[0]).toBe('🟢 <b>GO SURF TOMORROW</b> (Sat 19 Sept)');
-    expect(renderEvening({ ...r, mode: 'now' }, EN).split('\n')[0]).toBe('🟢 <b>GO SURF</b> (today)');
+    // the golden scenario is naturally epic now (see 'EN' above) — force epic:false here so these two
+    // assertions isolate the weekend/now title format, not the (already-covered) epic suffix.
+    const notEpic: Verdict = { ...green, epic: false };
+    expect(renderEvening({ ...r, verdict: notEpic, date: '2026-09-19' }, EN).split('\n')[0]).toBe('🟢 <b>GO SURF TOMORROW</b> (Sat 19 Sept)');
+    expect(renderEvening({ ...r, verdict: notEpic, mode: 'now' }, EN).split('\n')[0]).toBe('🟢 <b>GO SURF</b> (today)');
   });
   it('mentions rain when ≥ 1 mm', () => {
     const r = goldenReport({ weather: { tempMaxC: 17.6, tempMinC: 12, precipMm: 4.6, code: 61 } });
@@ -77,15 +85,17 @@ describe('renderEvening — golden 🟢', () => {
     const r = goldenReport();
     const kom = r.spots.find((x) => x.spotId === 'kommetjie-long-beach')!;
     kom.hours.find((h) => h.time === `${GOLDEN_DATE}T11:00`)!.windRelation = 'onshore';
-    expect(renderEvening(r, EN).split('\n')[2]).toBe('   4 ft · SW 10 s · offshore SE 8 kt then onshore · incoming tide, high 9:00');
+    expect(renderEvening(r, EN).split('\n')[2]).toBe('   5 ft · SW 13 s · offshore SE 8 kt then onshore · incoming tide, high 9:00');
   });
 });
 
 describe('renderEvening — other verdicts', () => {
   it('🔴 names the best spot and its weakest factor', () => {
     const r = goldenReport({ verdict: { kind: 'red', bestSpotId: 'muizenberg' } });
+    // Muizenberg's maxScore is now 6.1 (size 0.87, period 1.0), and wind (0.7) is its weakest factor —
+    // size, at 0.87, is no longer the lowest now that period no longer drags it down (was 0.549 · 0.86 before).
     expect(renderEvening(r, EN)).toBe(
-      ['🔴 <b>GO TO WORK TOMORROW</b> (Wed 16 Sept)', 'Nothing ≥ 7/10 within 20 km.', `Best: ${MUIZ} 3.3/10 (2.5 ft)`].join('\n'),
+      ['🔴 <b>GO TO WORK TOMORROW</b> (Wed 16 Sept)', 'Nothing ≥ 7/10 within 20 km.', `Best: ${MUIZ} 6.1/10 (onshore SE 8 kt)`].join('\n'),
     );
   });
   it('🌅 dawn block', () => {
@@ -93,7 +103,7 @@ describe('renderEvening — other verdicts', () => {
     const lines = renderEvening(r, EN).split('\n');
     expect(lines[0]).toBe('🌅 <b>DAWN PATROL, THEN WORK</b> (Wed 16 Sept)');
     expect(lines[1]).toBe(`🏄 ${MUIZ} · 7:00–9:00 · 7.2/10`);
-    expect(lines[2]).toBe('   3 ft · SW 10 s · onshore SE 8 kt · incoming tide, high 9:00');
+    expect(lines[2]).toBe('   3 ft · SW 13 s · onshore SE 8 kt · incoming tide, high 9:00');
   });
   it('out of coverage with raw conditions and nearest spots', () => {
     const r = goldenReport({
@@ -128,7 +138,7 @@ describe('renderMorning', () => {
   it('changed with cause and the new conditions line', () => {
     const morning: Report = goldenReport({ mode: 'morning', verdict: { kind: 'green', spotId: 'kommetjie-long-beach', window: W('07:00', '11:00', 8.0), epic: false } });
     expect(renderMorning(morning, { send: true, changed: true, cause: 'wind' }, evening, EN)).toBe(
-      [`⚠️ Change: 🟢 ${KOM} 7:00–12:00 → 🟢 ${KOM} 7:00–11:00`, '4 ft · SW 10 s · offshore SE 8 kt · incoming tide, high 9:00', 'cause: wind'].join('\n'),
+      [`⚠️ Change: 🟢 ${KOM} 7:00–12:00 → 🟢 ${KOM} 7:00–11:00`, '5 ft · SW 13 s · offshore SE 8 kt · incoming tide, high 9:00', 'cause: wind'].join('\n'),
     );
   });
   it('degraded to red', () => {
@@ -146,11 +156,13 @@ describe('renderMorning', () => {
 
 describe('renderDetails', () => {
   it('lists open spots by peak, then tides, sun and licence', () => {
+    // Muizenberg now has its own (smaller) window too — see the golden 🟢 EN test above — so it gets a
+    // real time range instead of the "—" no-window placeholder.
     expect(renderDetails(goldenReport(), EN)).toBe(
       [
         '📋 <b>All spots</b> (Wed 16 Sept)',
-        `${KOM} · 7:00–12:00 · 8.6 · 4 ft · offshore SE 8 kt ↑`,
-        `${MUIZ} · — · 3.3 · 3 ft · onshore SE 8 kt ↑`,
+        `${KOM} · 7:00–12:00 · 10.0 · 5 ft · offshore SE 8 kt ↑`,
+        `${MUIZ} · 7:00–10:00 · 6.1 · 3 ft · onshore SE 8 kt ↑`,
         'tide: low 3:00 · high 9:00 · low 15:00 · high 21:00',
         '☀️ 22° · sunrise 6:44 · sunset 18:38',
         'Data: Open-Meteo.com (CC-BY 4.0)',

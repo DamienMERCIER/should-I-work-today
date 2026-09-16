@@ -1,11 +1,19 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
-  marineUrl, forecastUrl, parseMarine, parseForecast, fetchJsonWithRetry, fetchMarine, fetchForecast, OpenMeteoError,
+  marineUrl, forecastUrl, peakPeriodUrl, parseMarine, parseForecast, parsePeakPeriod,
+  fetchJsonWithRetry, fetchMarine, fetchForecast, fetchPeakPeriod, OpenMeteoError,
 } from '../../src/adapters/openMeteo';
 import { fakeFetch, jsonResponse } from '../helpers/fakeFetch';
 
 const REF = { lat: -34.5, lon: 18.2 };
 const MUIZ = { lat: -34.1085, lon: 18.4715 };
+
+const peakLoc = {
+  hourly: {
+    time: ['2026-09-16T06:00', '2026-09-16T07:00', '2026-09-16T08:00'],
+    swell_wave_peak_period: [13.1, null, 13.4],
+  },
+};
 
 const marineLoc = {
   latitude: -34.458336, longitude: 18.208344,
@@ -47,6 +55,15 @@ describe('urls', () => {
     expect(u).toContain('cell_selection=sea');
     expect(u).toContain('daily=sunrise%2Csunset%2Ctemperature_2m_max%2Ctemperature_2m_min%2Cprecipitation_sum');
     expect(u).toContain('forecast_days=2');
+  });
+  it('peakPeriodUrl asks the gwam model for peak period only, no tide or secondary swell', () => {
+    const u = peakPeriodUrl([REF]);
+    expect(u.startsWith('https://marine-api.open-meteo.com/v1/marine?')).toBe(true);
+    expect(u).toContain('hourly=swell_wave_peak_period');
+    expect(u).toContain('models=gwam');
+    expect(u).toContain('timezone=Africa%2FJohannesburg');
+    expect(u).toContain('forecast_days=3');
+    expect(u).not.toContain('sea_level_height_msl');
   });
 });
 
@@ -99,6 +116,32 @@ describe('parseForecast', () => {
   });
 });
 
+describe('parsePeakPeriod', () => {
+  it('maps a single-location object, preserving null (no fabricated 0)', () => {
+    const [series] = parsePeakPeriod(peakLoc);
+    expect(series).toEqual([
+      { time: '2026-09-16T06:00', peakPeriodS: 13.1 },
+      { time: '2026-09-16T07:00', peakPeriodS: null },
+      { time: '2026-09-16T08:00', peakPeriodS: 13.4 },
+    ]);
+  });
+  it('maps a multi-location array', () => {
+    expect(parsePeakPeriod([peakLoc, peakLoc])).toHaveLength(2);
+  });
+  it('throws on a malformed payload', () => {
+    expect(() => parsePeakPeriod({ error: true, reason: 'x' })).toThrow(OpenMeteoError);
+  });
+  it('throws when the peak-period column is missing', () => {
+    const broken = { hourly: { time: peakLoc.hourly.time } };
+    expect(() => parsePeakPeriod(broken)).toThrow(OpenMeteoError);
+    expect(() => parsePeakPeriod(broken)).toThrow(/missing or short column swell_wave_peak_period/);
+  });
+  it('throws when the peak-period column is shorter than time', () => {
+    const broken = { hourly: { time: peakLoc.hourly.time, swell_wave_peak_period: [13.1] } };
+    expect(() => parsePeakPeriod(broken)).toThrow(/missing or short column swell_wave_peak_period/);
+  });
+});
+
 describe('fetchJsonWithRetry', () => {
   it('retries once after a failure, waiting delayMs', async () => {
     let n = 0;
@@ -135,5 +178,13 @@ describe('fetchMarine / fetchForecast', () => {
     await expect(fetchMarine([REF, MUIZ], fn)).rejects.toThrow(/expected 2 locations, got 1/);
     const { fn: fn2 } = fakeFetch(() => jsonResponse([forecastLoc, forecastLoc]));
     await expect(fetchForecast([MUIZ], fn2)).rejects.toThrow(/expected 1 locations, got 2/);
+  });
+  it('fetchPeakPeriod returns one series per point', async () => {
+    const { fn } = fakeFetch(() => jsonResponse([peakLoc, peakLoc]));
+    await expect(fetchPeakPeriod([REF, MUIZ], fn)).resolves.toHaveLength(2);
+  });
+  it('fetchPeakPeriod rejects a location-count mismatch', async () => {
+    const { fn } = fakeFetch(() => jsonResponse(peakLoc));
+    await expect(fetchPeakPeriod([REF, MUIZ], fn)).rejects.toThrow(/expected 2 locations, got 1/);
   });
 });

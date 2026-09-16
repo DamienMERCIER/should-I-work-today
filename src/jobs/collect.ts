@@ -1,4 +1,4 @@
-import { fetchForecast, fetchMarine, OpenMeteoError, type FetchLike, type ForecastSeries } from '../adapters/openMeteo';
+import { fetchForecast, fetchMarine, fetchPeakPeriod, OpenMeteoError, type FetchLike, type ForecastSeries, type PeakPeriodHour } from '../adapters/openMeteo';
 import { FAR_FROM_COAST_KM, RADIUS_KM } from '../config';
 import { haversineKm } from '../engine/geo';
 import { evaluateSpot } from '../engine/score';
@@ -26,10 +26,35 @@ export function nearestSpots(spots: Spot[], at: LatLon, n = 3): Near[] {
 
 const toError = (err: unknown): OpenMeteoError => (err instanceof OpenMeteoError ? err : new OpenMeteoError(String(err)));
 
+/** Fusionne par timestamp (pas par index : les deux séries peuvent différer en longueur/ordre). `null` (ou une heure absente) laisse `peakPeriodS` non défini plutôt que de fabriquer 0 — `effectiveSwell` retombe alors sur la période moyenne. */
+export function mergePeakPeriod(swell: SwellHour[], peak: PeakPeriodHour[]): SwellHour[] {
+  const byTime = new Map(peak.map((p) => [p.time, p.peakPeriodS]));
+  return swell.map((h) => {
+    const v = byTime.get(h.time);
+    return v === null || v === undefined ? h : { ...h, peakPeriodS: v };
+  });
+}
+
 async function loadRegion(region: Region, spots: Spot[], fetchFn: FetchLike): Promise<RegionData> {
-  // marée : J−3 h .. J+27 h → 3 jours ; vent/météo : seul le jour J est lu → 2 jours suffisent
-  const [[swell], forecasts] = await Promise.all([fetchMarine([region.swellRef], fetchFn), fetchForecast(spots, fetchFn, { forecastDays: 2 })]);
-  return { swell, forecasts: new Map(spots.map((s, i) => [s.id, forecasts[i]])), tide: new Map() };
+  // marée : J−3 h .. J+27 h → 3 jours ; vent/météo : seul le jour J est lu → 2 jours suffisent ;
+  // période pic (gwam, §adapters/openMeteo) : 3e appel séparé, best-effort — une panne ne doit pas priver
+  // la région de verdict (§10.1), juste la ramener au repli période moyenne déjà géré par effectiveSwell.
+  const [[swell], forecasts, peakSeries] = await Promise.all([
+    fetchMarine([region.swellRef], fetchFn),
+    fetchForecast(spots, fetchFn, { forecastDays: 2 }),
+    // retries: 0 — best-effort : le Promise.all attend cette 3e requête comme les deux autres, donc la
+    // faire re-essayer (2 s de délai par défaut) retarderait toute la région pour un gain marginal ;
+    // en cas d'échec on retombe simplement sur la période moyenne.
+    fetchPeakPeriod([region.swellRef], fetchFn, { retries: 0 }).catch((err) => {
+      console.warn(`[collect] peak period unavailable for region ${region.id}, falling back to mean period: ${String(err)}`);
+      return null;
+    }),
+  ]);
+  return {
+    swell: peakSeries ? mergePeakPeriod(swell, peakSeries[0]) : swell,
+    forecasts: new Map(spots.map((s, i) => [s.id, forecasts[i]])),
+    tide: new Map(),
+  };
 }
 
 const tideFor = (data: RegionData, date: string): TideInfo => {
@@ -158,6 +183,8 @@ async function outOfCoverage(req: EvalRequest, deps: CollectDeps, radiusKm: numb
   }
   try {
     const at = req.profile.location;
+    // pas d'appel période pic ici : cette branche n'affiche qu'une ligne de conditions brutes (swell_wave_period,
+    // la période moyenne), jamais un score — periodFactor/k(T), les seuls consommateurs de peakPeriodS, n'entrent pas en jeu.
     const [[swell], [forecast]] = await Promise.all([fetchMarine([at], deps.fetchFn), fetchForecast([at], deps.fetchFn, { forecastDays: 2 })]);
     const refTime = req.fromTime ? floorHour(req.fromTime) : `${req.date}T09:00`;
     const s = swell.find((h) => h.time === refTime);

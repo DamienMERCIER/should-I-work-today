@@ -10,8 +10,11 @@ export const GOLDEN_SPOTS: Spot[] = [KOMMETJIE_LONG_BEACH, MUIZENBERG];
 
 export function goldenSwell(): SwellHour[] {
   const tide = cosineTide(GOLDEN_DATE);
+  // periodS 10.2 = période moyenne (swell_wave_period, appel marine principal) ; peakPeriodS 13 = période pic
+  // (swell_wave_peak_period, appel gwam séparé) — celle qu'utilisent effectiveSwell/periodFactor/k(T) (§7.2).
   return swellSeries('2026-09-15T00:00', '2026-09-17T23:00', (time) => ({
     primary: { heightM: 2.0, periodS: 10.2, directionDeg: 225 }, secondary: NO_SWELL, seaLevelM: tide(time),
+    peakPeriodS: 13,
   }));
 }
 
@@ -29,7 +32,7 @@ export function goldenWind(date = GOLDEN_DATE): WindHour[] {
   }));
 }
 
-/** 🟢 Kommetjie Long Beach 07:00→12:00 pic 8.6 ; Muizenberg sans fenêtre (max 3.3). */
+/** 🟢 Kommetjie Long Beach 07:00→12:00 pic 10.0 (epic) ; Muizenberg fenêtre 07:00→10:00 pic 6.1 (sous le seuil `good`, en 🥈). */
 export function goldenReport(overrides: Partial<Report> = {}): Report {
   const swell = goldenSwell();
   const wind = goldenWind();

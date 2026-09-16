@@ -12,6 +12,10 @@ export function componentWeight(directionDeg: number, window: [number, number]):
   return 0;
 }
 
+/**
+ * periodS : période PIC (Tp) — celle qu'attendent periodFactor et k(T) (§7.2) — quand le modèle gwam la publie
+ * pour cette heure (`hour.peakPeriodS`) ; sinon repli sur la période MOYENNE de la composante dominante.
+ */
 export function effectiveSwell(hour: SwellHour, window: [number, number]): EffectiveSwell {
   const parts = [hour.primary, hour.secondary]
     .map((c) => ({ c, weighted: c.heightM * componentWeight(c.directionDeg, window) }))
@@ -19,7 +23,7 @@ export function effectiveSwell(hour: SwellHour, window: [number, number]): Effec
   if (parts.length === 0) return { heightM: 0, periodS: 0, directionDeg: 0 };
   const heightM = Math.sqrt(parts.reduce((sum, p) => sum + p.weighted * p.weighted, 0));
   const lead = parts.reduce((a, b) => (b.weighted > a.weighted ? b : a));
-  return { heightM, periodS: lead.c.periodS, directionDeg: lead.c.directionDeg };
+  return { heightM, periodS: hour.peakPeriodS ?? lead.c.periodS, directionDeg: lead.c.directionDeg };
 }
 
 /** k(T) = clamp(1 + 0.05·(T − 8), 0.9, 1.3) (§7.2). */

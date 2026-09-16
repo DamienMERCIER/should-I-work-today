@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { buildReports, buildReport, nearbySpots, nearestSpots } from '../../src/jobs/collect';
+import { describe, it, expect, vi } from 'vitest';
+import { buildReports, buildReport, mergePeakPeriod, nearbySpots, nearestSpots } from '../../src/jobs/collect';
 import { SPOTS, REGIONS } from '../../src/data/index';
-import type { Profile } from '../../src/types';
+import type { Profile, SwellHour } from '../../src/types';
 import { fakeFetch } from '../helpers/fakeFetch';
 import { openMeteoServer } from '../helpers/openMeteoServer';
 import { GOLDEN_DAILY, GOLDEN_DATE, GOLDEN_SPOTS, goldenSwell, goldenWind } from '../helpers/golden';
@@ -28,14 +28,14 @@ describe('geo helpers', () => {
 });
 
 describe('buildReports', () => {
-  it('golden: 2 calls for one region, 🟢 Kommetjie 07:00→12:00', async () => {
+  it('golden: 3 calls for one region (marine + forecast + peak period), 🟢 Kommetjie 07:00→12:00', async () => {
     const { fn, calls } = server();
     const reports = await buildReports([{ profile: profile(), date: GOLDEN_DATE, mode: 'evening' }], deps(fn));
     const r = reports.get(1)!;
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
     expect(calls.find((c) => c.url.includes('marine-api'))!.url).toContain('latitude=-34.5000');
     expect(calls.find((c) => c.url.includes('/v1/forecast'))!.url).toContain('latitude=-34.1085%2C-34.1330');
-    expect(r.verdict).toMatchObject({ kind: 'green', spotId: 'kommetjie-long-beach', window: { start: `${GOLDEN_DATE}T07:00`, end: `${GOLDEN_DATE}T12:00`, peak: 8.6 } });
+    expect(r.verdict).toMatchObject({ kind: 'green', spotId: 'kommetjie-long-beach', window: { start: `${GOLDEN_DATE}T07:00`, end: `${GOLDEN_DATE}T12:00`, peak: 10.0 } });
     expect(r.spots.map((s) => s.spotId)).toEqual(['muizenberg', 'kommetjie-long-beach']);
     expect(r.tides.map((t) => t.time)).toEqual([`${GOLDEN_DATE}T03:00`, `${GOLDEN_DATE}T09:00`, `${GOLDEN_DATE}T15:00`, `${GOLDEN_DATE}T21:00`]);
     expect(r.sun).toEqual({ sunrise: `${GOLDEN_DATE}T06:44`, sunset: `${GOLDEN_DATE}T18:38` });
@@ -49,7 +49,7 @@ describe('buildReports', () => {
       [{ profile: profile(), date: GOLDEN_DATE, mode: 'evening' }, { profile: profile({ chatId: 2, level: 'advanced' }), date: GOLDEN_DATE, mode: 'evening' }],
       deps(fn),
     );
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
     expect(reports.size).toBe(2);
   });
   it('now mode truncates from fromTime', async () => {
@@ -108,5 +108,45 @@ describe('buildReports', () => {
     const r = await buildReport({ profile: profile(), date: GOLDEN_DATE, mode: 'evening' }, deps(fn));
     expect(r.verdict).toMatchObject({ kind: 'noData' });
     expect((r.verdict as { reason: string }).reason).toMatch(/HTTP 500/);
+  });
+  it('a region whose peak-period call 500s still produces a normal verdict (mean-period fallback, not noData)', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { fn, calls } = server({ failPeak: true });
+      const r = await buildReport({ profile: profile(), date: GOLDEN_DATE, mode: 'evening' }, deps(fn));
+      expect(calls).toHaveLength(3);
+      // repli sur la période moyenne (10.2 s) : mêmes chiffres que l'ancien comportement, pic 8.6 (pas 10.0).
+      expect(r.verdict).toMatchObject({ kind: 'green', spotId: 'kommetjie-long-beach', window: { peak: 8.6 } });
+      expect(warnSpy).toHaveBeenCalledOnce();
+      expect(String(warnSpy.mock.calls[0][0])).toContain('peak period');
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+});
+
+describe('mergePeakPeriod', () => {
+  const h = (time: string): SwellHour => ({ time, primary: { heightM: 2, periodS: 10.2, directionDeg: 225 }, secondary: { heightM: 0, periodS: 0, directionDeg: 0 }, seaLevelM: 0 });
+
+  it('merges by timestamp, not by array index — series can differ in length and order', () => {
+    const swell = [h('T1'), h('T2'), h('T3')];
+    const peak = [{ time: 'T3', peakPeriodS: 13 }]; // single entry, index 0, but belongs to swell[2]
+    const merged = mergePeakPeriod(swell, peak);
+    expect(merged[0].peakPeriodS).toBeUndefined();
+    expect(merged[1].peakPeriodS).toBeUndefined();
+    expect(merged[2].peakPeriodS).toBe(13);
+  });
+  it('leaves peakPeriodS unset (not 0) when the peak value is null', () => {
+    const merged = mergePeakPeriod([h('T1')], [{ time: 'T1', peakPeriodS: null }]);
+    expect(merged[0].peakPeriodS).toBeUndefined();
+  });
+  it('ignores a peak entry with no matching timestamp in the swell series', () => {
+    const merged = mergePeakPeriod([h('T1')], [{ time: 'T9', peakPeriodS: 13 }]);
+    expect(merged[0].peakPeriodS).toBeUndefined();
+  });
+  it('does not mutate the original swell hours', () => {
+    const original = h('T1');
+    mergePeakPeriod([original], [{ time: 'T1', peakPeriodS: 13 }]);
+    expect(original.peakPeriodS).toBeUndefined();
   });
 });

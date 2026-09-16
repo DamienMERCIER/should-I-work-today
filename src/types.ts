@@ -44,7 +44,11 @@ export interface Spot {
 
 // ---- séries horaires normalisées (sorties des adaptateurs, entrées du moteur) ----
 export interface SwellComponent { heightM: number; periodS: number; directionDeg: number }
-export interface SwellHour { time: string; primary: SwellComponent; secondary: SwellComponent; seaLevelM: number }
+export interface SwellHour {
+  time: string; primary: SwellComponent; secondary: SwellComponent; seaLevelM: number;
+  /** période pic de la houle (gwam) ; absente si le modèle ne la publie pas */
+  peakPeriodS?: number;
+}
 export interface WindHour {
   time: string; windKt: number; windDirDeg: number; gustKt: number;
   tempC: number; precipMm: number; weatherCode: number;

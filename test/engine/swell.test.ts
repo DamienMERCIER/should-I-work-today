@@ -38,6 +38,26 @@ describe('effectiveSwell', () => {
   });
 });
 
+describe('effectiveSwell — peak period (Tp) vs mean period', () => {
+  // Tp (peak period) is what periodFactor's thresholds and k(T) are calibrated for — surfers' "period".
+  // swell_wave_period (mean period) is only a fallback when the gwam model doesn't publish Tp for this hour.
+  it('uses peakPeriodS when present, driving a bigger faceHeightFt through k(T)', () => {
+    const h: SwellHour = { ...hour([2.0, 9.3, 225], [0, 0, 0]), peakPeriodS: 13.3 };
+    const s = effectiveSwell(h, WINDOW);
+    expect(s.periodS).toBe(13.3);
+    expect(faceHeightFt(s, 0.6)).toBeGreaterThan(faceHeightFt({ ...s, periodS: 9.3 }, 0.6));
+  });
+  it('falls back to the leading component mean period when peakPeriodS is absent (old behaviour unchanged)', () => {
+    const h = hour([2.0, 9.3, 225], [0, 0, 0]);
+    expect(effectiveSwell(h, WINDOW).periodS).toBe(9.3);
+  });
+  it('still uses peakPeriodS when the leading (heaviest-weighted) component is the secondary', () => {
+    const h: SwellHour = { ...hour([0.4, 6, 100], [1.5, 12, 240]), peakPeriodS: 13 };
+    const s = effectiveSwell(h, WINDOW);
+    expect(s.periodS).toBe(13); // not 12, the secondary component's own mean period
+  });
+});
+
 describe('periodShoaling k(T)', () => {
   it('follows clamp(1 + 0.05·(T−8), 0.9, 1.3)', () => {
     expect(periodShoaling(6)).toBeCloseTo(0.9, 6);

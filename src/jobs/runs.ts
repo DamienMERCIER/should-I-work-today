@@ -30,7 +30,7 @@ export async function notifyAdmin(deps: Pick<JobDeps, 'telegram' | 'adminChatId'
   await deps.telegram.sendMessage(deps.adminChatId, `⚙️ ${esc(text)}`);
 }
 
-/** Sous-requêtes prévues : verrou (2) + profils (1) [+ rapports veille (1)] + 2×régions + 2×hors-couverture + 2 écritures + N envois. */
+/** Sous-requêtes prévues : verrou (2) + profils (1) [+ rapports veille (1)] + 3×régions (marine + forecast + période pic) + 2×hors-couverture + 2 écritures + N envois. */
 export function estimateBudget(profiles: Profile[], deps: JobDeps, kind: RunKind): number {
   const radiusKm = deps.radiusKm ?? RADIUS_KM;
   const regions = new Set<string>();
@@ -40,7 +40,7 @@ export function estimateBudget(profiles: Profile[], deps: JobDeps, kind: RunKind
     if (near.length === 0) raw += 2;
     for (const n of near) regions.add(n.spot.region);
   }
-  return 3 + (kind === 'morning' ? 1 : 0) + 2 * regions.size + raw + 2 + profiles.length;
+  return 3 + (kind === 'morning' ? 1 : 0) + 3 * regions.size + raw + 2 + profiles.length;
 }
 
 export async function runEvening(deps: JobDeps): Promise<JobResult> {

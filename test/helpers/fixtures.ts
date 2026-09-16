@@ -12,7 +12,7 @@ export function hourlyTimes(from: string, to: string): string[] {
 export function swellSeries(
   from: string,
   to: string,
-  at: (time: string, i: number) => { primary: SwellComponent; secondary: SwellComponent; seaLevelM: number },
+  at: (time: string, i: number) => Omit<SwellHour, 'time'>,
 ): SwellHour[] {
   return hourlyTimes(from, to).map((time, i) => ({ time, ...at(time, i) }));
 }

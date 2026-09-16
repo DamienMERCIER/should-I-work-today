@@ -18,6 +18,15 @@ export function marineJson(series: SwellHour[]) {
   };
 }
 
+export function peakJson(series: SwellHour[]) {
+  return {
+    hourly: {
+      time: series.map((h) => h.time),
+      swell_wave_peak_period: series.map((h) => h.peakPeriodS ?? null),
+    },
+  };
+}
+
 export function forecastJson(wind: WindHour[], daily: DailySun[]) {
   return {
     hourly: {
@@ -40,15 +49,21 @@ export function forecastJson(wind: WindHour[], daily: DailySun[]) {
   };
 }
 
-export interface ServerData { swell: SwellHour[]; wind: WindHour[]; daily: DailySun[]; failMarine?: boolean; failForecast?: boolean }
+export interface ServerData {
+  swell: SwellHour[]; wind: WindHour[]; daily: DailySun[];
+  failMarine?: boolean; failForecast?: boolean; failPeak?: boolean;
+}
 
 /** Répond comme Open-Meteo : un objet pour un point, un tableau pour plusieurs. */
 export function openMeteoServer(data: ServerData) {
   return (url: string): Response => {
     const points = (new URL(url).searchParams.get('latitude') ?? '').split(',').length;
-    const one = url.includes('marine-api')
-      ? (data.failMarine ? null : marineJson(data.swell))
-      : (data.failForecast ? null : forecastJson(data.wind, data.daily));
+    // l'appel période pic (models=gwam) cible aussi marine-api : le détecter en premier.
+    const one = url.includes('swell_wave_peak_period')
+      ? (data.failPeak ? null : peakJson(data.swell))
+      : url.includes('marine-api')
+        ? (data.failMarine ? null : marineJson(data.swell))
+        : (data.failForecast ? null : forecastJson(data.wind, data.daily));
     if (!one) return jsonResponse({ error: true, reason: 'boom' }, 500);
     return jsonResponse(points === 1 ? one : Array.from({ length: points }, () => one));
   };

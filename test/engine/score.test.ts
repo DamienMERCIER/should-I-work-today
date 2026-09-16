@@ -9,6 +9,7 @@ const DATE = '2026-09-16';
 const tideFn = cosineTide(DATE);
 const swell = swellSeries('2026-09-15T00:00', '2026-09-17T23:00', (time) => ({
   primary: { heightM: 2.0, periodS: 10.2, directionDeg: 225 }, secondary: NO_SWELL, seaLevelM: tideFn(time),
+  peakPeriodS: 13,
 }));
 const windKtAt = (hour: number): number => (hour <= 9 ? 8 : hour === 10 ? 12 : hour === 11 ? 18 : hour === 12 ? 24 : 30);
 const wind = windSeries('2026-09-16T00:00', '2026-09-16T23:00', (time) => ({
@@ -18,34 +19,46 @@ const tide = computeTide(swell, DATE);
 const base = { level: 'intermediate' as const, board: 'shortboard' as const, date: DATE, swell, wind, sun: SUN_SEPT, tide, distanceKm: 13.4 };
 
 describe('evaluateSpot — golden scenario', () => {
-  it('Kommetjie Long Beach: offshore SE, 4.4 ft, window 07:00→12:00 peak 8.6', () => {
+  // Tp (peakPeriodS) = 13 s here (mean periodS stays 10.2, only used as fallback — see engine/swell.ts):
+  // k(13) = clamp(1 + 0.05·(13−8), 0.9, 1.3) = 1.25 ; periodFactor(13) = 1.0 (≥ periodFullS 11, was 0.86 at 10.2).
+  it('Kommetjie Long Beach: offshore SE, 4.9 ft, window 07:00→12:00 peak 10.0 (epic)', () => {
     const r = evaluateSpot({ ...base, spot: KOMMETJIE_LONG_BEACH });
     const at = (h: string) => r.hours.find((x) => x.time === `${DATE}T${h}`)!;
     expect(r.open).toBe(true);
-    expect(at('07:00').faceFt).toBeCloseTo(4.369, 3);
+    // faceFt = 2.0 heightM × 3.28 M_TO_FT × 0.6 exposure × 1.25 k(13) = 4.92
+    expect(at('07:00').faceFt).toBeCloseTo(4.92, 3);
     expect(at('07:00').windRelation).toBe('offshore');
     expect(at('07:00').tide).toEqual({ state: 'high', trend: 'rising' });
     expect(at('06:00').score).toBe(0); // 16 min de jour seulement
-    expect(at('07:00').score).toBeCloseTo(8.6, 1);
-    expect(at('10:00').score).toBeCloseTo(8.6, 1);
-    expect(at('11:00').score).toBeCloseTo(7.1, 1);
-    expect(at('12:00').score).toBeCloseTo(4.0, 1);
-    expect(at('13:00').score).toBeCloseTo(1.0, 1);
+    // size(1) × period(1.0) × wind(1) × tide(1) × day(1) × weather(1) = 1.0 → 10×1.0 = 10.0
+    expect(at('07:00').score).toBeCloseTo(10.0, 1);
+    expect(at('10:00').score).toBeCloseTo(10.0, 1);
+    // 11:00 wind 18 kt offshore → windFactor 0.82 ; 1.0 × 0.82 = 0.82 → 8.2
+    expect(at('11:00').score).toBeCloseTo(8.2, 1);
+    // 12:00 wind 24 kt offshore → windFactor 0.46 ; 1.0 × 0.46 = 0.46 → 4.6
+    expect(at('12:00').score).toBeCloseTo(4.6, 1);
+    // 13:00 wind 30 kt offshore → windFactor 0.2, tide drops to 0.6 ; 1.0 × 0.2 × 0.6 = 0.12 → 1.2
+    expect(at('13:00').score).toBeCloseTo(1.2, 1);
     expect(r.windows).toHaveLength(1);
-    expect(r.best).toEqual({ start: `${DATE}T07:00`, end: `${DATE}T12:00`, peak: 8.6, mean: 8.3 });
-    expect(r.maxScore).toBeCloseTo(8.6, 1);
+    // mean of [10.0, 10.0, 10.0, 10.0, 8.2] (07:00→11:00) = 48.2/5 = 9.64 → round1 → 9.6
+    expect(r.best).toEqual({ start: `${DATE}T07:00`, end: `${DATE}T12:00`, peak: 10.0, mean: 9.6 });
+    expect(r.maxScore).toBeCloseTo(10.0, 1);
   });
 
-  it('Muizenberg: onshore SE and too small for a shortboard → no window, max 3.3', () => {
+  it('Muizenberg: onshore SE, still too small for a shortboard but now clears windowMin at 07:00→10:00', () => {
     const r = evaluateSpot({ ...base, spot: MUIZENBERG, distanceKm: 0 });
     const at7 = r.hours.find((x) => x.time === `${DATE}T07:00`)!;
     expect(at7.windRelation).toBe('onshore');
-    expect(at7.faceFt).toBeCloseTo(2.549, 3);
-    expect(at7.factors.size).toBeCloseTo(0.549, 3);
-    expect(at7.score).toBeCloseTo(3.3, 1);
-    expect(r.windows).toEqual([]);
-    expect(r.best).toBeUndefined();
-    expect(r.maxScore).toBeCloseTo(3.3, 1);
+    // faceFt = 2.0 × 3.28 × 0.35 exposure × 1.25 k(13) = 2.87 (band [3,6] : still just under min)
+    expect(at7.faceFt).toBeCloseTo(2.87, 3);
+    // sizeFactor = 1 − (3 − 2.87)/1 = 0.87 (was 0.549 at the old faceFt 2.549)
+    expect(at7.factors.size).toBeCloseTo(0.87, 3);
+    // size(0.87) × period(1.0) × wind(0.7 onshore@8kt) × tide(1, best=[]) × day(1) × weather(1) = 0.609 → 6.1
+    // 6.1 ≥ windowMin (6): unlike the old 3.3, this now forms a (sub-`good`, so verdict-irrelevant) window.
+    expect(at7.score).toBeCloseTo(6.1, 1);
+    expect(r.windows).toEqual([{ start: `${DATE}T07:00`, end: `${DATE}T10:00`, peak: 6.1, mean: 6.1 }]);
+    expect(r.best).toEqual({ start: `${DATE}T07:00`, end: `${DATE}T10:00`, peak: 6.1, mean: 6.1 });
+    expect(r.maxScore).toBeCloseTo(6.1, 1);
   });
 
   it('a spot closed to the level scores 0 everywhere and is flagged closed', () => {
@@ -59,7 +72,8 @@ describe('evaluateSpot — golden scenario', () => {
   it('fromTime drops earlier slots (/now)', () => {
     const r = evaluateSpot({ ...base, spot: KOMMETJIE_LONG_BEACH, fromTime: `${DATE}T08:00` });
     expect(r.hours[0].time).toBe(`${DATE}T08:00`);
-    expect(r.best).toEqual({ start: `${DATE}T08:00`, end: `${DATE}T12:00`, peak: 8.6, mean: 8.2 });
+    // mean of [10.0, 10.0, 10.0, 8.2] (08:00→11:00) = 38.2/4 = 9.55 → round1 → 9.6
+    expect(r.best).toEqual({ start: `${DATE}T08:00`, end: `${DATE}T12:00`, peak: 10.0, mean: 9.6 });
   });
 
   it('ignores hours of another day', () => {

@@ -110,7 +110,7 @@ describe('location and /now', () => {
     await store.putProfiles({ '1': ready() });
     await handleUpdate(msg(undefined, { location: { latitude: -34.12, longitude: 18.45 } }), deps);
     expect((await store.getProfile(1))?.location).toEqual({ lat: -34.12, lon: 18.45, source: 'custom' });
-    expect(omCalls).toHaveLength(2);
+    expect(omCalls).toHaveLength(3); // marine + forecast + période pic
     expect(sent()[0].text.startsWith('🟢 <b>GO SURF</b> (today)')).toBe(true);
     expect(sent()[0].text.endsWith('Location saved — the 19:00 verdict will use it.')).toBe(true);
     expect(sent()[0].reply_markup).toEqual({ inline_keyboard: [[{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }]] });
@@ -128,7 +128,7 @@ describe('location and /now', () => {
     await handleUpdate(msg('/now'), deps);
     await handleUpdate(msg('🔎 Сейчас'), deps);
     expect(sent()).toHaveLength(2);
-    expect(sent()[1].text).toContain('Kommetjie – Long Beach · 8:00–12:00 · 8.6/10');
+    expect(sent()[1].text).toContain('Kommetjie – Long Beach · 8:00–12:00 · 10.0/10');
   });
 });
 

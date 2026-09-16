@@ -40,6 +40,20 @@ export function forecastUrl(points: LatLon[], forecastDays = 3): string {
   return `${FORECAST_BASE}?${q.toString()}`;
 }
 
+/**
+ * `swell_wave_period` (appel marine principal) est la période MOYENNE ; le modèle par défaut ne publie pas la
+ * période PIC (Tp), celle que les seuils de scoring et k(T) attendent (§7.2). `models=gwam` la fournit, mais
+ * appliqué à l'appel marine principal il viderait `sea_level_height_msl` et la houle secondaire — d'où un
+ * second appel, séparé, ne demandant que cette colonne.
+ */
+export function peakPeriodUrl(points: LatLon[], forecastDays = 3): string {
+  const q = new URLSearchParams({
+    latitude: coords(points, 'lat'), longitude: coords(points, 'lon'),
+    hourly: 'swell_wave_peak_period', models: 'gwam', timezone: TIMEZONE, forecast_days: String(forecastDays),
+  });
+  return `${MARINE_BASE}?${q.toString()}`;
+}
+
 export interface RetryOptions { retries?: number; delayMs?: number; sleep?: (ms: number) => Promise<void> }
 
 /** 1 retry après 2 s par défaut (§10.1). Un 4xx (hors 429) ne peut pas réussir au second essai : abandon immédiat. */
@@ -137,6 +151,24 @@ export function parseForecast(json: unknown): ForecastSeries[] {
   });
 }
 
+interface PeakPeriodJson { hourly?: { time?: string[] } & Record<string, Num[] | string[] | undefined> }
+const PEAK_PERIOD_REQUIRED_HOURLY = ['swell_wave_peak_period'] as const;
+
+export interface PeakPeriodHour { time: string; peakPeriodS: number | null }
+
+/** `null` = le modèle ne publie pas la période pic pour cette heure (jamais fabriqué en 0, §voir moteur). */
+export function parsePeakPeriod(json: unknown): PeakPeriodHour[][] {
+  return asList(json).map((loc) => {
+    const h = (loc as PeakPeriodJson)?.hourly;
+    if (!h || !Array.isArray(h.time)) throw new OpenMeteoError('Malformed marine response');
+    assertColumns(h, PEAK_PERIOD_REQUIRED_HOURLY, h.time.length, 'marine');
+    return h.time.map((time, i) => {
+      const v = column(h, 'swell_wave_peak_period', i);
+      return { time, peakPeriodS: typeof v === 'number' ? v : null };
+    });
+  });
+}
+
 function assertCount<T>(list: T[], points: LatLon[]): T[] {
   if (list.length !== points.length) throw new OpenMeteoError(`expected ${points.length} locations, got ${list.length}`);
   return list;
@@ -150,4 +182,8 @@ export async function fetchMarine(points: LatLon[], fetchFn: FetchLike, opts: Fe
 
 export async function fetchForecast(points: LatLon[], fetchFn: FetchLike, opts: FetchOptions = {}): Promise<ForecastSeries[]> {
   return assertCount(parseForecast(await fetchJsonWithRetry(forecastUrl(points, opts.forecastDays), fetchFn, opts)), points);
+}
+
+export async function fetchPeakPeriod(points: LatLon[], fetchFn: FetchLike, opts: FetchOptions = {}): Promise<PeakPeriodHour[][]> {
+  return assertCount(parsePeakPeriod(await fetchJsonWithRetry(peakPeriodUrl(points, opts.forecastDays), fetchFn, opts)), points);
 }

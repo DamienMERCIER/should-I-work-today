@@ -40,7 +40,7 @@ describe('runEvening', () => {
     await seed(ALL);
     const result = await runEvening(deps);
     expect(result).toEqual({ skipped: false, sent: 3, failed: 0, date: '2026-09-16' });
-    expect(omCalls).toHaveLength(2); // une région, le profil de Johannesburg est loin de tout
+    expect(omCalls).toHaveLength(3); // une région (marine + forecast + période pic), le profil de Johannesburg est loin de tout
     expect(sent().map((m) => m.chat_id)).toEqual([1, 2, 5]);
     expect(sent()[0].text.startsWith("🟢 <b>DON'T GO TO WORK TOMORROW</b> (Wed 16 Sept)")).toBe(true);
     expect(sent()[1].text).toContain('ЗАВТРА НЕ ИДИ НА РАБОТУ');
@@ -138,27 +138,28 @@ describe('runMorning', () => {
 describe('budget guard', () => {
   it('defers the newest profiles by createdAt when the budget is exceeded, and notifies the admin', async () => {
     const { deps, sent, seed } = setup({ now: '2026-09-15T19:00' });
-    // 3 (verrou + profils) + 2 (une région, Muizenberg) + 2 (écritures) + N (envois) ; dépasse 45 pour N > 38.
+    // 3 (verrou + profils) + 3 (une région, Muizenberg : marine + forecast + période pic) + 2 (écritures) + N (envois) ; dépasse 45 pour N > 37.
     const profiles = Array.from({ length: 40 }, (_, i) => ready(i + 1, { createdAt: `2026-09-15T19:${String(i).padStart(2, '0')}` }));
     await seed(profiles);
     const result = await runEvening(deps);
-    expect(result.sent).toBe(38);
+    expect(result.sent).toBe(37);
     expect(result.failed).toBe(0);
-    expect(sent().filter((m) => m.chat_id !== 999)).toHaveLength(38);
-    // les 2 profils les plus récents (createdAt 19:38 et 19:39, chatId 39 et 40) sont reportés.
+    expect(sent().filter((m) => m.chat_id !== 999)).toHaveLength(37);
+    // les 3 profils les plus récents (createdAt 19:37, 19:38 et 19:39, chatId 38, 39 et 40) sont reportés.
+    expect(sent().some((m) => m.chat_id === 38)).toBe(false);
     expect(sent().some((m) => m.chat_id === 39)).toBe(false);
     expect(sent().some((m) => m.chat_id === 40)).toBe(false);
     const admin = sent().find((m) => m.chat_id === 999);
-    expect(admin?.text).toContain('2 profil(s) reportés');
+    expect(admin?.text).toContain('3 profil(s) reportés');
   });
 });
 
 describe('estimateBudget', () => {
   it('counts locks, profiles, regions, raw lookups, report writes and sends', () => {
     const { deps } = setup({ now: '2026-09-15T19:00' });
-    // 3 (verrou + profils) + 2×1 région + 0 brut + 2 écritures + 2 envois = 9
-    expect(estimateBudget([ready(1), ready(2)], deps, 'evening')).toBe(9);
+    // 3 (verrou + profils) + 3×1 région (marine + forecast + période pic) + 0 brut + 2 écritures + 2 envois = 10
+    expect(estimateBudget([ready(1), ready(2)], deps, 'evening')).toBe(10);
     // + 1 lecture des rapports de la veille, + 2 appels bruts pour le profil hors couverture
-    expect(estimateBudget([ready(1), ready(5, { location: JOBURG })], deps, 'morning')).toBe(12);
+    expect(estimateBudget([ready(1), ready(5, { location: JOBURG })], deps, 'morning')).toBe(13);
   });
 });
