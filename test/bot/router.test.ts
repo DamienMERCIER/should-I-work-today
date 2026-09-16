@@ -79,20 +79,27 @@ describe('/start and onboarding', () => {
     expect(sent()[2].reply_markup.keyboard[0][0]).toEqual({ text: '📍 Использовать моё местоположение', request_location: true });
     expect(answered()).toBe(2);
   });
-  it('works without an invite code and re-asks the pending question on /start', async () => {
-    const { deps, sent } = setup();
+  it('refuses every /start when no invite code is configured', async () => {
+    const { deps, store, sent } = setup();
     await handleUpdate(msg('/start'), deps);
-    await handleUpdate(msg('/start'), deps);
+    expect(sent()[0].text).toBe("Bot privé — il faut le lien d'invitation.");
+    expect(await store.getProfile(1)).toBeUndefined();
+  });
+  it('re-asks the pending question on /start during onboarding', async () => {
+    const { deps, sent } = setup({ inviteCode: 'surf' });
+    await handleUpdate(msg('/start surf'), deps);
+    await handleUpdate(msg('/start surf'), deps);
     expect(sent().map((m) => m.text)).toEqual(['Salut ! Deux questions et on est partis. Ton niveau ?', 'Salut ! Deux questions et on est partis. Ton niveau ?']);
   });
-  it('/stop deactivates, /start reactivates with the keyboard', async () => {
+  it('/stop deactivates, /start reactivates with the keyboard and the profile summary', async () => {
     const { deps, store, sent } = setup();
     await store.putProfiles({ '1': ready() });
     await handleUpdate(msg('/stop'), deps);
     expect((await store.getProfile(1))?.active).toBe(false);
     await handleUpdate(msg('/start'), deps);
     expect((await store.getProfile(1))?.active).toBe(true);
-    expect(sent()[1].text).toBe('Content de te revoir — ton profil est toujours là.');
+    expect(sent()[1].text.startsWith('Content de te revoir — ton profil est toujours là.')).toBe(true);
+    expect(sent()[1].text).toContain('Niveau : Intermédiaire');
     expect(sent()[1].reply_markup.keyboard[1].map((b: { text: string }) => b.text)).toEqual(['🏠 Retour à Muizenberg', '🔎 Maintenant']);
   });
 });
@@ -183,6 +190,27 @@ describe('/profil, hours, /lang, help', () => {
     expect(sent()).toHaveLength(0);
     await handleUpdate(msg('hello'), deps);
     expect(sent()[0].text.startsWith('Commandes :')).toBe(true);
+  });
+});
+
+describe('input validation', () => {
+  it('ignores an update whose chat id is not a number (prototype pollution guard)', async () => {
+    const { deps, store, sent } = setup();
+    const badUpdate = {
+      update_id: 9,
+      message: { message_id: 1, chat: { id: '__proto__', type: 'private' }, from: { id: 1, language_code: 'fr' }, text: '/now' },
+    } as unknown as TgUpdate;
+    await handleUpdate(badUpdate, deps);
+    expect(sent()).toHaveLength(0);
+    expect(await store.getProfiles()).toEqual({});
+    expect(({} as Record<string, unknown>).lang).toBeUndefined();
+  });
+  it('ignores a location with an out-of-range latitude', async () => {
+    const { deps, store, sent } = setup();
+    await store.putProfiles({ '1': ready() });
+    await handleUpdate(msg(undefined, { location: { latitude: 999, longitude: 18.45 } }), deps);
+    expect(sent()).toHaveLength(0);
+    expect((await store.getProfile(1))?.location).toEqual({ lat: -34.1085, lon: 18.4715, source: 'default' });
   });
 });
 

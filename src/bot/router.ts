@@ -1,11 +1,11 @@
-import type { FetchLike } from '../adapters/http';
+import { safeEqual, type FetchLike } from '../adapters/http';
 import type { Store } from '../adapters/kv';
 import type { Telegram, TgCallbackQuery, TgMessage, TgUpdate } from '../adapters/telegram';
 import { DEFAULT_LOCATION } from '../config';
 import { addDays, dateOf, floorHour } from '../engine/time';
 import { buildReport, type CollectDeps } from '../jobs/collect';
 import { detectLang, STRINGS } from '../render/i18n';
-import { detailsButton, renderDetails, renderEvening, type RenderCtx } from '../render/messages';
+import { detailsMarkupFor, renderDetails, renderEvening, type RenderCtx } from '../render/messages';
 import type { Board, Lang, Level, Profile, Region, Report, Spot } from '../types';
 import { boardKeyboard, langKeyboard, levelKeyboard, persistentKeyboard, profileKeyboard } from './keyboards';
 import { newProfile, parseHours, profileSummary, welcomeText } from './profile';
@@ -29,6 +29,12 @@ const LANGS: readonly Lang[] = ['fr', 'ru'];
 const isButton = (text: string, key: 'backHome' | 'now'): boolean =>
   text === STRINGS.fr.buttons[key] || text === STRINGS.ru.buttons[key];
 
+/** Un chat_id Telegram est toujours un entier ; refuse toute autre valeur (ex. "__proto__") avant tout accès au store. */
+const isChatId = (x: unknown): x is number => Number.isInteger(x);
+
+const isValidLocation = (loc: { latitude: number; longitude: number }): boolean =>
+  Number.isFinite(loc.latitude) && Number.isFinite(loc.longitude) && Math.abs(loc.latitude) <= 90 && Math.abs(loc.longitude) <= 180;
+
 const renderCtx = (lang: Lang, deps: BotDeps): RenderCtx => ({ lang, spots: new Map(deps.spots.map((s) => [s.id, s])) });
 
 const collectDeps = (deps: BotDeps, now: string): CollectDeps =>
@@ -44,6 +50,7 @@ export async function handleUpdate(update: TgUpdate, deps: BotDeps): Promise<voi
   const msg = update.message;
   if (!msg || msg.chat.type !== 'private') return;
   const chatId = msg.chat.id;
+  if (!isChatId(chatId)) return;
   const text = msg.text?.trim() ?? '';
   let profile = await deps.store.getProfile(chatId);
 
@@ -51,6 +58,8 @@ export async function handleUpdate(update: TgUpdate, deps: BotDeps): Promise<voi
   if (!profile) return; // inconnu sans /start : silence (bot privé)
   const s = STRINGS[profile.lang];
   const { telegram, store } = deps;
+
+  if (text.length > 512) return void (await telegram.sendMessage(chatId, s.help));
 
   if (profile.awaiting === 'hours') {
     const escapes = text.startsWith('/') || isButton(text, 'now') || isButton(text, 'backHome') || Boolean(msg.location);
@@ -63,15 +72,16 @@ export async function handleUpdate(update: TgUpdate, deps: BotDeps): Promise<voi
   }
 
   if (msg.location) {
+    if (!isValidLocation(msg.location)) return;
     const { latitude: lat, longitude: lon } = msg.location;
     const updated = await store.updateProfile(chatId, (cur) => ({ ...(cur ?? profile!), location: { lat, lon, source: 'custom' } }));
     const report = await nowReport(updated, deps);
-    await telegram.sendMessage(chatId, `${renderEvening(report, renderCtx(profile.lang, deps))}\n\n${s.locationSaved}`, detailsButton(report.date, profile.lang));
+    await telegram.sendMessage(chatId, `${renderEvening(report, renderCtx(profile.lang, deps))}\n\n${s.locationSaved}`, detailsMarkupFor(report, profile.lang));
     return;
   }
   if (text === '/now' || isButton(text, 'now')) {
     const report = await nowReport(profile, deps);
-    await telegram.sendMessage(chatId, renderEvening(report, renderCtx(profile.lang, deps)), detailsButton(report.date, profile.lang));
+    await telegram.sendMessage(chatId, renderEvening(report, renderCtx(profile.lang, deps)), detailsMarkupFor(report, profile.lang));
     return;
   }
   if (isButton(text, 'backHome')) {
@@ -100,7 +110,8 @@ async function handleStart(msg: TgMessage, profile: Profile | undefined, deps: B
   const code = (msg.text ?? '').split(/\s+/)[1];
   if (!profile) {
     const lang = detectLang(msg.from?.language_code);
-    if (deps.inviteCode && code !== deps.inviteCode) {
+    if (!deps.inviteCode || !safeEqual(code ?? '', deps.inviteCode)) {
+      console.warn(`invite refused for chat ${chatId}`);
       await deps.telegram.sendMessage(chatId, STRINGS[lang].privateBot);
       return;
     }
@@ -113,7 +124,7 @@ async function handleStart(msg: TgMessage, profile: Profile | undefined, deps: B
   const p = await deps.store.updateProfile(chatId, (cur) => ({ ...(cur ?? profile), active: true }));
   if (p.onboarding === 'level') return void (await deps.telegram.sendMessage(chatId, s.onboarding.askLevel, levelKeyboard(s)));
   if (p.onboarding === 'board') return void (await deps.telegram.sendMessage(chatId, s.onboarding.askBoard, boardKeyboard(s)));
-  await deps.telegram.sendMessage(chatId, s.reactivated, persistentKeyboard(s));
+  await deps.telegram.sendMessage(chatId, `${s.reactivated}\n${profileSummary(p, s)}`, persistentKeyboard(s));
 }
 
 async function handleHours(chatId: number, text: string, profile: Profile, deps: BotDeps): Promise<void> {
@@ -135,6 +146,7 @@ async function handleCallback(cb: TgCallbackQuery, deps: BotDeps): Promise<void>
   await deps.telegram.answerCallbackQuery(cb.id);
   if (cb.message && cb.message.chat.type !== 'private') return;
   const chatId = cb.message?.chat.id ?? cb.from.id;
+  if (!isChatId(chatId)) return;
   const profile = await deps.store.getProfile(chatId);
   if (!profile) return;
   const s = STRINGS[profile.lang];

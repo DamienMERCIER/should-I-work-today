@@ -50,4 +50,14 @@ describe('computeTide', () => {
   it('is empty on a series that is too short', () => {
     expect(computeTide([], DATE)).toEqual({ states: new Map(), events: [] });
   });
+
+  it('a flat series (range < 0.05 m) is all mid, with no events, not empty states', () => {
+    const flat = swellSeries('2026-09-15T00:00', '2026-09-17T23:00', () => ({
+      primary: NO_SWELL, secondary: NO_SWELL, seaLevelM: 0.3,
+    }));
+    const flatInfo = computeTide(flat, DATE);
+    expect(flatInfo.events).toEqual([]);
+    expect(flatInfo.states.size).toBeGreaterThan(0);
+    expect([...flatInfo.states.values()].every((v) => v.state === 'mid')).toBe(true);
+  });
 });

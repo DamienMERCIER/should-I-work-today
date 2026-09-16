@@ -28,20 +28,28 @@ export function computeTide(series: SwellHour[], date: string): TideInfo {
   const events: TideEvent[] = [];
   if (pts.length < 2) return { states, events };
 
+  const trendAt = (i: number): TideTrend => {
+    const p = pts[i];
+    const next = pts[i + 1];
+    const prev = pts[i - 1];
+    return next ? (next.y > p.y ? 'rising' : 'falling') : (prev && p.y > prev.y ? 'rising' : 'falling');
+  };
+
   const ys = pts.map((p) => p.y);
   const min = Math.min(...ys);
   const max = Math.max(...ys);
-  const range = max - min || 1;
+  const range = max - min;
+
+  // Série plate ou quasi plate (capteur mort, marée nulle) : neutre plutôt que 'low' partout, et pas d'événements.
+  if (range < 0.05) {
+    pts.forEach((p, i) => states.set(p.time, { state: 'mid', trend: trendAt(i) }));
+    return { states, events };
+  }
 
   pts.forEach((p, i) => {
     const norm = (p.y - min) / range;
     const state: TideState = norm < 1 / 3 ? 'low' : norm > 2 / 3 ? 'high' : 'mid';
-    const next = pts[i + 1];
-    const prev = pts[i - 1];
-    const trend: TideTrend = next
-      ? next.y > p.y ? 'rising' : 'falling'
-      : prev && p.y > prev.y ? 'rising' : 'falling';
-    states.set(p.time, { state, trend });
+    states.set(p.time, { state, trend: trendAt(i) });
   });
 
   const dayStart = toMs(atTime(date, '00:00'));

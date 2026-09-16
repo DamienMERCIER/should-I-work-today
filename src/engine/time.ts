@@ -33,11 +33,6 @@ export function hhmm(t: string): string {
   return t.slice(11, 16);
 }
 
-export function minutesOfDay(hhmmStr: string): number {
-  const [h, m] = hhmmStr.split(':').map(Number);
-  return h * 60 + m;
-}
-
 export function atTime(date: string, hhmmStr: string): string {
   return `${date}T${hhmmStr}`;
 }

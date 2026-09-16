@@ -16,7 +16,7 @@ const TIMEZONE = 'Africa/Johannesburg';
 const MARINE_HOURLY = [
   'swell_wave_height', 'swell_wave_period', 'swell_wave_direction',
   'secondary_swell_wave_height', 'secondary_swell_wave_period', 'secondary_swell_wave_direction',
-  'wind_wave_height', 'wave_height', 'sea_level_height_msl',
+  'sea_level_height_msl',
 ];
 const FORECAST_HOURLY = ['wind_speed_10m', 'wind_direction_10m', 'wind_gusts_10m', 'temperature_2m', 'precipitation', 'weather_code'];
 const FORECAST_DAILY = ['sunrise', 'sunset', 'temperature_2m_max', 'temperature_2m_min', 'precipitation_sum'];
@@ -42,7 +42,7 @@ export function forecastUrl(points: LatLon[], forecastDays = 3): string {
 
 export interface RetryOptions { retries?: number; delayMs?: number; sleep?: (ms: number) => Promise<void> }
 
-/** 1 retry après 2 s par défaut (§10.1). */
+/** 1 retry après 2 s par défaut (§10.1). Un 4xx (hors 429) ne peut pas réussir au second essai : abandon immédiat. */
 export async function fetchJsonWithRetry(url: string, fetchFn: FetchLike, opts: RetryOptions = {}): Promise<unknown> {
   const retries = opts.retries ?? 1;
   const delayMs = opts.delayMs ?? 2000;
@@ -51,12 +51,15 @@ export async function fetchJsonWithRetry(url: string, fetchFn: FetchLike, opts: 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const res = await fetchFn(url, { headers: { accept: 'application/json' } });
-      if (!res.ok) throw new OpenMeteoError(`HTTP ${res.status} for ${url}`, res.status);
-      return await res.json();
-    } catch (err) {
+      if (res.ok) return await res.json();
+      const err = new OpenMeteoError(`HTTP ${res.status} for ${url}`, res.status);
+      if (res.status !== 429 && res.status < 500) throw err;
       lastError = err;
-      if (attempt < retries) await sleep(delayMs);
+    } catch (err) {
+      if (err instanceof OpenMeteoError && err.status !== undefined && err.status !== 429 && err.status < 500) throw err;
+      lastError = err;
     }
+    if (attempt < retries) await sleep(delayMs);
   }
   throw lastError instanceof OpenMeteoError ? lastError : new OpenMeteoError(String(lastError));
 }
@@ -77,10 +80,29 @@ const column = (block: Record<string, Num[] | string[] | undefined>, key: string
   return typeof v === 'number' || v === null ? v : undefined;
 };
 
+/** Les colonnes que le moteur consomme doivent être des tableaux alignés sur `time` ; sinon, `noData` plutôt qu'une valeur fabriquée. */
+function assertColumns(block: Record<string, unknown> | undefined, keys: readonly string[], length: number, kind: 'marine' | 'forecast'): void {
+  for (const key of keys) {
+    const col = block?.[key];
+    if (!Array.isArray(col) || col.length !== length) {
+      throw new OpenMeteoError(`Malformed ${kind} response: missing or short column ${key}`);
+    }
+  }
+}
+
+const MARINE_REQUIRED_HOURLY = [
+  'swell_wave_height', 'swell_wave_period', 'swell_wave_direction',
+  'secondary_swell_wave_height', 'secondary_swell_wave_period', 'secondary_swell_wave_direction',
+  'sea_level_height_msl',
+] as const;
+const FORECAST_REQUIRED_HOURLY = ['wind_speed_10m', 'wind_direction_10m', 'wind_gusts_10m', 'weather_code'] as const;
+const FORECAST_REQUIRED_DAILY = ['time', 'sunrise', 'sunset'] as const;
+
 export function parseMarine(json: unknown): SwellHour[][] {
   return asList(json).map((loc) => {
     const h = (loc as MarineJson)?.hourly;
     if (!h || !Array.isArray(h.time)) throw new OpenMeteoError('Malformed marine response');
+    assertColumns(h, MARINE_REQUIRED_HOURLY, h.time.length, 'marine');
     return h.time.map((time, i) => ({
       time,
       primary: { heightM: num(column(h, 'swell_wave_height', i)), periodS: num(column(h, 'swell_wave_period', i)), directionDeg: num(column(h, 'swell_wave_direction', i)) },
@@ -98,6 +120,8 @@ export function parseForecast(json: unknown): ForecastSeries[] {
     const h = f?.hourly;
     const d = f?.daily;
     if (!h || !Array.isArray(h.time) || !d || !Array.isArray(d.time)) throw new OpenMeteoError('Malformed forecast response');
+    assertColumns(h, FORECAST_REQUIRED_HOURLY, h.time.length, 'forecast');
+    assertColumns(d, FORECAST_REQUIRED_DAILY, d.time.length, 'forecast');
     const wind: WindHour[] = h.time.map((time, i) => ({
       time,
       windKt: num(column(h, 'wind_speed_10m', i)), windDirDeg: num(column(h, 'wind_direction_10m', i)), gustKt: num(column(h, 'wind_gusts_10m', i)),
@@ -105,8 +129,8 @@ export function parseForecast(json: unknown): ForecastSeries[] {
     }));
     const daily: DailySun[] = d.time.map((date, i) => ({
       date,
-      sunrise: String(d.sunrise?.[i] ?? `${date}T06:00`),
-      sunset: String(d.sunset?.[i] ?? `${date}T18:00`),
+      sunrise: String(d.sunrise![i]),
+      sunset: String(d.sunset![i]),
       tempMaxC: num(column(d, 'temperature_2m_max', i)), tempMinC: num(column(d, 'temperature_2m_min', i)), precipMm: num(column(d, 'precipitation_sum', i)),
     }));
     return { wind, daily };

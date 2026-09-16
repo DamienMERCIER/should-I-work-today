@@ -238,3 +238,7 @@ export function renderDetails(report: Report, ctx: RenderCtx): string {
 export const detailsButton = (date: string, lang: Lang): ReplyMarkup => ({
   inline_keyboard: [[{ text: STRINGS[lang].buttons.allSpots, callback_data: `rep:${date}` }]],
 });
+
+/** Pas de verdict (hors-couverture, pas de données) → pas de bouton 📋 : le panneau qu'il ouvrirait serait fabriqué (§9). */
+export const detailsMarkupFor = (report: Report, lang: Lang): ReplyMarkup | undefined =>
+  (report.verdict.kind === 'green' || report.verdict.kind === 'yellow' || report.verdict.kind === 'red' ? detailsButton(report.date, lang) : undefined);

@@ -91,6 +91,18 @@ describe('buildReports', () => {
     expect((r.verdict as { reason: string }).reason).toContain('no daily forecast for 2026-09-20');
     expect(r.spots).toEqual([]);
   });
+  it('an engine exception yields noData for that profile only, never a crashed run', async () => {
+    // sunrise null passes the column check but makes the daylight factor throw
+    const daily = GOLDEN_DAILY.map((d) => ({ ...d, sunrise: null as unknown as string }));
+    const { fn } = server({ daily });
+    const reports = await buildReports(
+      [{ profile: profile(), date: GOLDEN_DATE, mode: 'evening' }, { profile: profile({ chatId: 5, location: { lat: -26.2, lon: 28.04, source: 'custom' } }), date: GOLDEN_DATE, mode: 'evening' }],
+      deps(fn, SPOTS),
+    );
+    expect(reports.get(1)!.verdict).toMatchObject({ kind: 'noData' });
+    expect((reports.get(1)!.verdict as { reason: string }).reason).toMatch(/^engine: /);
+    expect(reports.get(5)!.verdict.kind).toBe('outOfCoverage');
+  });
   it('forecast failure alone is also noData (no verdict without wind)', async () => {
     const { fn } = server({ failForecast: true });
     const r = await buildReport({ profile: profile(), date: GOLDEN_DATE, mode: 'evening' }, deps(fn));

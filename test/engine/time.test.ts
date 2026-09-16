@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  toMs, fromMs, addHours, addDays, hoursBetween, dateOf, hhmm, minutesOfDay, atTime, isWeekend, nowLocal, floorHour,
+  toMs, fromMs, addHours, addDays, hoursBetween, dateOf, hhmm, atTime, isWeekend, nowLocal, floorHour,
 } from '../../src/engine/time';
 
 describe('time helpers (local wall-clock strings)', () => {
@@ -23,7 +23,6 @@ describe('time helpers (local wall-clock strings)', () => {
   it('extracts parts', () => {
     expect(dateOf('2026-09-16T07:00')).toBe('2026-09-16');
     expect(hhmm('2026-09-16T07:05')).toBe('07:05');
-    expect(minutesOfDay('09:30')).toBe(570);
     expect(atTime('2026-09-16', '09:00')).toBe('2026-09-16T09:00');
     expect(floorHour('2026-09-16T07:45')).toBe('2026-09-16T07:00');
   });

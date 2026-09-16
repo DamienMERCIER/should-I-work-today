@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import worker, { handleWebhookRequest, runCron, type AppDeps, type Env } from '../src/index';
+import { describe, it, expect, vi } from 'vitest';
+import worker, { buildDeps, handleWebhookRequest, runCron, type AppDeps, type Env } from '../src/index';
 import { Store } from '../src/adapters/kv';
 import { Telegram } from '../src/adapters/telegram';
 import { REGIONS } from '../src/data/index';
@@ -37,6 +37,16 @@ describe('webhook', () => {
     expect((await handleWebhookRequest(post(update), env, ctx, deps)).status).toBe(401);
     expect((await handleWebhookRequest(post(update, 'nope'), env, ctx, deps)).status).toBe(401);
   });
+  it('rejects an empty header when WEBHOOK_SECRET is unset', async () => {
+    const { deps, env, ctx } = setup();
+    const noSecretEnv = { ...env, WEBHOOK_SECRET: undefined } as unknown as Env;
+    const req = new Request('https://w.example/webhook', {
+      method: 'POST',
+      body: JSON.stringify(update),
+      headers: { 'X-Telegram-Bot-Api-Secret-Token': '' },
+    });
+    expect((await handleWebhookRequest(req, noSecretEnv, ctx, deps)).status).toBe(401);
+  });
   it('rejects a non-JSON body with 400', async () => {
     const { deps, env, ctx } = setup();
     const req = new Request('https://w.example/webhook', { method: 'POST', body: '{', headers: { 'X-Telegram-Bot-Api-Secret-Token': 's3cret' } });
@@ -44,7 +54,9 @@ describe('webhook', () => {
   });
   it('answers 200 immediately and processes the update in the background', async () => {
     const { deps, env, ctx, tgCalls, flush } = setup();
-    const res = await handleWebhookRequest(post(update, 's3cret'), env, ctx, deps);
+    deps.inviteCode = 'surf';
+    const startUpdate = { ...update, message: { ...update.message, text: '/start surf' } };
+    const res = await handleWebhookRequest(post(startUpdate, 's3cret'), env, ctx, deps);
     expect(res.status).toBe(200);
     await flush();
     expect(tgCalls.some((c) => c.url.endsWith('/sendMessage'))).toBe(true);
@@ -59,6 +71,15 @@ describe('webhook', () => {
     expect(bodies.find((b) => b.chat_id === 1)?.text).toBe('⚠️ Erreur, réessaie.');
     expect(bodies.find((b) => b.chat_id === 999)?.text).toContain('kv down');
   });
+  it('reports a handler crash to the user in their own language (RU)', async () => {
+    const { deps, env, ctx, tgCalls, flush } = setup();
+    deps.store.getProfile = async () => { throw new Error('kv down'); };
+    const ruUpdate = { ...update, message: { ...update.message, from: { id: 1, language_code: 'ru' }, text: '/now' } };
+    await handleWebhookRequest(post(ruUpdate, 's3cret'), env, ctx, deps);
+    await flush();
+    const bodies = tgCalls.map((c) => JSON.parse(String(c.init?.body)) as { chat_id: number; text: string });
+    expect(bodies.find((b) => b.chat_id === 1)?.text).toBe('⚠️ Ошибка, попробуй ещё раз.');
+  });
 });
 
 describe('crons', () => {
@@ -71,6 +92,17 @@ describe('crons', () => {
     expect(kv.data.has('run:2026-09-15:morning')).toBe(true);
     await expect(runCron('* * * * *', deps)).resolves.toBeUndefined();
   });
+  it('logs the JobResult as JSON for each cron run', async () => {
+    const { deps } = setup();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await runCron('0 17 * * *', deps);
+      expect(logSpy.mock.calls.some((c) => String(c[0]).includes('"skipped":false'))).toBe(true);
+      expect(logSpy.mock.calls.some((c) => String(c[0]).includes('"cron":"0 17 * * *"'))).toBe(true);
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
   it('tells the admin when a run throws, then rethrows', async () => {
     const { deps, tgCalls } = setup();
     deps.store.getProfiles = async () => { throw new Error('boom'); };
@@ -81,5 +113,16 @@ describe('crons', () => {
   it('the default export exposes fetch and scheduled', () => {
     expect(typeof worker.fetch).toBe('function');
     expect(typeof worker.scheduled).toBe('function');
+  });
+});
+
+describe('buildDeps', () => {
+  it('drops a non-numeric ADMIN_CHAT_ID instead of storing NaN', () => {
+    const { env } = setup();
+    expect(buildDeps({ ...env, ADMIN_CHAT_ID: 'abc' } as Env).adminChatId).toBeUndefined();
+  });
+  it('parses a numeric ADMIN_CHAT_ID', () => {
+    const { env } = setup();
+    expect(buildDeps({ ...env, ADMIN_CHAT_ID: '999' } as Env).adminChatId).toBe(999);
   });
 });

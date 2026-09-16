@@ -24,7 +24,7 @@ Variables locales dans `.dev.vars` (ignoré par git) : `TELEGRAM_BOT_TOKEN`, `WE
 
 1. BotFather → `/newbot` → token. `/setcommands` : `now - le reste de la journée`, `profil - niveau, planche, heures`, `lang - langue`, `stop - plus de messages`.
 2. `npx wrangler login`, puis `npx wrangler kv namespace create KV` → coller l'`id` dans `wrangler.toml`.
-3. Secrets : `npx wrangler secret put TELEGRAM_BOT_TOKEN`, `WEBHOOK_SECRET` (chaîne aléatoire, ex. `openssl rand -hex 24`), `INVITE_CODE`, `ADMIN_CHAT_ID` (ton `chat_id` — envoie `/start` au bot, lis `wrangler tail`, ou utilise @userinfobot).
+3. Secrets : `npx wrangler secret put TELEGRAM_BOT_TOKEN`, `WEBHOOK_SECRET` (chaîne aléatoire, ex. `openssl rand -hex 24`), `INVITE_CODE` (**obligatoire** — le bot refuse tout `/start` sans lui ; ex. `openssl rand -hex 8`), `ADMIN_CHAT_ID` (ton `chat_id` — envoie `/start` au bot, lis `wrangler tail`, ou utilise @userinfobot).
 4. `npm run deploy` → URL `https://should-i-work.<sous-domaine>.workers.dev`.
 5. `TELEGRAM_BOT_TOKEN=… WEBHOOK_SECRET=… WORKER_URL=https://… npm run set-webhook`.
 6. Depuis Telegram : `https://t.me/<bot>?start=<INVITE_CODE>`, deux taps, puis `🔎 Maintenant`.
@@ -35,6 +35,7 @@ Variables locales dans `.dev.vars` (ignoré par git) : `TELEGRAM_BOT_TOKEN`, `WE
 - Le push de 19h est le heartbeat ; toute erreur de run arrive sur Telegram à `ADMIN_CHAT_ID`.
 - Logs : `npx wrangler tail`.
 - Calibrer : comparer `npm run report` à Windguru/Surfline, ajuster `exposure` dans `src/data/spots.json` et les courbes dans `src/config.ts`. Un spot en `verified: false` s'affiche avec « ≈ ».
-- Limites gratuites : 50 sous-requêtes par run → ~40 utilisateurs ; au-delà, l'admin reçoit « fan-out nécessaire ».
+- Verrou coincé (run planté après le verrou) : `npx wrangler kv key delete --binding KV "run:<date>:evening"` (ou `morning`) avant de relancer.
+- Limites gratuites : 50 sous-requêtes par run → ~38 utilisateurs (au-delà, les profils les plus récents sont reportés et l'admin est prévenu) ; le CPU (10 ms) est l'autre plafond — vérifier dans `wrangler tail` dès 10 utilisateurs.
 
 Données : Open-Meteo.com (CC-BY 4.0), usage non commercial.

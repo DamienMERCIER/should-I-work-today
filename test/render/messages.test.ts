@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  esc, fmtTime, fmtDate, renderEvening, renderShortVerdict, renderMorning, renderDetails, detailsButton, type RenderCtx,
+  esc, fmtTime, fmtDate, renderEvening, renderShortVerdict, renderMorning, renderDetails, detailsButton, detailsMarkupFor, type RenderCtx,
 } from '../../src/render/messages';
 import { SPOTS } from '../../src/data/index';
 import type { Report, Verdict } from '../../src/types';
@@ -29,6 +29,11 @@ describe('formatting', () => {
   });
   it('detailsButton', () => {
     expect(detailsButton(GOLDEN_DATE, 'fr')).toEqual({ inline_keyboard: [[{ text: '📋 Tous les spots', callback_data: 'rep:2026-09-16' }]] });
+  });
+  it('detailsMarkupFor only attaches the 📋 button when there is a verdict', () => {
+    expect(detailsMarkupFor(goldenReport(), 'fr')).toEqual({ inline_keyboard: [[{ text: '📋 Tous les spots', callback_data: 'rep:2026-09-16' }]] });
+    expect(detailsMarkupFor(goldenReport({ spots: [], tides: [], verdict: { kind: 'outOfCoverage', nearest: [] } }), 'fr')).toBeUndefined();
+    expect(detailsMarkupFor(goldenReport({ verdict: { kind: 'noData', reason: 'x' } }), 'fr')).toBeUndefined();
   });
 });
 

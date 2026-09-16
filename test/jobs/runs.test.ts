@@ -27,7 +27,7 @@ function setup(opts: { now: string; blocked?: number[]; failMarine?: boolean; pr
     store, telegram: new Telegram('t', tg.fn), spots: GOLDEN_SPOTS, regions: REGIONS, fetchFn: om.fn,
     adminChatId: 999, now: () => opts.now, sleep: async () => {},
   };
-  const sent = () => tg.calls.filter((c) => c.url.endsWith('/sendMessage')).map((c) => JSON.parse(String(c.init?.body)) as { chat_id: number; text: string });
+  const sent = () => tg.calls.filter((c) => c.url.endsWith('/sendMessage')).map((c) => JSON.parse(String(c.init?.body)) as { chat_id: number; text: string; reply_markup?: unknown });
   const seed = async (profiles: Profile[]) => store.putProfiles(Object.fromEntries(profiles.map((p) => [String(p.chatId), p])));
   return { deps, store, kv, sent, seed, omCalls: om.calls };
 }
@@ -45,6 +45,8 @@ describe('runEvening', () => {
     expect(sent()[0].text.startsWith('🟢 <b>NE VA PAS TRAVAILLER DEMAIN</b> (mer. 16 sept.)')).toBe(true);
     expect(sent()[1].text).toContain('ЗАВТРА НЕ ИДИ НА РАБОТУ');
     expect(sent()[2].text.startsWith('📍 Aucun spot connu')).toBe(true);
+    expect(sent()[0].reply_markup).toEqual({ inline_keyboard: [[{ text: '📋 Tous les spots', callback_data: 'rep:2026-09-16' }]] });
+    expect(sent()[2].reply_markup).toBeUndefined();
     const reports = await store.getReports('2026-09-16');
     expect(Object.keys(reports).sort()).toEqual(['1', '2', '5']);
     expect(reports['1'].sentAt).toBe('2026-09-15T19:00');
@@ -105,19 +107,49 @@ describe('runMorning', () => {
     expect(reports['5'].mode).toBe('morning');
   });
   it('keeps last night report and says so when the morning has no data', async () => {
-    const { deps, store, sent, seed } = setup({ now: '2026-09-16T06:00', failMarine: true });
+    const { deps, store, kv, sent, seed } = setup({ now: '2026-09-16T06:00', failMarine: true });
     await seed([ready(1), ready(2)]);
     await store.putReports('2026-09-16', { '1': goldenReport({ chatId: 1 }), '2': goldenReport({ chatId: 2, verdict: { kind: 'red' } }) });
+    const writesBeforeRun = kv.writes.filter((k) => k === 'reports:2026-09-16').length;
     await runMorning(deps);
     expect(sent().map((m) => m.chat_id)).toEqual([1]);
     expect(sent()[0].text).toBe("⚠️ Pas de données ce matin — le verdict d'hier soir reste : 🟢 Kommetjie – Long Beach 7h–12h");
     expect((await store.getReports('2026-09-16'))['1'].mode).toBe('evening');
+    // un envoi a eu lieu (chat 1) : le run fait bien ses deux écritures (première + sentAt).
+    expect(kv.writes.filter((k) => k === 'reports:2026-09-16').length - writesBeforeRun).toBe(2);
   });
   it('treats a missing evening report as 🔴', async () => {
     const { deps, sent, seed } = setup({ now: '2026-09-16T06:00' });
     await seed([ready(1)]);
     await runMorning(deps);
     expect(sent()[0].text.startsWith('⚠️ Changement : 🔴 va bosser → 🟢')).toBe(true);
+  });
+  it('writes reports only once when nothing is sent (silent run: Johannesburg is out of coverage evening and morning)', async () => {
+    const { deps, kv, sent, seed } = setup({ now: '2026-09-16T06:00' });
+    await seed([ready(5, { location: JOBURG })]);
+    // pas de rapport de la veille stocké : équivalent à un 🔴 pour compareReports, tout comme le hors-couverture du matin.
+    const result = await runMorning(deps);
+    expect(result.sent).toBe(0);
+    expect(sent()).toHaveLength(0);
+    expect(kv.writes.filter((k) => k === 'reports:2026-09-16')).toHaveLength(1);
+  });
+});
+
+describe('budget guard', () => {
+  it('defers the newest profiles by createdAt when the budget is exceeded, and notifies the admin', async () => {
+    const { deps, sent, seed } = setup({ now: '2026-09-15T19:00' });
+    // 3 (verrou + profils) + 2 (une région, Muizenberg) + 2 (écritures) + N (envois) ; dépasse 45 pour N > 38.
+    const profiles = Array.from({ length: 40 }, (_, i) => ready(i + 1, { createdAt: `2026-09-15T19:${String(i).padStart(2, '0')}` }));
+    await seed(profiles);
+    const result = await runEvening(deps);
+    expect(result.sent).toBe(38);
+    expect(result.failed).toBe(0);
+    expect(sent().filter((m) => m.chat_id !== 999)).toHaveLength(38);
+    // les 2 profils les plus récents (createdAt 19:38 et 19:39, chatId 39 et 40) sont reportés.
+    expect(sent().some((m) => m.chat_id === 39)).toBe(false);
+    expect(sent().some((m) => m.chat_id === 40)).toBe(false);
+    const admin = sent().find((m) => m.chat_id === 999);
+    expect(admin?.text).toContain('2 profil(s) reportés');
   });
 });
 

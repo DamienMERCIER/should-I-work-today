@@ -38,6 +38,7 @@ describe('urls', () => {
     expect(u).toContain('sea_level_height_msl');
     expect(u).toContain('timezone=Africa%2FJohannesburg');
     expect(u).toContain('forecast_days=3');
+    expect(u).not.toContain('wind_wave_height');
   });
   it('forecastUrl asks knots, sea cells and daily sun', () => {
     const u = forecastUrl([MUIZ], 2);
@@ -67,6 +68,16 @@ describe('parseMarine', () => {
   it('throws on a malformed payload', () => {
     expect(() => parseMarine({ error: true, reason: 'x' })).toThrow(OpenMeteoError);
   });
+  it('throws when a column the engine consumes is missing', () => {
+    const { swell_wave_height: _drop, ...hourlyWithoutSwell } = marineLoc.hourly;
+    const broken = { ...marineLoc, hourly: hourlyWithoutSwell };
+    expect(() => parseMarine(broken)).toThrow(OpenMeteoError);
+    expect(() => parseMarine(broken)).toThrow(/missing or short column swell_wave_height/);
+  });
+  it('throws when a column is shorter than time', () => {
+    const broken = { ...marineLoc, hourly: { ...marineLoc.hourly, sea_level_height_msl: [0.22] } };
+    expect(() => parseMarine(broken)).toThrow(/missing or short column sea_level_height_msl/);
+  });
 });
 
 describe('parseForecast', () => {
@@ -74,6 +85,17 @@ describe('parseForecast', () => {
     const [f] = parseForecast(forecastLoc);
     expect(f.wind[1]).toEqual({ time: '2026-09-16T07:00', windKt: 12.6, windDirDeg: 336, gustKt: 35.2, tempC: 14.6, precipMm: 0.1, weatherCode: 51 });
     expect(f.daily[0]).toEqual({ date: '2026-09-16', sunrise: '2026-09-16T06:44', sunset: '2026-09-16T18:38', tempMaxC: 16.1, tempMinC: 13.5, precipMm: 4.6 });
+  });
+  it('throws instead of fabricating a missing sunrise', () => {
+    const { sunrise: _drop, ...dailyWithoutSunrise } = forecastLoc.daily;
+    const broken = { ...forecastLoc, daily: dailyWithoutSunrise };
+    expect(() => parseForecast(broken)).toThrow(OpenMeteoError);
+    expect(() => parseForecast(broken)).toThrow(/sunrise/);
+  });
+  it('throws when an hourly column the engine consumes is missing', () => {
+    const { wind_speed_10m: _drop, ...hourlyWithoutWind } = forecastLoc.hourly;
+    const broken = { ...forecastLoc, hourly: hourlyWithoutWind };
+    expect(() => parseForecast(broken)).toThrow(/missing or short column wind_speed_10m/);
   });
 });
 
@@ -93,6 +115,13 @@ describe('fetchJsonWithRetry', () => {
   it('wraps network errors', async () => {
     const { fn } = fakeFetch(() => { throw new Error('ECONNRESET'); });
     await expect(fetchJsonWithRetry('https://x', fn, { retries: 0 })).rejects.toThrow(/ECONNRESET/);
+  });
+  it('does not retry a non-retryable 4xx (bad parameters)', async () => {
+    const { fn, calls } = fakeFetch(() => jsonResponse({}, 400));
+    const sleep = vi.fn(async () => {});
+    await expect(fetchJsonWithRetry('https://x', fn, { sleep })).rejects.toMatchObject({ name: 'OpenMeteoError', status: 400 });
+    expect(calls).toHaveLength(1);
+    expect(sleep).not.toHaveBeenCalled();
   });
 });
 

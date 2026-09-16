@@ -27,7 +27,8 @@ export function nearestSpots(spots: Spot[], at: LatLon, n = 3): Near[] {
 const toError = (err: unknown): OpenMeteoError => (err instanceof OpenMeteoError ? err : new OpenMeteoError(String(err)));
 
 async function loadRegion(region: Region, spots: Spot[], fetchFn: FetchLike): Promise<RegionData> {
-  const [[swell], forecasts] = await Promise.all([fetchMarine([region.swellRef], fetchFn), fetchForecast(spots, fetchFn)]);
+  // marée : J−3 h .. J+27 h → 3 jours ; vent/météo : seul le jour J est lu → 2 jours suffisent
+  const [[swell], forecasts] = await Promise.all([fetchMarine([region.swellRef], fetchFn), fetchForecast(spots, fetchFn, { forecastDays: 2 })]);
   return { swell, forecasts: new Map(spots.map((s, i) => [s.id, forecasts[i]])), tide: new Map() };
 }
 
@@ -75,7 +76,7 @@ export async function buildReports(reqs: EvalRequest[], deps: CollectDeps): Prom
   // 3. un rapport par profil (les profils hors couverture font leurs appels en parallèle)
   const reports = await Promise.all(
     perRequest.map(async ({ req, nearby }) =>
-      [req.profile.chatId, nearby.length === 0 ? await outOfCoverage(req, deps, radiusKm) : assemble(req, nearby, regionData, deps, radiusKm)] as const,
+      [req.profile.chatId, nearby.length === 0 ? await outOfCoverage(req, deps, radiusKm) : assembleSafely(req, nearby, regionData, deps, radiusKm)] as const,
     ),
   );
   return new Map(reports);
@@ -95,6 +96,16 @@ function baseReport(req: EvalRequest, deps: CollectDeps, radiusKm: number): Omit
     weather: { tempMaxC: 0, tempMinC: 0, precipMm: 0, code: 0 },
     sun: { sunrise: `${req.date}T06:00`, sunset: `${req.date}T18:00` },
   };
+}
+
+/** Une exception du moteur ne doit priver que ce profil de verdict (§10.1), jamais tout le run. */
+function assembleSafely(req: EvalRequest, nearby: Near[], regionData: Map<string, RegionData | OpenMeteoError>, deps: CollectDeps, radiusKm: number): Report {
+  try {
+    return assemble(req, nearby, regionData, deps, radiusKm);
+  } catch (err) {
+    console.error(`[collect] ${req.profile.chatId} ${req.date}: ${String(err)}`); // défaut du moteur, pas une absence de données
+    return { ...baseReport(req, deps, radiusKm), verdict: { kind: 'noData', reason: `engine: ${String(err)}` } };
+  }
 }
 
 function assemble(req: EvalRequest, nearby: Near[], regionData: Map<string, RegionData | OpenMeteoError>, deps: CollectDeps, radiusKm: number): Report {
@@ -147,7 +158,7 @@ async function outOfCoverage(req: EvalRequest, deps: CollectDeps, radiusKm: numb
   }
   try {
     const at = req.profile.location;
-    const [[swell], [forecast]] = await Promise.all([fetchMarine([at], deps.fetchFn), fetchForecast([at], deps.fetchFn)]);
+    const [[swell], [forecast]] = await Promise.all([fetchMarine([at], deps.fetchFn), fetchForecast([at], deps.fetchFn, { forecastDays: 2 })]);
     const refTime = req.fromTime ? floorHour(req.fromTime) : `${req.date}T09:00`;
     const s = swell.find((h) => h.time === refTime);
     const w = forecast.wind.find((h) => h.time === refTime);

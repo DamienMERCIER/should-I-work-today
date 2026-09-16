@@ -1,10 +1,10 @@
 import { sleep as defaultSleep, type FetchLike } from '../adapters/http';
 import type { RunKind, Store } from '../adapters/kv';
-import type { Telegram } from '../adapters/telegram';
+import type { ReplyMarkup, Telegram } from '../adapters/telegram';
 import { MAX_SUBREQUEST_BUDGET, RADIUS_KM } from '../config';
 import { compareReports } from '../engine/delta';
 import { addDays, dateOf } from '../engine/time';
-import { detailsButton, esc, renderEvening, renderMorning, type RenderCtx } from '../render/messages';
+import { detailsMarkupFor, esc, renderEvening, renderMorning, type RenderCtx } from '../render/messages';
 import type { Lang, Profile, Region, Report, Spot } from '../types';
 import { buildReports, nearbySpots, type EvalRequest } from './collect';
 
@@ -58,10 +58,18 @@ async function runJob(kind: RunKind, date: string, deps: JobDeps): Promise<JobRe
   const sleep = deps.sleep ?? defaultSleep;
   if (!(await deps.store.acquireLock(date, kind, now))) return { skipped: true, sent: 0, failed: 0, date };
 
-  const profiles = Object.values(await deps.store.getProfiles()).filter((p) => p.active && !p.onboarding);
-  const budget = estimateBudget(profiles, deps, kind);
-  if (budget > MAX_SUBREQUEST_BUDGET) {
-    const text = `${kind} ${date}: ${budget} sous-requêtes prévues > ${MAX_SUBREQUEST_BUDGET} — fan-out nécessaire`;
+  const profiles = Object.values(await deps.store.getProfiles())
+    .filter((p) => p.active && !p.onboarding)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  // Budget dépassé (§10.1) : reporter les profils les plus récents jusqu'à rentrer dans le budget.
+  let deferred = 0;
+  while (profiles.length > 0 && estimateBudget(profiles, deps, kind) > MAX_SUBREQUEST_BUDGET) {
+    profiles.pop();
+    deferred++;
+  }
+  if (deferred > 0) {
+    const text = `${kind} ${date}: budget dépassé — ${deferred} profil(s) reportés, fan-out nécessaire`;
     console.warn(text);
     await notifyAdmin(deps, text);
   }
@@ -72,7 +80,7 @@ async function runJob(kind: RunKind, date: string, deps: JobDeps): Promise<JobRe
 
   // 1. décider quoi envoyer et quoi stocker
   const toStore: Record<string, Report> = { ...previous };
-  const outbox: { profile: Profile; text: string }[] = [];
+  const outbox: { profile: Profile; text: string; markup?: ReplyMarkup }[] = [];
   for (const profile of profiles) {
     const report = reports.get(profile.chatId);
     if (!report) continue;
@@ -80,14 +88,14 @@ async function runJob(kind: RunKind, date: string, deps: JobDeps): Promise<JobRe
     const ctx = renderCtx(profile.lang, deps);
     if (kind === 'evening') {
       toStore[key] = report;
-      outbox.push({ profile, text: renderEvening(report, ctx) });
+      outbox.push({ profile, text: renderEvening(report, ctx), markup: detailsMarkupFor(report, profile.lang) });
       continue;
     }
     const evening = previous[key];
     const delta = compareReports(evening, report);
     // un matin sans données garde le rapport du soir (§7.6)
     if (!(report.verdict.kind === 'noData' && evening)) toStore[key] = report;
-    if (delta.send) outbox.push({ profile, text: renderMorning(report, delta, evening, ctx) });
+    if (delta.send) outbox.push({ profile, text: renderMorning(report, delta, evening, ctx), markup: detailsMarkupFor(report, profile.lang) });
   }
 
   // 2. première écriture : le bouton 📋 fonctionne dès la réception
@@ -98,8 +106,8 @@ async function runJob(kind: RunKind, date: string, deps: JobDeps): Promise<JobRe
   let sent = 0;
   let failed = 0;
   const blocked: number[] = [];
-  for (const { profile, text } of outbox) {
-    const res = await deps.telegram.sendMessage(profile.chatId, text, detailsButton(date, profile.lang));
+  for (const { profile, text, markup } of outbox) {
+    const res = await deps.telegram.sendMessage(profile.chatId, text, markup);
     if (res.ok) {
       sent++;
       const entry = toStore[String(profile.chatId)];
@@ -112,10 +120,12 @@ async function runJob(kind: RunKind, date: string, deps: JobDeps): Promise<JobRe
     }
   }
 
-  // 4. seconde écriture (sentAt), en respectant 1 écriture/s/clé
-  const elapsed = Date.now() - firstWriteAt;
-  if (elapsed < KV_SAME_KEY_INTERVAL_MS) await sleep(KV_SAME_KEY_INTERVAL_MS - elapsed);
-  await deps.store.putReports(date, toStore);
+  // 4. seconde écriture (sentAt), en respectant 1 écriture/s/clé — seulement si un envoi a eu lieu
+  if (sent > 0) {
+    const elapsed = Date.now() - firstWriteAt;
+    if (elapsed < KV_SAME_KEY_INTERVAL_MS) await sleep(KV_SAME_KEY_INTERVAL_MS - elapsed);
+    await deps.store.putReports(date, toStore);
+  }
 
   if (blocked.length > 0) {
     const all = await deps.store.getProfiles();
