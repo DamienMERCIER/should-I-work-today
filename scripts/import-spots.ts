@@ -32,6 +32,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { FetchLike } from '../src/adapters/http';
+import { RADIUS_KM } from '../src/config';
 import { REGIONS, SPOTS } from '../src/data/index';
 import { assignRegion, worldSpotId, type SpotTuple } from '../src/data/world';
 import type { Region, Spot } from '../src/types';
@@ -59,7 +60,13 @@ function isResolved(entry: ProcessedEntry | undefined): boolean {
 const ALL_LETTERS = Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i));
 const DEFAULT_OUT = 'src/data/spots-world.json';
 const DEFAULT_PROGRESS_PATH = '.superpowers/import-spots-progress.json';
-const DEDUPE_THRESHOLD_M = 500;
+/**
+ * Là où le bot a des spots choisis à la main, eux seuls comptent : un spot importé à moins du rayon du bot
+ * d'un spot curaté est laissé de côté. Autour du Cap, surf-forecast place ses propres Muizenberg, Clovelly ou
+ * Witsands à 500 m–1,9 km des nôtres, avec une autre orientation : ils s'affichaient en double, et 35 spots au
+ * lieu de 15 autour de Muizenberg portaient /week à 12,8 ms de calcul pour 10 ms permises (mesuré le 17/09/2026).
+ */
+const CURATED_COVERAGE_M = RADIUS_KM * 1000;
 const WORLD_DEDUPE_THRESHOLD_M = 200; // world-vs-world (§scripts/lib/dedupe.ts dedupeAdjacentWorld)
 const CHUNK_SIZE = 200; // slugs per stage-2+3 batch, between which progress is saved (§resume grain)
 const WORLD_SHORT_MAX_LEN = 13; // schema.ts: short ≤ 13 chars ; le préfixe ≈ ne s'affiche plus depuis e2ef7b1
@@ -149,7 +156,7 @@ function progressPathFor(out: string): string {
   return out === DEFAULT_OUT ? DEFAULT_PROGRESS_PATH : `${out}.progress.json`;
 }
 
-/** True once a spot ends up more than DEDUPE_THRESHOLD_M-scale away from every curated region — i.e.
+/** True once a spot ends up more than 500 km away from every curated region — i.e.
  * `expandTuple` will synthesise a region for it on the fly at expand time (§src/data/world.ts). Used
  * only for the run summary ("N spots will get a synthetic region"); nothing is written for it. */
 function needsSyntheticRegion(spot: { name: string; lat: number; lon: number; facing: number }, curated: readonly Region[]): boolean {
@@ -164,7 +171,7 @@ function writeOutput(out: string, progress: ImportProgress, curated: Spot[], log
     .map(([slug, entry]) => ({ slug, ...entry }))
     .sort((a, b) => a.slug.localeCompare(b.slug)); // stable order => stable short-suffix assignment
 
-  const { kept: keptAgainstCurated, droppedCount } = dedupeAgainstCurated(spots, curated, DEDUPE_THRESHOLD_M);
+  const { kept: keptAgainstCurated, droppedCount } = dedupeAgainstCurated(spots, curated, CURATED_COVERAGE_M);
   const { kept, droppedCount: worldDroppedCount } = dedupeAdjacentWorld(keptAgainstCurated, WORLD_DEDUPE_THRESHOLD_M);
 
   const usedShortSlugs = new Set(curated.map((s) => shortSlug(s.short)));
@@ -185,7 +192,7 @@ function writeOutput(out: string, progress: ImportProgress, curated: Spot[], log
   log(`[import-spots] wrote ${tuples.length} spot(s) to ${out}`);
   const fromWind = spots.filter((s) => s.facingFrom === 'wind').length;
   log(`[import-spots] facing read from surf-forecast's wind table for ${fromWind} spot(s), from elevation for ${spots.length - fromWind}`);
-  log(`[import-spots] dropped ${droppedCount} spot(s) within ${DEDUPE_THRESHOLD_M} m of a curated spot (curated wins)`);
+  log(`[import-spots] dropped ${droppedCount} spot(s) within ${CURATED_COVERAGE_M / 1000} km of a curated spot (hand-picked spots cover that area)`);
   log(`[import-spots] dropped ${worldDroppedCount} adjacent world spot(s) within ${WORLD_DEDUPE_THRESHOLD_M} m of another world spot (earliest by slug wins)`);
   log(
     `[import-spots] skipped ${[...skippedByReason.values()].reduce((a, b) => a + b, 0)}: ${

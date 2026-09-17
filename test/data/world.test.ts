@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { REGIONS } from '../../src/data/index';
+import { RADIUS_KM } from '../../src/config';
+import { REGIONS, SPOTS } from '../../src/data/index';
 import { validateRegions, validateSpots } from '../../src/data/schema';
 import { haversineKm, destinationPoint } from '../../src/engine/geo';
 import { spotSlug } from '../../src/bot/spotMatch';
@@ -11,6 +12,7 @@ import {
   nearestWorldSpots,
   typeCodeFor,
   worldSpotId,
+  worldSpotById,
   worldSpots,
   worldTupleIdSlug,
   worldTupleSlug,
@@ -146,6 +148,14 @@ describe('worldSpots (radius query)', () => {
   const knownFar = [near(45, 20.1, 'Far20_1'), near(300, 50, 'Far50')];
   const tuples: SpotTuple[] = [...knownNear, ...knownFar, ...Array.from({ length: 7995 }, (_, i) => noise(i))];
 
+  it('still finds a spot due north or due south right at the edge of the radius — skipping by latitude never drops one inside', () => {
+    const north = destinationPoint(center.lat, center.lon, 0, 19.999);
+    const south = destinationPoint(center.lat, center.lon, 180, 19.999);
+    const justOut = destinationPoint(center.lat, center.lon, 0, 20.001);
+    const edge: SpotTuple[] = [['North', 'North', north.lat, north.lon, 0, 0], ['South', 'South', south.lat, south.lon, 0, 0], ['Out', 'Out', justOut.lat, justOut.lon, 0, 0]];
+    expect(worldSpots(center, 20, edge).map((s) => s.name)).toEqual(['North', 'South']);
+  });
+
   it('returns exactly the spots within the radius, expanded to full Spot records', () => {
     const result = worldSpots(center, 20, tuples);
     const names = result.map((s) => s.name);
@@ -174,6 +184,26 @@ describe('worldSpots (radius query)', () => {
   });
 });
 
+describe('worldSpotById', () => {
+  const tuples: SpotTuple[] = [
+    ['Tofo', 'Tofo', -23.8522, 35.5478, 90, 0],
+    ['Praia do Guincho', 'Guincho', 38.7325, -9.4723, 280, 0],
+  ];
+
+  it('finds the imported spot behind an id — the id carries its coordinates — expanded like any world spot', () => {
+    for (const t of tuples) {
+      const spot = worldSpotById(worldSpotId(t[0], t[2], t[3]), tuples);
+      expect(spot).toEqual(expandTuple(t));
+    }
+  });
+
+  it('finds nothing for a curated id, an unknown place, or a different name at the same coordinates', () => {
+    expect(worldSpotById('kommetjie-long-beach', tuples)).toBeUndefined();
+    expect(worldSpotById(worldSpotId('Tofo', -23.8523, 35.5478), tuples)).toBeUndefined();
+    expect(worldSpotById(worldSpotId('Tofinho', -23.8522, 35.5478), tuples)).toBeUndefined();
+  });
+});
+
 describe('nearestWorldSpots', () => {
   const center = { lat: 10.1234, lon: 20.5678 };
   const at = (bearing: number, km: number, label: string): SpotTuple => {
@@ -185,6 +215,12 @@ describe('nearestWorldSpots', () => {
     const tuples = [at(10, 50, 'Far'), at(90, 5, 'Near'), at(200, 20, 'Mid')];
     const result = nearestWorldSpots(center, 2, tuples);
     expect(result.map((s) => s.name)).toEqual(['Near', 'Mid']);
+  });
+
+  it('a closer spot straight north still replaces the current candidate — skipping by latitude only drops spots that cannot be closer', () => {
+    const tuples = [at(90, 100, 'East100'), at(0, 90, 'North90'), at(0, 150, 'North150')];
+    expect(nearestWorldSpots(center, 1, tuples).map((s) => s.name)).toEqual(['North90']);
+    expect(nearestWorldSpots(center, 2, tuples).map((s) => s.name)).toEqual(['North90', 'East100']);
   });
 
   it('returns every tuple, sorted, when n exceeds the tuple count', () => {
@@ -224,10 +260,18 @@ describe('worldTupleSlug / worldTupleIdSlug', () => {
   });
 });
 
-describe('current (pre-import) world data', () => {
-  it('the placeholder spots-world.json is empty, so allWorldTuples()/worldSpots() are no-ops until the owner runs the import', () => {
-    expect(allWorldTuples()).toEqual([]);
-    expect(worldSpots({ lat: -34.1085, lon: 18.4715 }, 20000)).toEqual([]); // huge radius: would catch anything, if there were anything
-    expect(nearestWorldSpots({ lat: -34.1085, lon: 18.4715 }, 3)).toEqual([]);
+describe('the real world import (src/data/spots-world.json)', () => {
+  it("leaves the hand-picked coverage alone: no imported spot within the bot's radius of a curated spot", () => {
+    // Around Cape Town, surf-forecast's own Muizenberg, Clovelly or Witsands sat 500 m–1.9 km from ours with
+    // another facing: they showed up twice, and 35 spots instead of 15 pushed /week past its 10 ms of CPU.
+    expect(allWorldTuples().length).toBeGreaterThan(0);
+    for (const spot of SPOTS) expect(worldSpots(spot, RADIUS_KM).map((s) => s.name), spot.name).toEqual([]);
+  });
+
+  it('names no imported spot with control or bidi-override characters — scraped names reach Telegram messages, where those would reorder text or fake a line', () => {
+    const invisible = (code: number): boolean =>
+      code <= 0x1f || (code >= 0x7f && code <= 0x9f) || code === 0x61c || (code >= 0x200b && code <= 0x200f) || (code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069) || code === 0xfeff;
+    const offenders = allWorldTuples().filter(([name, short]) => [...name, ...short].some((ch) => invisible(ch.codePointAt(0) ?? 0)));
+    expect(offenders.map((t) => t[0])).toEqual([]);
   });
 });

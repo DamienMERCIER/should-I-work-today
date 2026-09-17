@@ -26,7 +26,7 @@ export type SpotMatch =
   | { kind: 'none' };
 
 /** Curated + world spot count, for `/about` (`src/bot/router.ts`). `worldTuples` defaults to the real
- * `allWorldTuples()` (currently empty — §report, unchanged until the owner runs the import); the
+ * `allWorldTuples()` (the world import, ~6 000 spots since 17/09/2026 and growing with each resume); the
  * parameter exists for tests. */
 export function totalSpotCount(spots: Spot[], worldTuples: SpotTuple[] = allWorldTuples()): number {
   return spots.length + worldTuples.length;
@@ -41,8 +41,8 @@ export function totalSpotCount(spots: Spot[], worldTuples: SpotTuple[] = allWorl
  * off the tuple, no region assignment) are checked alongside curated `Spot`s *before* falling to the
  * next tier, and only the tuples that actually match get expanded via `expandTuple` — expanding all
  * ~8000 just to search would burn the Worker's 10 ms budget for nothing. `worldTuples` defaults to the
- * real `allWorldTuples()` (currently an empty placeholder, §report — behaviour is unchanged until the
- * owner runs the import); the parameter exists for tests.
+ * real `allWorldTuples()` (the world import, which leaves the curated coverage alone: no imported spot
+ * within 20 km of a curated one); the parameter exists for tests.
  *
  * The fuzzy stage is deliberately one pool rather than a prefix tier followed by a substring tier:
  * with tiers, `/kom` matched `kommetjie_long_beach` by prefix, the tier returned a single candidate

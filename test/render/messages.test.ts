@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   esc, fmtTime, fmtDate, fmtDay, renderEvening, renderShortVerdict, renderMorning, renderDetails, renderSpotDay, renderDayView, renderWeek,
-  detailsMarkupFor, goButtons, goButtonsMarkup, openSpotOrder, allSpotOrder, ALL_SPOTS_CAP, type RenderCtx,
+  detailsMarkupFor, goButtons, goButtonsMarkup, openSpotOrder, allSpotOrder, ALL_SPOTS_CAP, spotName, type RenderCtx,
 } from '../../src/render/messages';
+import { STRINGS } from '../../src/render/i18n';
+import { allWorldTuples, worldSpotId } from '../../src/data/world';
 import { SPOTS } from '../../src/data/index';
 import type { Report, SpotHour, SpotResult, TideTrend, Verdict, Window } from '../../src/types';
 import { rawStars, starBase } from '../../src/engine/rating';
@@ -47,6 +49,17 @@ describe('formatting', () => {
   });
 });
 
+describe('spot names', () => {
+  it("names an imported spot by its name, not its id — reports keep ids, and the render context only holds curated spots", () => {
+    const [name, , lat, lon] = allWorldTuples()[0];
+    expect(spotName(worldSpotId(name, lat, lon), EN, STRINGS.en)).toBe(esc(name));
+  });
+
+  it('an id matching nothing is still shown as it is', () => {
+    expect(spotName('no-such-spot', EN, STRINGS.en)).toBe('no-such-spot');
+  });
+});
+
 describe('go buttons (📍 "go to this spot" map link)', () => {
   const W6 = (peak: number): Window => ({ start: `${GOLDEN_DATE}T07:00`, end: `${GOLDEN_DATE}T08:00`, peak, mean: peak });
   const windowed = (spotId: string, peak: number): SpotResult => ({
@@ -63,6 +76,13 @@ describe('go buttons (📍 "go to this spot" map link)', () => {
     expect(goButtons(goldenReport(), EN, { spotId: 'outer-kom' })).toEqual([
       [{ text: '📍 Go to Outer Kom', url: 'https://www.google.com/maps/search/?api=1&query=-34.142%2C18.319' }],
     ]);
+  });
+
+  it('an imported spot gets its button too — not only the curated ones held by the render context', () => {
+    const [name, , lat, lon] = allWorldTuples()[0];
+    const buttons = goButtons(goldenReport(), EN, { spotId: worldSpotId(name, lat, lon) });
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0][0].url).toBe(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lon}`)}`);
   });
 
   it('opts.spotId: still the one button for a spot at 0★ or without a window', () => {

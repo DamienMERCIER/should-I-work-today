@@ -11,13 +11,15 @@ import { MemoryKV } from '../helpers/memoryKv';
 import { openMeteoServer, type ServerData } from '../helpers/openMeteoServer';
 import { OUTER_KOM } from '../helpers/spots';
 import { ALL_SPOTS_CAP, fmtDate } from '../../src/render/messages';
+import { allWorldTuples, worldSpotId, worldTupleSlug, type SpotTuple } from '../../src/data/world';
+import { haversineKm } from '../../src/engine/geo';
 
 const NOW = '2026-09-16T08:30';
 const TOMORROW = '2026-09-17';
 
 const ADMIN = 999;
 
-function setup(opts: { inviteCode?: string; adminChatId?: number; spots?: Spot[]; now?: string; data?: ServerData } = {}) {
+function setup(opts: { inviteCode?: string; adminChatId?: number; spots?: Spot[]; now?: string; data?: ServerData; worldTuples?: SpotTuple[] } = {}) {
   const store = new Store(new MemoryKV());
   const tg = fakeFetch(() => jsonResponse({ ok: true }));
   // Vent sur aujourd'hui ET demain : un rapport bascule sur le lendemain (§nowReport) n'a de
@@ -27,6 +29,7 @@ function setup(opts: { inviteCode?: string; adminChatId?: number; spots?: Spot[]
   const deps: BotDeps = {
     telegram: new Telegram('t', tg.fn), store, spots: opts.spots ?? GOLDEN_SPOTS, regions: REGIONS, fetchFn: om.fn,
     inviteCode: opts.inviteCode, adminChatId: opts.adminChatId, now: () => opts.now ?? NOW,
+    worldTuples: opts.worldTuples ?? [], // the routing, not the real world import (which grows with every resume): its own tests are in spotMatch/world
   };
   const sent = () => tg.calls.filter((c) => c.url.endsWith('/sendMessage')).map((c) => JSON.parse(String(c.init?.body)) as { chat_id: number; text: string; reply_markup?: any });
   const answered = () => tg.calls.filter((c) => c.url.endsWith('/answerCallbackQuery')).length;
@@ -401,6 +404,16 @@ describe('/all, /<spot> and /about', () => {
     });
   });
 
+  it('/all lists an imported spot in its tappable command line too', async () => {
+    const tuple = allWorldTuples()[0];
+    const imported: SpotResult = { spotId: worldSpotId(tuple[0], tuple[2], tuple[3]), distanceKm: 5, hours: [], windows: [], best: undefined, maxScore: 3 };
+    const { deps, store, sent } = setup();
+    await store.putProfiles({ '1': ready() });
+    await store.putReports('2026-09-16', { '1': goldenReport({ spots: [...goldenReport().spots, imported] }) });
+    await handleUpdate(msg('/all'), deps);
+    expect(sent()[0].text.trim().split('\n').pop()!.split(' · ')).toContain(`/${worldTupleSlug(tuple)}`);
+  });
+
   it('/all in a dense cluster caps at ALL_SPOTS_CAP rows and keeps the trailing command line in exact sync with them (§report "Resilience, wiring and dedupe")', async () => {
     const n = 80;
     const manySpots: Spot[] = Array.from({ length: n }, (_, i) => ({
@@ -504,6 +517,18 @@ describe('/all, /<spot> and /about', () => {
     await handleUpdate(msg('/vic_bay'), deps);
     expect(sent()).toHaveLength(1);
     expect(sent()[0].text).toBe('Victoria Bay is a known spot, but it is 376 km away — outside your 20 km radius.');
+    expect(omCalls).toHaveLength(0);
+  });
+
+  it('reaches imported spots too: /about counts them, and /<slug> finds one', async () => {
+    const tofo: SpotTuple = ['Tofo', 'Tofo', -23.8522, 35.5478, 90, 0];
+    const { deps, store, sent, omCalls } = setup({ worldTuples: [tofo] });
+    await store.putProfiles({ '1': ready() });
+    await handleUpdate(msg('/about'), deps);
+    await handleUpdate(msg('/tofo'), deps);
+    const km = Math.round(haversineKm(ready().location, { lat: tofo[2], lon: tofo[3] }));
+    expect(sent()[0].text.startsWith(`Should I Work checks ${GOLDEN_SPOTS.length + 1} known surf spots`)).toBe(true);
+    expect(sent()[1].text).toBe(`Tofo is a known spot, but it is ${km} km away — outside your 20 km radius.`);
     expect(omCalls).toHaveLength(0);
   });
 

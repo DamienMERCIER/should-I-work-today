@@ -14,7 +14,8 @@ export interface DedupeResult<T> {
  * dropped, so e.g. surf-forecast's own "Muizenberg" (a ~685 m-away, independently-sourced coordinate
  * for the same real-world break, per the saved fixture) doesn't show up twice next to the hand-tuned
  * curated one. Distance to the *nearest* curated spot decides it — a world spot only needs to clear
- * every curated spot to survive.
+ * every curated spot to survive. The real import passes the bot's own radius instead (20 km,
+ * `CURATED_COVERAGE_M` in scripts/import-spots.ts): where hand-picked spots exist, they alone are shown.
  */
 export function dedupeAgainstCurated<T extends LatLon>(worldSpots: T[], curated: LatLon[], thresholdM = DEFAULT_THRESHOLD_M): DedupeResult<T> {
   const thresholdKm = thresholdM / 1000;

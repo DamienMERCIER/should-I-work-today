@@ -61,12 +61,15 @@ describe('nearbySpots / nearestSpots — world set wiring (§report "Resilience,
     expect(nearest).toHaveLength(3);
   });
 
-  it('an empty world set (matching the current placeholder spots-world.json) leaves nearbySpots/nearestSpots unchanged from curated-only behaviour', () => {
+  it('with no world set, nearbySpots/nearestSpots are the curated spots alone', () => {
     const at = { lat: -34.1085, lon: 18.4715 };
-    expect(nearbySpots(SPOTS, at, 20)).toEqual(nearbySpots(SPOTS, at, 20, []));
-    expect(nearbySpots(SPOTS, at, 20)).toHaveLength(15);
+    const near = nearbySpots(SPOTS, at, 20, []);
+    expect(near).toHaveLength(15);
+    expect(near.every((n) => SPOTS.includes(n.spot))).toBe(true);
     const farAt = { lat: -33.9, lon: 18.87 };
-    expect(nearestSpots(SPOTS, farAt)).toEqual(nearestSpots(SPOTS, farAt, 3, []));
+    const nearest = nearestSpots(SPOTS, farAt, 3, []);
+    expect(nearest).toHaveLength(3);
+    expect(nearest.every((n) => SPOTS.includes(n.spot))).toBe(true);
   });
 
   it('end-to-end: nearbySpots against curated + an 8000-entry synthetic world set (long UTF-8 names) stays comfortably under the 10 ms Worker CPU budget', () => {

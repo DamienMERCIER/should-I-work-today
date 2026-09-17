@@ -1,6 +1,6 @@
 import type { LatLon } from '../types';
 
-const EARTH_RADIUS_KM = 6371;
+export const EARTH_RADIUS_KM = 6371;
 const toRad = (deg: number): number => (deg * Math.PI) / 180;
 const toDeg = (rad: number): number => (rad * 180) / Math.PI;
 

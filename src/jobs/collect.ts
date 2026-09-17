@@ -32,8 +32,9 @@ const toNear = (spots: Spot[], at: LatLon): Near[] => spots.map((spot) => ({ spo
  * concatenated *before* `world`, and `Array.prototype.sort` is stable, so two entries at the exact
  * same distance keep curated ahead of world without any extra tie-break logic. `worldTuples`/
  * `curatedRegions` are optional DI hooks (mirroring `worldSpots`' own signature) purely for tests —
- * production call sites never pass them, so `worldSpots`'s own defaults (the real, currently-empty
- * `spots-world.json`) apply and behaviour is byte-for-byte unchanged until the owner runs the import.
+ * production call sites never pass them, so `worldSpots`'s own defaults (the real `spots-world.json`)
+ * apply. That import leaves out every spot within 20 km of a curated one, so where curated spots exist
+ * this still returns them alone.
  */
 export function nearbySpots(spots: Spot[], at: LatLon, radiusKm: number, worldTuples?: SpotTuple[], curatedRegions?: readonly Region[]): Near[] {
   const curated = byDistance(spots, at).filter((x) => x.distanceKm <= radiusKm);

@@ -1,5 +1,6 @@
 import type { InlineButton, ReplyMarkup } from '../adapters/telegram';
 import { FAR_FROM_COAST_KM, SCORING } from '../config';
+import { worldSpotById } from '../data/world';
 import type { Delta } from '../engine/delta';
 import { cardinal8 } from '../engine/geo';
 import { addDays, isWeekend, toMs } from '../engine/time';
@@ -45,15 +46,24 @@ const starsShort = (stars: number, clean: boolean): string => `${stars}${stars >
 const DAY_VIEW_MIN_STARS = 1;
 const cardinal = (deg: number, s: Strings): string => s.cardinal[cardinal8(deg)];
 
+/**
+ * Le spot derrière un id de rapport : parmi les spots curatés du contexte, sinon parmi les spots importés.
+ * Les rapports ne gardent que des ids ; sans ce repli, un spot importé perdait son nom, son bouton 📍 et sa
+ * commande dans `/all`. Toute lecture d'un spot par son id dans un message passe par ici.
+ */
+export function spotById(id: string, ctx: RenderCtx): Spot | undefined {
+  return ctx.spots.get(id) ?? worldSpotById(id);
+}
+
 export function spotName(id: string, ctx: RenderCtx, s: Strings): string {
-  const spot = ctx.spots.get(id);
+  const spot = spotById(id, ctx);
   if (!spot) return esc(id);
   return esc(spot.name);
 }
 
 /** Same `≈` rule as `spotName`, but the short (≤ 13 char) label used on the day view's secondary rows. */
 function spotShort(id: string, ctx: RenderCtx, s: Strings): string {
-  const spot = ctx.spots.get(id);
+  const spot = spotById(id, ctx);
   if (!spot) return esc(id);
   return esc(spot.short);
 }
@@ -582,7 +592,7 @@ const toMarkup = (rows: InlineButton[][]): ReplyMarkup | undefined => (rows.leng
  * falls back to the browser; Telegram's `url` button only accepts http(s), so a `geo:` URI is not an option.
  *
  * `opts.spotId` (a per-spot command, e.g. `/long_beach`): exactly that spot's button, unconditionally —
- * even at 0★, and even absent from `report.spots` entirely (only `ctx.spots` is consulted).
+ * even at 0★, and even absent from `report.spots` entirely (looked up with `spotById`: curated, then imported).
  * Otherwise: one button per *interesting* spot — a spot whose day has a window (`SpotResult.best` set,
  * the existing `SCORING.windowMin` threshold via `evaluateSpot`/`findWindows`) — ordered by `best.peak`
  * descending, capped at 5 so the keyboard stays usable. Possibly `[]`.
@@ -590,7 +600,7 @@ const toMarkup = (rows: InlineButton[][]): ReplyMarkup | undefined => (rows.leng
 export function goButtons(report: Report, ctx: RenderCtx, opts: { spotId?: string } = {}): InlineButton[][] {
   const s = STRINGS[ctx.lang];
   const row = (spotId: string): InlineButton[] | undefined => {
-    const spot = ctx.spots.get(spotId);
+    const spot = spotById(spotId, ctx);
     if (!spot) return undefined;
     const text = fill(s.buttons.goTo, { spot: spotShort(spotId, ctx, s) });
     const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${spot.lat},${spot.lon}`)}`;

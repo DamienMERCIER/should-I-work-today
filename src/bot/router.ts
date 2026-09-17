@@ -5,10 +5,11 @@ import { LANGS, DEFAULT_LOCATION, RADIUS_KM } from '../config';
 import { hasDaylightLeft } from '../engine/factors';
 import { haversineKm } from '../engine/geo';
 import { addDays, dateOf, floorHour } from '../engine/time';
+import type { SpotTuple } from '../data/world';
 import { buildReport, buildWeek, nearbySpots, type CollectDeps } from '../jobs/collect';
 import { notifyAdmin } from '../jobs/runs';
 import { detectLang, fill, STRINGS, type Strings } from '../render/i18n';
-import { detailsMarkupFor, goButtonsMarkup, renderDetails, renderEvening, renderSpotDay, renderWeek, spotName, type RenderCtx, allSpotOrder } from '../render/messages';
+import { detailsMarkupFor, goButtonsMarkup, renderDetails, renderEvening, renderSpotDay, renderWeek, spotById, spotName, type RenderCtx, allSpotOrder } from '../render/messages';
 import type { Lang, Profile, Region, Report, Spot } from '../types';
 import { langKeyboard, persistentKeyboard, profileKeyboard } from './keyboards';
 import { newProfile, parseHours, profileSummary, welcomeText } from './profile';
@@ -24,6 +25,8 @@ export interface BotDeps {
   /** prévenu de chaque arrivée, refus et message d'inconnu */
   adminChatId?: number;
   radiusKm?: number;
+  /** spots importés pour `/<spot>` et `/about` ; par défaut tout `spots-world.json` (les tests passent la liste qu'il leur faut) */
+  worldTuples?: SpotTuple[];
   /** heure locale 'YYYY-MM-DDTHH:mm' */
   now: () => string;
 }
@@ -112,7 +115,7 @@ async function todayReport(chatId: number, profile: Profile, deps: BotDeps): Pro
  */
 function allSpotsCommandLine(report: Report, ctx: RenderCtx): string {
   return allSpotOrder(report)
-    .map((id) => ctx.spots.get(id))
+    .map((id) => spotById(id, ctx))
     .filter((spot): spot is Spot => spot !== undefined)
     .map((spot) => `/${spotSlug(spot)}`)
     .join(' · ');
@@ -125,7 +128,7 @@ function allSpotsCommandLine(report: Report, ctx: RenderCtx): string {
  */
 async function handleSpotCommand(chatId: number, query: string, profile: Profile, deps: BotDeps): Promise<boolean> {
   const s = STRINGS[profile.lang];
-  const match = matchSpot(query, deps.spots);
+  const match = matchSpot(query, deps.spots, deps.worldTuples);
   if (match.kind === 'none') return false;
 
   const ctx = renderCtx(profile.lang, deps);
@@ -136,6 +139,7 @@ async function handleSpotCommand(chatId: number, query: string, profile: Profile
   }
 
   const { spot } = match;
+  ctx.spots.set(spot.id, spot); // un spot importé n'est pas dans le contexte, qui ne tient que les spots curatés
   const radiusKm = deps.radiusKm ?? RADIUS_KM;
   const distanceKm = haversineKm(profile.location, spot);
   if (distanceKm > radiusKm) {
@@ -225,7 +229,7 @@ export async function handleUpdate(update: TgUpdate, deps: BotDeps): Promise<voi
     return;
   }
   if (text.startsWith('/about')) {
-    await telegram.sendMessage(chatId, fill(s.about.text, { count: totalSpotCount(deps.spots) }));
+    await telegram.sendMessage(chatId, fill(s.about.text, { count: totalSpotCount(deps.spots, deps.worldTuples) }));
     return;
   }
   if (text.startsWith('/')) {

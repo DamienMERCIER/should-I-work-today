@@ -40,61 +40,65 @@ describe('spotSlug', () => {
   });
 });
 
-describe('matchSpot against the real 35-spot database', () => {
+// Le comportement des 35 spots curatés seuls : les spots importés ont leurs propres tests plus bas, et le fichier
+// importé grossit à chaque reprise de l'import.
+const CURATED_ONLY: SpotTuple[] = [];
+
+describe('matchSpot against the 35 curated spots alone', () => {
   it('matches an exact slug', () => {
-    expect(matchSpot('long_beach', SPOTS)).toEqual({ kind: 'one', spot: byId('kommetjie-long-beach') });
+    expect(matchSpot('long_beach', SPOTS, CURATED_ONLY)).toEqual({ kind: 'one', spot: byId('kommetjie-long-beach') });
   });
 
   it('matches an exact id-with-underscores when it differs from the slug', () => {
     // kommetjie-long-beach: slug is "long_beach" (from `short`), id-with-underscores is "kommetjie_long_beach".
-    expect(matchSpot('kommetjie_long_beach', SPOTS)).toEqual({ kind: 'one', spot: byId('kommetjie-long-beach') });
+    expect(matchSpot('kommetjie_long_beach', SPOTS, CURATED_ONLY)).toEqual({ kind: 'one', spot: byId('kommetjie-long-beach') });
   });
 
   it('is case-insensitive and normalises hyphens to underscores', () => {
-    expect(matchSpot('Long-Beach', SPOTS)).toEqual({ kind: 'one', spot: byId('kommetjie-long-beach') });
+    expect(matchSpot('Long-Beach', SPOTS, CURATED_ONLY)).toEqual({ kind: 'one', spot: byId('kommetjie-long-beach') });
   });
 
   it('"kom" is ambiguous — a prefix hit must not hide the three Kommetjie spots', () => {
     // kommetjie_long_beach commence par "kom" ; inner_kom et outer_kom le contiennent.
     // Tant que le niveau préfixe court-circuitait le niveau sous-chaîne, /kom renvoyait
     // Long Beach avec assurance, sans jamais nommer les deux autres.
-    const m = matchSpot('kom', SPOTS);
+    const m = matchSpot('kom', SPOTS, CURATED_ONLY);
     expect(m.kind).toBe('ambiguous');
     expect((m as { spots: { id: string }[] }).spots.map((s) => s.id).sort()).toEqual(['inner-kom', 'kommetjie-long-beach', 'outer-kom']);
   });
   it('"kommetjie" names the three Kommetjie spots rather than picking one', () => {
-    const m = matchSpot('kommetjie', SPOTS);
+    const m = matchSpot('kommetjie', SPOTS, CURATED_ONLY);
     expect(m.kind).toBe('ambiguous');
     expect((m as { spots: { id: string }[] }).spots).toHaveLength(3);
   });
   it('an exact slug still wins over any fuzzy candidate', () => {
-    expect(matchSpot('inner_kom', SPOTS)).toEqual({ kind: 'one', spot: byId('inner-kom') });
-    expect(matchSpot('long_beach', SPOTS)).toEqual({ kind: 'one', spot: byId('kommetjie-long-beach') });
+    expect(matchSpot('inner_kom', SPOTS, CURATED_ONLY)).toEqual({ kind: 'one', spot: byId('inner-kom') });
+    expect(matchSpot('long_beach', SPOTS, CURATED_ONLY)).toEqual({ kind: 'one', spot: byId('kommetjie-long-beach') });
   });
 
   it('"jbay" is an ambiguous prefix (Jeffreys Bay has two spots)', () => {
-    const m = matchSpot('jbay', SPOTS);
+    const m = matchSpot('jbay', SPOTS, CURATED_ONLY);
     expect(m.kind).toBe('ambiguous');
     if (m.kind === 'ambiguous') expect(m.spots.map((s) => s.id).sort()).toEqual(['jbay-point', 'jbay-supertubes']);
   });
 
   it('"reef" is an ambiguous substring (Kalk Bay Reef, Nahoon Reef) since neither has it as a prefix', () => {
-    const m = matchSpot('reef', SPOTS);
+    const m = matchSpot('reef', SPOTS, CURATED_ONLY);
     expect(m.kind).toBe('ambiguous');
     if (m.kind === 'ambiguous') expect(m.spots.map((s) => s.id).sort()).toEqual(['kalk-bay-reef', 'nahoon-reef']);
   });
 
   it('falls back to a substring of the lowercased name when neither slug nor id contains it', () => {
     // "Durban – New Pier / North Beach": "north" is in the name only, not in slug "new_pier" or id "durban_new_pier".
-    expect(matchSpot('north', SPOTS)).toEqual({ kind: 'one', spot: byId('durban-new-pier') });
+    expect(matchSpot('north', SPOTS, CURATED_ONLY)).toEqual({ kind: 'one', spot: byId('durban-new-pier') });
   });
 
   it('returns none for input matching nothing', () => {
-    expect(matchSpot('zzznotaspot', SPOTS)).toEqual({ kind: 'none' });
+    expect(matchSpot('zzznotaspot', SPOTS, CURATED_ONLY)).toEqual({ kind: 'none' });
   });
 
   it('returns none for empty input', () => {
-    expect(matchSpot('', SPOTS)).toEqual({ kind: 'none' });
+    expect(matchSpot('', SPOTS, CURATED_ONLY)).toEqual({ kind: 'none' });
   });
 });
 
@@ -142,10 +146,9 @@ describe('matchSpot against a synthetic world set (§report "Resilience, wiring 
     expect(m).toEqual({ kind: 'one', spot: expect.objectContaining({ name: 'Kalk Bay Left' }) });
   });
 
-  it('with the real (currently empty) spots-world.json, matchSpot is unchanged from curated-only behaviour', () => {
-    expect(allWorldTuples()).toEqual([]);
-    expect(matchSpot('long_beach', SPOTS)).toEqual(matchSpot('long_beach', SPOTS, []));
-    expect(matchSpot('kom', SPOTS)).toEqual(matchSpot('kom', SPOTS, []));
+  it('with the real world import, every curated spot is still found by its own command — no imported spot shadows it', () => {
+    expect(allWorldTuples().length).toBeGreaterThan(0);
+    for (const spot of SPOTS) expect(matchSpot(spotSlug(spot), SPOTS), spotSlug(spot)).toEqual({ kind: 'one', spot });
   });
 });
 
@@ -184,7 +187,7 @@ describe('totalSpotCount (/about, §report "Resilience, wiring and dedupe")', ()
     expect(totalSpotCount(SPOTS, world)).toBe(SPOTS.length + 2);
   });
 
-  it('with the real (currently empty) spots-world.json, the count is unchanged (curated only)', () => {
-    expect(totalSpotCount(SPOTS)).toBe(SPOTS.length);
+  it('with the real world import, /about counts the curated spots plus every imported one', () => {
+    expect(totalSpotCount(SPOTS)).toBe(SPOTS.length + allWorldTuples().length);
   });
 });

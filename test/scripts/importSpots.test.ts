@@ -80,13 +80,14 @@ describe('main', () => {
     expect(JSON.parse(readFileSync(out, 'utf8'))).toEqual([]);
   });
 
-  it('runs the full offline pipeline end to end: sitemap → break pages → facing → dedupe → tuples', async () => {
+  it('runs the full offline pipeline end to end: sitemap → break pages → facing → dedupe → tuples — a spot inside the hand-picked coverage is left out', async () => {
     dir = mkdtempSync(join(tmpdir(), 'import-spots-test-'));
     const out = join(dir, 'spots-world.json');
 
     const sitemapXml = [
       '<urlset>',
       '<url><loc>https://www.surf-forecast.com/breaks/Muizenberg/forecasts/latest</loc></url>',
+      '<url><loc>https://www.surf-forecast.com/breaks/Tofo/forecasts/latest</loc></url>',
       '<url><loc>https://www.surf-forecast.com/breaks/Gone404/forecasts/latest</loc></url>',
       '<url><loc>https://www.surf-forecast.com/breaks/NoBlobSlug/forecasts/latest</loc></url>',
       '</urlset>',
@@ -103,6 +104,7 @@ describe('main', () => {
         const blob = '"currentLocation":{"name":"Muizenberg","filename":"Muizenberg","lat":-34.1026,"lng":18.4737,"type":"Beach"}';
         return new Response(blob, { status: 200 });
       }
+      if (url.includes('/breaks/Tofo/')) return new Response(blobFor('Tofo', -23.8522, 35.5478), { status: 200 });
       if (url.includes('api.open-meteo.com/v1/elevation')) {
         const count = new URL(url).searchParams.get('latitude')!.split(',').length;
         return new Response(JSON.stringify({ elevation: Array(count).fill(-1) }), { status: 200 }); // every ring point is "sea"
@@ -114,15 +116,18 @@ describe('main', () => {
     await main(['--letters', 'M', '--out', out], { fetchFn, log: (l) => logs.push(l), sleep: async () => {} });
 
     const tuples = JSON.parse(readFileSync(out, 'utf8')) as SpotTuple[];
+    // surf-forecast's own Muizenberg sits ~690 m from the curated one: inside the bot's 20 km radius of a
+    // hand-picked spot, it is left out rather than shown twice with another orientation.
     expect(tuples).toHaveLength(1);
-    expect(tuples[0][0]).toBe('Muizenberg');
-    expect(tuples[0][2]).toBeCloseTo(-34.1026, 4);
-    expect(tuples[0][3]).toBeCloseTo(18.4737, 4);
+    expect(tuples[0][0]).toBe('Tofo');
+    expect(tuples[0][2]).toBeCloseTo(-23.8522, 4);
+    expect(tuples[0][3]).toBeCloseTo(35.5478, 4);
 
     const text = logs.join('\n');
     expect(text).toMatch(/1.*spot|spot.*1/i);
     expect(text).toContain('404');
     expect(text).toContain('no-coordinate-blob');
+    expect(text).toContain('dropped 1 spot(s) within 20 km of a curated spot');
 
     // progress file exists alongside the custom --out path and remembers the outcome
     expect(existsSync(`${out}.progress.json`)).toBe(true);
@@ -163,7 +168,7 @@ describe('main', () => {
     dir = mkdtempSync(join(tmpdir(), 'import-spots-test-'));
     const out = join(dir, 'spots-world.json');
     const pages: Record<string, string> = {
-      Muizenberg: blobFor('Muizenberg', -34.1026, 18.4737) + forecastTableHtml(MUIZENBERG_WINDS),
+      Supertubos: blobFor('Supertubos', 39.3434, -9.3633) + forecastTableHtml(MUIZENBERG_WINDS), // the Muizenberg fixture's winds, far from any curated spot
       Tofo: blobFor('Tofo', -23.8522, 35.5478),
     };
     let elevationPoints = 0;
@@ -182,10 +187,10 @@ describe('main', () => {
     await main(['--letters', 'M', '--out', out], { fetchFn, log: (l) => logs.push(l), sleep: async () => {} });
 
     const tuples = JSON.parse(readFileSync(out, 'utf8')) as SpotTuple[];
-    expect(tuples.map((t) => [t[0], t[4]])).toEqual([['Muizenberg', 124], ['Tofo', expect.any(Number)]]);
+    expect(tuples.map((t) => [t[0], t[4]])).toEqual([['Supertubos', 124], ['Tofo', expect.any(Number)]]);
     expect(elevationPoints).toBe(24); // Tofo's ring only
     const progress = JSON.parse(readFileSync(`${out}.progress.json`, 'utf8'));
-    expect(progress.processed.Muizenberg).toMatchObject({ status: 'spot', facing: 124, facingFrom: 'wind' });
+    expect(progress.processed.Supertubos).toMatchObject({ status: 'spot', facing: 124, facingFrom: 'wind' });
     expect(progress.processed.Tofo).toMatchObject({ status: 'spot', facingFrom: 'elevation' });
     expect(logs.join('\n')).toContain("facing read from surf-forecast's wind table for 1 spot(s), from elevation for 1");
   });

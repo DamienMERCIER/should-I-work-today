@@ -1,4 +1,4 @@
-import { destinationPoint, haversineKm, norm360 } from '../engine/geo';
+import { destinationPoint, EARTH_RADIUS_KM, haversineKm, norm360 } from '../engine/geo';
 import type { LatLon, Region, Spot } from '../types';
 import { REGIONS } from './index';
 import spotsWorldJson from './spots-world.json';
@@ -125,6 +125,33 @@ export function expandTuple(tuple: SpotTuple, curated: readonly Region[] = REGIO
 
 const ALL_WORLD_TUPLES = spotsWorldJson as SpotTuple[];
 
+const worldIdIndexes = new WeakMap<SpotTuple[], Map<string, SpotTuple[]>>();
+
+/**
+ * The imported spot behind an id, so a message can show its name: reports keep only spot ids, and the
+ * render context only holds the curated spots — a traveller's report, or the out-of-coverage list of
+ * nearest spots, would otherwise print `tofo-s238522-e355478`. The id ends with the spot's own
+ * coordinates (§worldSpotId), so an index keyed on them, built once per tuple array on first use (a
+ * curated-only report never builds it), finds the tuple without a scan; the full id then confirms it.
+ */
+export function worldSpotById(id: string, tuples: SpotTuple[] = ALL_WORLD_TUPLES): Spot | undefined {
+  const coords = /-([ns]\d+-[ew]\d+)$/.exec(id);
+  if (!coords) return undefined;
+  let index = worldIdIndexes.get(tuples);
+  if (!index) {
+    index = new Map();
+    for (const tuple of tuples) {
+      const key = `${coordSegment(tuple[2], 'n', 's')}-${coordSegment(tuple[3], 'e', 'w')}`;
+      const atKey = index.get(key);
+      if (atKey) atKey.push(tuple);
+      else index.set(key, [tuple]);
+    }
+    worldIdIndexes.set(tuples, index);
+  }
+  const tuple = index.get(coords[1])?.find((t) => worldSpotId(t[0], t[2], t[3]) === id);
+  return tuple ? expandTuple(tuple) : undefined;
+}
+
 /** Every tuple in `src/data/spots-world.json`, unexpanded — for tooling (e.g. `check:spots`) that
  * needs to walk the whole set rather than query a radius. Never call this from request-handling code. */
 export function allWorldTuples(): SpotTuple[] {
@@ -132,14 +159,20 @@ export function allWorldTuples(): SpotTuple[] {
 }
 
 /**
- * The world-spot radius query: a linear scan of the (unexpanded) tuple array computing a haversine
- * per entry directly off its `[lat, lon]` fields, expanding to a full `Spot` only for the handful
- * that fall inside `radiusKm`. A few thousand cheap haversines comfortably fit the Worker's 10 ms
- * per-invocation CPU budget; materialising all 8000 `Spot` objects up front would not (§report).
+ * The world-spot radius query: a linear scan of the (unexpanded) tuple array, expanding to a full `Spot`
+ * only for the handful that fall inside `radiusKm`; materialising all 8000 `Spot` objects up front would
+ * not fit the Worker's 10 ms per-invocation CPU budget (§report).
+ *
+ * Two points are never closer than their latitude gap measured along a meridian, so a one-subtraction
+ * latitude check skips nearly every tuple before any haversine. It matters since the real import
+ * (17/09/2026): every request scans ~6 000 tuples, and the Sunday week push scans once per friend per
+ * day — 10 friends took the run from 7.9 ms to 19.4 ms with full haversines.
  */
 export function worldSpots(center: LatLon, radiusKm: number, tuples: SpotTuple[] = ALL_WORLD_TUPLES, curated: readonly Region[] = REGIONS): Spot[] {
+  const maxLatGapDeg = (radiusKm / EARTH_RADIUS_KM) * (180 / Math.PI);
   const out: Spot[] = [];
   for (const tuple of tuples) {
+    if (Math.abs(tuple[2] - center.lat) > maxLatGapDeg) continue;
     if (haversineKm(center, { lat: tuple[2], lon: tuple[3] }) <= radiusKm) {
       out.push(expandTuple(tuple, curated));
     }
@@ -153,11 +186,15 @@ export function worldSpots(center: LatLon, radiusKm: number, tuples: SpotTuple[]
  * distance rather than everything inside a radius. Still one O(tuples) linear scan of cheap haversines
  * off each tuple's own `[lat, lon]` — the same cost shape as `worldSpots` — bounded top-`n` selection
  * (`n` is always small, e.g. 3) keeps it from ever expanding more than `n` tuples to a full `Spot`.
+ * Once `n` candidates are held, the same latitude-gap skip as `worldSpots` drops every tuple that could
+ * not be closer than the farthest of them.
  */
 export function nearestWorldSpots(center: LatLon, n: number, tuples: SpotTuple[] = ALL_WORLD_TUPLES, curated: readonly Region[] = REGIONS): Spot[] {
   if (n <= 0) return [];
+  const kmPerLatDeg = (EARTH_RADIUS_KM * Math.PI) / 180;
   const best: { tuple: SpotTuple; distanceKm: number }[] = [];
   for (const tuple of tuples) {
+    if (best.length === n && Math.abs(tuple[2] - center.lat) * kmPerLatDeg > best[n - 1].distanceKm) continue;
     const distanceKm = haversineKm(center, { lat: tuple[2], lon: tuple[3] });
     if (best.length < n) {
       best.push({ tuple, distanceKm });
