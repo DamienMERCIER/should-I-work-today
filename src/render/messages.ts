@@ -51,12 +51,12 @@ export function fmtDay(date: string, lang: Lang): string {
 export const fmtWindow = (w: Window): string => `${fmtTime(w.start)}–${fmtTime(w.end)}`;
 
 /**
- * `★★★★` quand c'est propre, `☆☆☆` sous l'onshore, comme l'or et le blanc du site. `0★` à zéro :
+ * `⭐⭐⭐⭐` quand c'est propre, `☆☆☆` sous l'onshore, comme l'or et le blanc du site. `0★` à zéro :
  * le site n'affiche rien, et un point seul se lirait comme un bug.
  */
 export const starsText = (stars: number, clean: boolean): string => (stars === 0 ? '0★' : starGlyphs({ stars, clean }));
-/** Forme courte pour les rangées à largeur fixe : `4★`, `3☆`. */
-const starsShort = (stars: number, clean: boolean): string => `${stars}${stars > 0 && !clean ? '☆' : '★'}`;
+/** Forme courte pour les rangées à largeur fixe : `4⭐`, `3☆`, `0★`. */
+const starsShort = (stars: number, clean: boolean): string => `${stars}${stars === 0 ? '★' : clean ? '⭐' : '☆'}`;
 /** En dessous, un spot ne mérite pas sa rangée dans la vue 📋 : zéro étoile de toute la journée. */
 const DAY_VIEW_MIN_STARS = 1;
 const cardinal = (deg: number, s: Strings): string => s.cardinal[cardinal8(deg)];
@@ -155,14 +155,18 @@ function waterLine(r: SpotResult | undefined, s: Strings): string | undefined {
  * un conteneur défilant avec bouton copier qui rognait la dernière colonne de la règle.
  * Sans indentation, comme le titre du spot : les 3 espaces des lignes de conditions sont en police
  * proportionnelle et n'alignent rien ici, et chaque caractère gagné éloigne le rognage sur mobile.
- * Chaque ligne dit ce qu'elle trace — 🕐 les heures, 🌊 le niveau de chaque heure —, emoji hors du `<code>` :
- * deux emojis de même largeur devant les deux lignes gardent la règle alignée sur la courbe.
+ * Chaque ligne dit ce qu'elle trace — 🕐 les heures, 🌊 le niveau de chaque heure, ⭐ les heures à étoiles jaunes (`━`,
+ * au moins une étoile et pas d'onshore) —, emoji hors du `<code>` : des emojis de même largeur devant chaque ligne gardent
+ * la règle alignée sur la courbe. Pas de ligne ⭐ un jour sans étoile jaune : une ligne de points n'apprendrait rien.
  */
 function spotChart(report: Report, spotId: string): string[] {
   const r = report.spots.find((x) => x.spotId === spotId);
   const hours = chartHours(report);
   const aligned = r ? alignedHours(r, report.date, hours) : hours.map(() => undefined);
-  return [`🕐 <code>${hourRuler(hours)}</code>`, `🌊 <code>${sparkline(aligned.map((h) => h?.score ?? 0))}</code>`];
+  const lines = [`🕐 <code>${hourRuler(hours)}</code>`, `🌊 <code>${sparkline(aligned.map((h) => h?.score ?? 0))}</code>`];
+  const gold = aligned.map((h) => (h && h.clean && h.score >= 1 ? '━' : '·')).join('');
+  if (gold.includes('━')) lines.push(`⭐ <code>${gold}</code>`);
+  return lines;
 }
 
 /**

@@ -218,7 +218,7 @@ describe('location and /now', () => {
     await handleUpdate(msg('/now'), deps);
     await handleUpdate(msg('🔎 Сейчас'), deps);
     expect(sent()).toHaveLength(2);
-    expect(sent()[1].text).toContain('Kommetjie – Long Beach · 8:00–12:00 · ★★★★★★');
+    expect(sent()[1].text).toContain('Kommetjie – Long Beach · 8:00–12:00 · ⭐⭐⭐⭐⭐⭐');
   });
 });
 
@@ -304,13 +304,13 @@ describe('/week — the week ahead', () => {
     const lines = dayLines(text);
     expect(lines).toHaveLength(7);
     // 18:00 n'a que 38 min de jour (coucher 18:38) : les fenêtres se ferment à 18:00
-    expect(lines[0]).toBe('🟢 <b>Today</b> · Long Beach ★★★★★★ · 8:00–18:00');
-    expect(lines[1]).toBe('🟢 <b>Thu 17</b> · Long Beach ★★★★ · 7:00–18:00');
-    expect(lines[2]).toBe('🔴 <b>Fri 18</b> · Long Beach ★★★');
+    expect(lines[0]).toBe('🟢 <b>Today</b> · Long Beach ⭐⭐⭐⭐⭐⭐ · 8:00–18:00');
+    expect(lines[1]).toBe('🟢 <b>Thu 17</b> · Long Beach ⭐⭐⭐⭐ · 7:00–18:00');
+    expect(lines[2]).toBe('🔴 <b>Fri 18</b> · Long Beach ⭐⭐⭐');
     expect(lines[3]).toBe('🔴 <b>Sat 19</b> · 0★ everywhere');
-    expect(lines[6]).toBe('🔴 <b>Tue 22</b> · Long Beach ★★★');
+    expect(lines[6]).toBe('🔴 <b>Tue 22</b> · Long Beach ⭐⭐⭐');
     // dimanche 20 fait aussi 6★ : à égalité, le plus tôt gagne
-    expect(text).toContain(`⭐ Best: Today · Kommetjie – Long Beach ★★★★★★ · 8:00–18:00`);
+    expect(text).toContain(`⭐ Best: Today · Kommetjie – Long Beach ⭐⭐⭐⭐⭐⭐ · 8:00–18:00`);
     expect(omCalls).toHaveLength(3);
     expect(omCalls.every((c) => c.url.includes('forecast_days=8'))).toBe(true);
   });

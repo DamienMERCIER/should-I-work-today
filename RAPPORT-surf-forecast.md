@@ -51,7 +51,9 @@ L'énergie affichée vaut ≈ 2·H²·T² kJ (ratio 0,9 à 1,0 sur nos lignes).
 
 La note finale = arrondi(base × facteur vent), avec les courbes du tableau ci-dessus. Le modèle tombe juste sur 71 % des 78 lignes et à ±1 étoile sur 97 %, ce qui est le mieux qu'on puisse espérer avec des hauteurs arrondies au 0,1 m et des vents aux 5 km/h. Le « ! » que le site affiche parfois à la place de la note (Papatowai 5 m et plus par 30 km/h et plus) est un drapeau danger, pas une note : le script le stocke tel quel.
 
-Les étoiles jaunes : d'après la FAQ et les notes de version de l'app, or = vagues propres (glassy, off, cross-off), blanc = note dégradée par une composante onshore (cross-on, on). Ce n'est pas un score en plus, c'est la couleur de la même note. J'ai rangé cross pur avec les blanches (le site dit « cross winds can be good if offshore and bad if onshore », donc un cross qui coûte des étoiles n'est pas propre). Sur Telegram tu n'as pas de couleur : ★★★★ pour l'or, ☆☆☆☆ pour le blanc, un point pour 0.
+Les étoiles jaunes : d'après la FAQ et les notes de version de l'app, or = vagues propres (glassy, off, cross-off), blanc = note dégradée par une composante onshore (cross-on, on). Ce n'est pas un score en plus, c'est la couleur de la même note. J'ai rangé cross pur avec les blanches (le site dit « cross winds can be good if offshore and bad if onshore », donc un cross qui coûte des étoiles n'est pas propre). Sur Telegram le texte n'a pas de couleur : ⭐⭐⭐⭐ (emoji, jaune partout) pour l'or, ☆☆☆☆ pour le blanc, et une ligne ⭐ sous la courbe marque les heures à étoiles jaunes.
+
+Vérifié le 17/09/2026 sur 7 pages de spots du Cap (693 étoiles) : la page web actuelle ne dessine plus qu'une étoile par créneau, la note au centre, blanche à 0 et jaune dès 1★, d'un jaune pâle `hsl(57, 100%, 79%)` à 1★ à un or `hsl(48, 100%, 56%)` à 9★ ; chaque note a toujours la même couleur. La légende de l'infobulle (« Gold = surfable, White = marginal wind or wrong tide ») et l'app gardent l'ancienne distinction, que le bot suit.
 
 Tout ça est dans `src/engine/rating.ts` (`rateLikeSurfForecast`, `windState`, `starGlyphs`), sans dépendance au scoring.
 

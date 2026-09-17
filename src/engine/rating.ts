@@ -148,10 +148,11 @@ export function rateLikeSurfForecast(input: StarInput): StarRating {
 }
 
 /**
- * Rendu texte pour Telegram, où l'on n'a pas de couleur : ★ pleines = or (propre), ☆ creuses = blanc
- * (onshore). `★★★★☆☆` n'existe pas : c'est tout l'un ou tout l'autre, comme sur le site.
+ * Rendu texte pour Telegram, où le texte n'a pas de couleur : l'emoji ⭐, jaune partout, pour l'or (propre), ☆ creuses
+ * pour le blanc (onshore). Un ★ plein prenait la couleur du texte : blanc en mode sombre, l'or ne se voyait pas.
+ * `⭐⭐⭐⭐☆☆` n'existe pas : c'est tout l'un ou tout l'autre, comme sur le site.
  */
 export function starGlyphs(rating: Pick<StarRating, 'stars' | 'clean'>): string {
   if (rating.stars === 0) return '·';
-  return (rating.clean ? '★' : '☆').repeat(rating.stars);
+  return (rating.clean ? '⭐' : '☆').repeat(rating.stars);
 }

@@ -235,11 +235,12 @@ describe('renderEvening — golden 🟢', () => {
         // un bloc par spot, separe par une ligne vide : ses lignes de conditions puis son graphe du
         // jour — le verdict dit quand y aller, la courbe montre le reste de la journee sans ouvrir 📋
         [
-          `🏄 ${KOM} · 7:00–12:00 · ★★★★★★`,
+          `🏄 ${KOM} · 7:00–12:00 · ⭐⭐⭐⭐⭐⭐`,
           '   3.5 m · SW 13 s · offshore SE 8 kt · incoming tide, high 9:00',
           '   ☀️ 22° · sunrise 6:44',
           '🕐 <code>6  9  12 15 18</code>',
           '🌊 <code>·▆▆▆▆▅▂······</code>',
+          '⭐ <code>·━━━━━━······</code>',
         ].join('\n'),
       ].join('\n\n'),
     );
@@ -249,7 +250,7 @@ describe('renderEvening — golden 🟢', () => {
     expect(lines[0]).toContain('ЗАВТРА НЕ ИДИ НА РАБОТУ');
     expect(lines[0]).toContain('16 сент.');
     expect(lines[1]).toBe(''); // le titre est un bloc a lui seul
-    expect(lines[2]).toBe(`🏄 ${KOM} · 7:00–12:00 · ★★★★★★`);
+    expect(lines[2]).toBe(`🏄 ${KOM} · 7:00–12:00 · ⭐⭐⭐⭐⭐⭐`);
     expect(lines[3]).toBe('   3.5 м · ЮЗ 13 с · оффшор ЮВ 8 kt · прилив, полная 9:00');
   });
   it('adds the epic suffix, the weekend and now titles', () => {
@@ -302,7 +303,7 @@ describe('renderEvening — other verdicts', () => {
     // 0,9 m : note de base 2,33 → 2★ ; un vent à ×0,9 donne 2,1 → toujours 2★, il ne coûte rien
     for (const h of kom.hours) Object.assign(h, { heightM: 0.9, stars: 2, score: h.factors.day ? 2 : 0, factors: { ...h.factors, swell: 0.233, wind: 0.9 } });
     kom.maxScore = 2;
-    expect(renderEvening(r, EN).split('\n')).toContain(`Best: ${KOM} ★★ (swell 0.9 m)`);
+    expect(renderEvening(r, EN).split('\n')).toContain(`Best: ${KOM} ⭐⭐ (swell 0.9 m)`);
   });
   it('🔴 names the wind as soon as it costs a star, even when its factor is higher than the swell one', () => {
     // Long Beach le 17/09/2026 : 2,2 m (base 3,7, facteur 0,37) sous un offshore à 41 km/h (×0,54) → 2★.
@@ -311,7 +312,7 @@ describe('renderEvening — other verdicts', () => {
     const kom = r.spots.find((x) => x.spotId === 'kommetjie-long-beach')!;
     for (const h of kom.hours) Object.assign(h, { heightM: 2.2, windKt: 22, stars: 2, score: h.factors.day ? 2 : 0, factors: { ...h.factors, swell: 0.37, wind: 0.54 } });
     kom.maxScore = 2;
-    expect(renderEvening(r, EN).split('\n')).toContain(`Best: ${KOM} ★★ (offshore SE 22 kt)`);
+    expect(renderEvening(r, EN).split('\n')).toContain(`Best: ${KOM} ⭐⭐ (offshore SE 22 kt)`);
   });
   it('🔴 says the good window does not fit, never « nothing ≥ 4★ », when the best spot does reach 4★', () => {
     const lines = renderEvening(goldenReport({ verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } }), EN).split('\n');
@@ -334,7 +335,7 @@ describe('renderEvening — other verdicts', () => {
     const r = goldenReport({ verdict: { kind: 'yellow', dawn: { spotId: 'kommetjie-long-beach', window: W('07:00', '09:00', 6) } } });
     const lines = renderEvening(r, EN).split('\n');
     expect(lines[0]).toBe('🌅 <b>DAWN PATROL, THEN WORK</b> (Wed 16 Sept)');
-    expect(lines[1]).toBe(`🏄 ${KOM} · 7:00–9:00 · ★★★★★★`);
+    expect(lines[1]).toBe(`🏄 ${KOM} · 7:00–9:00 · ⭐⭐⭐⭐⭐⭐`);
     expect(lines[2]).toBe('   3.5 m · SW 13 s · offshore SE 8 kt · incoming tide, high 9:00');
   });
   it('🌅 a dawn+dusk 🟡 on one spot draws its day chart once, not twice', () => {
@@ -445,11 +446,12 @@ describe('renderAlert — a big day two or three days out', () => {
       [
         [
           '🔥 <b>BIG DAY AHEAD</b> (Wed 16 Sept)',
-          `🏄 ${KOM} · 7:00–12:00 · ★★★★★★`,
+          `🏄 ${KOM} · 7:00–12:00 · ⭐⭐⭐⭐⭐⭐`,
           '   3.5 m · SW 13 s · offshore SE 8 kt · incoming tide, high 9:00',
           '   ☀️ 22° · sunrise 6:44',
           '🕐 <code>6  9  12 15 18</code>',
           '🌊 <code>·▆▆▆▆▅▂······</code>',
+          '⭐ <code>·━━━━━━······</code>',
         ].join('\n'),
         "Plan ahead — I'll confirm the evening before.",
       ].join('\n\n'),
@@ -500,8 +502,9 @@ describe('renderDetails', () => {
         '',
         '🕐 <code>6  9  12 15 18</code>',
         '🌊 <code>·▆▆▆▆▅▂······</code>',
+        '⭐ <code>·━━━━━━······</code>',
         '',
-        'peak ★★★★★★ at 7:00',
+        'peak ⭐⭐⭐⭐⭐⭐ at 7:00',
         '3.5 m · SW 13 s · offshore SE 8→30 kt · incoming tide, high 9:00',
         'best at 7:00 — wind drops to 8 kt',
         'fades from 12:00 — wind builds to 24 kt',
@@ -579,17 +582,38 @@ function komResult(hours: SpotHour[], best: Window | undefined): SpotResult {
   };
 }
 
-const KOM_CHART = '🕐 <code>6  9  12 15 18</code>\n🌊 <code>·▄▅▄▂▂▂▂▂▁▁▁·</code>';
+const KOM_CHART = '🕐 <code>6  9  12 15 18</code>\n🌊 <code>·▄▅▄▂▂▂▂▂▁▁▁·</code>\n⭐ <code>·━━━━━━━━━━━·</code>';
 const KOM_BLOCK = [
   `🏄 ${KOM} · 7:00–10:00`,
   '',
   KOM_CHART,
   '',
-  'peak ★★★★★ at 8:00',
+  'peak ⭐⭐⭐⭐⭐ at 8:00',
   '3.1 m · SW 12 s · offshore SE 15→23 kt · outgoing tide, low 11:47',
   'best at 8:00 — wind drops to 15 kt',
   'fades from 10:00 — wind builds to 20 kt',
 ].join('\n');
+
+describe('⭐ yellow-star hours under the chart', () => {
+  const hour = (h: number, score: number, clean: boolean): SpotHour => ({ ...makeHour(`${GOLDEN_DATE}T${String(h).padStart(2, '0')}:00`, score), clean });
+  const dayOf = (hours: SpotHour[]) =>
+    makeReport({ spots: [{ spotId: 'kommetjie-long-beach', distanceKm: 13.4, hours, windows: [], best: undefined, maxScore: Math.max(...hours.map((x) => x.score)) }] });
+  const codeOf = (line: string | undefined) => /<code>(.*)<\/code>/.exec(line ?? '')?.[1];
+
+  it('marks the hours with yellow stars only — an onshore hour at 3☆ or an hour at 0 stays a dot —, column for column under the curve', () => {
+    const lines = renderSpotDay(dayOf([hour(7, 6, true), hour(8, 6, true), hour(9, 0, true), hour(10, 3, false), hour(11, 3, false), hour(12, 1, true)]), 'kommetjie-long-beach', EN).split('\n');
+    const gold = codeOf(lines.find((l) => l.startsWith('⭐ ')));
+    // 6 h → 18 h : 7 et 8 jaunes, 9 à zéro, 10 et 11 blanches, 12 jaune
+    expect(gold).toBe('·━━···━······');
+    expect(gold?.length).toBe(codeOf(lines.find((l) => l.startsWith('🌊 ')))?.length);
+  });
+
+  it('draws no ⭐ line on a day without a single yellow star, and white stars stay white in the headline', () => {
+    const out = renderSpotDay(dayOf([hour(7, 3, false), hour(8, 2, false)]), 'kommetjie-long-beach', EN);
+    expect(out).not.toContain('⭐');
+    expect(out.split('\n')[0]).toBe(`🏄 ${KOM} · ☆☆☆`);
+  });
+});
 
 describe('renderSpotDay', () => {
   it('a spot with a window: title+window, chart, peak, conditions (wind as a range), and both explanation lines', () => {
@@ -620,7 +644,7 @@ describe('renderSpotDay', () => {
   it('RU: peak / best-at / fades-from translate with the same numbers', () => {
     const report = makeReport({ spots: [komResult(KOM_HOURS, KOM_WINDOW)], tides: KOM_TIDES });
     const out = renderSpotDay(report, 'kommetjie-long-beach', RU);
-    expect(out).toContain('пик ★★★★★ в 8:00');
+    expect(out).toContain('пик ⭐⭐⭐⭐⭐ в 8:00');
     expect(out).toContain('лучшее в 8:00 — ветер стихает до 15 kt');
     expect(out).toContain('спадает после 10:00 — ветер усиливается до 20 kt');
   });
@@ -639,9 +663,9 @@ describe('renderSpotDay', () => {
     const report = makeReport({ spots: [komResult(hours, undefined)], tides: [{ time: `${GOLDEN_DATE}T09:00`, kind: 'high', heightM: 0.5 }] });
     expect(renderSpotDay(report, 'kommetjie-long-beach', EN)).toBe(
       [
-        `🏄 ${KOM} · ★★`, // sans fenêtre, l'en-tête chiffre quand même la journée
+        `🏄 ${KOM} · ⭐⭐`, // sans fenêtre, l'en-tête chiffre quand même la journée
         '',
-        '🕐 <code>6  9  12 15 18</code>\n🌊 <code>·▂▂▂▂▂▂▂▂▂▂▂·</code>',
+        '🕐 <code>6  9  12 15 18</code>\n🌊 <code>·▂▂▂▂▂▂▂▂▂▂▂·</code>\n⭐ <code>·━━━━━━━━━━━·</code>',
         '',
         '3.1 m · SW 12 s · offshore SE 10 kt · incoming tide, high 9:00',
       ].join('\n'),
@@ -661,7 +685,7 @@ describe('renderSpotDay', () => {
       tides: [{ time: `${GOLDEN_DATE}T09:00`, kind: 'high', heightM: 0.5 }],
     });
     const out = renderSpotDay(report, 'kommetjie-long-beach', EN);
-    expect(out).toContain('peak ★★★★ at 7:00');
+    expect(out).toContain('peak ⭐⭐⭐⭐ at 7:00');
     expect(out).not.toContain('best at');
     expect(out).not.toContain('fades from');
   });
@@ -691,7 +715,7 @@ const DEAD_COLS = '·'.repeat(13); // 13 colonnes depuis que le graphique couvre
  */
 function expectedRow(id: string, stars: number): string {
   const spot = SPOTS.find((sp) => sp.id === id)!;
-  return `${spot.short.padEnd(13, ' ')} ${DEAD_COLS}  ${stars}★`;
+  return `${spot.short.padEnd(13, ' ')} ${DEAD_COLS}  ${stars}${stars === 0 ? '★' : '⭐'}`;
 }
 const DAY_VIEW_TIDES = [
   { time: `${GOLDEN_DATE}T05:50`, kind: 'high' as const, heightM: -0.17 },
@@ -863,15 +887,15 @@ describe('renderWeek — the week ahead, best day first', () => {
     expect(renderWeek(WEEK, EN, { today: '2026-09-16' })).toBe(
       [
         '📅 <b>THE WEEK AHEAD</b>',
-        `⭐ Best: Tue 22 · ${KOM} ★★★★★★★ · 7:00–11:00`,
+        `⭐ Best: Tue 22 · ${KOM} ⭐⭐⭐⭐⭐⭐⭐ · 7:00–11:00`,
         [
-          '🟢 <b>Today</b> · Long Beach ★★★★★★ · 8:00–12:00',
+          '🟢 <b>Today</b> · Long Beach ⭐⭐⭐⭐⭐⭐ · 8:00–12:00',
           '🌅 <b>Thu 17</b> · Muizenberg ☆☆☆☆ · 7:00–9:00',
-          '🔴 <b>Fri 18</b> · Long Beach ★★★',
+          '🔴 <b>Fri 18</b> · Long Beach ⭐⭐⭐',
           '🔴 <b>Sat 19</b> · 0★ everywhere',
           '⚠️ <b>Sun 20</b> · no data',
-          '🌇 <b>Mon 21</b> · Llandudno ★★★★★ · 16:00–18:00',
-          '🟢 <b>Tue 22</b> · Long Beach ★★★★★★★ · 7:00–11:00',
+          '🌇 <b>Mon 21</b> · Llandudno ⭐⭐⭐⭐⭐ · 16:00–18:00',
+          '🟢 <b>Tue 22</b> · Long Beach ⭐⭐⭐⭐⭐⭐⭐ · 7:00–11:00',
         ].join('\n'),
         'From Sun 20 on, a trend only: check again closer to the day.',
       ].join('\n\n'),
@@ -886,8 +910,8 @@ describe('renderWeek — the week ahead, best day first', () => {
   it('RU: the same week in Russian', () => {
     const out = renderWeek(WEEK, RU, { today: '2026-09-16' });
     expect(out.startsWith('📅 <b>НЕДЕЛЯ ВПЕРЕДИ</b>')).toBe(true);
-    expect(out).toContain(`⭐ Лучший день: ${fmtDay('2026-09-22', 'ru')} · ${KOM} ★★★★★★★ · 7:00–11:00`);
-    expect(out).toContain('🟢 <b>Сегодня</b> · Long Beach ★★★★★★ · 8:00–12:00');
+    expect(out).toContain(`⭐ Лучший день: ${fmtDay('2026-09-22', 'ru')} · ${KOM} ⭐⭐⭐⭐⭐⭐⭐ · 7:00–11:00`);
+    expect(out).toContain('🟢 <b>Сегодня</b> · Long Beach ⭐⭐⭐⭐⭐⭐ · 8:00–12:00');
     expect(out).toContain(`🔴 <b>${fmtDay('2026-09-19', 'ru')}</b> · везде 0★`);
     expect(out).toContain(`⚠️ <b>${fmtDay('2026-09-20', 'ru')}</b> · нет данных`);
   });
@@ -902,7 +926,7 @@ describe('renderWeek — the week ahead, best day first', () => {
       day('2026-09-17', { kind: 'red', bestSpotId: 'muizenberg' }, [spotOn('muizenberg', '2026-09-17', 3)]),
       day('2026-09-18', { kind: 'red', bestSpotId: 'llandudno' }, [spotOn('llandudno', '2026-09-18', 3)]),
     ];
-    expect(renderWeek(flat, EN, { today: '2026-09-16' }).split('\n\n')[1]).toBe(`⭐ Best: Thu 17 · ${MUIZ} ★★★`);
+    expect(renderWeek(flat, EN, { today: '2026-09-16' }).split('\n\n')[1]).toBe(`⭐ Best: Thu 17 · ${MUIZ} ⭐⭐⭐`);
   });
 
   it('no best line when the whole week is at 0★, and no trend line when every day is close', () => {

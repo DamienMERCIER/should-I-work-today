@@ -238,7 +238,7 @@ describe('runAlert — noon, a big day two or three days out', () => {
     expect(await runAlert(deps)).toEqual({ skipped: false, sent: 2, failed: 0, date: '2026-09-21' });
     // mer 23 (J+2) : 3,5 m, 6★ toute la journée → alerte ; jeu 24 (J+3) : 0,2 m → rien ; hors couverture : ni alerte, ni appel
     expect(sent().map((m) => m.chat_id)).toEqual([1, 2]);
-    expect(sent()[0].text.startsWith('🔥 <b>BIG DAY AHEAD</b> (Wed 23 Sept)\n🏄 Kommetjie – Long Beach · 7:00–18:00 · ★★★★★★')).toBe(true);
+    expect(sent()[0].text.startsWith('🔥 <b>BIG DAY AHEAD</b> (Wed 23 Sept)\n🏄 Kommetjie – Long Beach · 7:00–18:00 · ⭐⭐⭐⭐⭐⭐')).toBe(true);
     expect(sent()[0].text).not.toContain('24 Sept');
     expect(sent()[1].text).toContain('БУДЕТ ЭПИЧНО');
     expect(omCalls).toHaveLength(3);
@@ -327,9 +327,9 @@ describe('runWeek — Sunday evening, the week ahead', () => {
     expect(sent().map((m) => m.chat_id)).toEqual([1, 2]);
     const text = sent()[0].text;
     expect(text.startsWith('📅 <b>THE WEEK AHEAD</b>')).toBe(true);
-    expect(text).toContain('⭐ Best: Wed 23 · Kommetjie – Long Beach ★★★★★★ · 7:00–18:00');
-    expect(text).toContain('🟢 <b>Mon 21</b> · Long Beach ★★★★ · 7:00–18:00');
-    expect(text).toContain('🟢 <b>Sun 27</b> · Long Beach ★★★★★★ · 7:00–18:00');
+    expect(text).toContain('⭐ Best: Wed 23 · Kommetjie – Long Beach ⭐⭐⭐⭐⭐⭐ · 7:00–18:00');
+    expect(text).toContain('🟢 <b>Mon 21</b> · Long Beach ⭐⭐⭐⭐ · 7:00–18:00');
+    expect(text).toContain('🟢 <b>Sun 27</b> · Long Beach ⭐⭐⭐⭐⭐⭐ · 7:00–18:00');
     expect(text).toContain('From Thu 24 on, a trend only: check again closer to the day.');
     expect(text).not.toContain('Today');
     expect(sent()[1].text.startsWith('📅 <b>НЕДЕЛЯ ВПЕРЕДИ</b>')).toBe(true);

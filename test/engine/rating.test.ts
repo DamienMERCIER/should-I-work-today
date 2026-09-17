@@ -160,7 +160,7 @@ describe('rateLikeSurfForecast', () => {
 
 describe('starGlyphs', () => {
   it('pleines quand c’est propre, creuses sous l’onshore, un point à 0', () => {
-    expect(starGlyphs({ stars: 4, clean: true })).toBe('★★★★');
+    expect(starGlyphs({ stars: 4, clean: true })).toBe('⭐⭐⭐⭐');
     expect(starGlyphs({ stars: 3, clean: false })).toBe('☆☆☆');
     expect(starGlyphs({ stars: 0, clean: true })).toBe('·');
   });
