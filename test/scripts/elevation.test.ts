@@ -93,4 +93,21 @@ describe('fetchElevations', () => {
     expect(elevations.slice(100, 200)).toEqual(Array(100).fill(null));
     expect(elevations.slice(200, 250)).toEqual(points.slice(200, 250).map((p) => p.lat));
   });
+
+  it('stops asking once Open-Meteo says its quota is spent (429): the batches left, in this call and the next ones sharing the quota, come back null without a request', async () => {
+    const points = Array.from({ length: 250 }, (_, i) => ({ lat: i, lon: 0 }));
+    let requests = 0;
+    const fetchFn = async () => {
+      requests++;
+      return new Response('{"error":true,"reason":"Hourly API request limit exceeded. Please try again in the next hour."}', { status: 429 });
+    };
+    const quota = { exhausted: false };
+    const first = await fetchElevations(points, fetchFn, { concurrency: 1, sleep: async () => {}, quota });
+    expect(first).toEqual(Array(250).fill(null));
+    expect(quota.exhausted).toBe(true);
+    expect(requests).toBe(2); // the first batch and its one retry — the two other batches never go out
+    const next = await fetchElevations(points, fetchFn, { concurrency: 1, sleep: async () => {}, quota });
+    expect(next).toEqual(Array(250).fill(null));
+    expect(requests).toBe(2);
+  });
 });

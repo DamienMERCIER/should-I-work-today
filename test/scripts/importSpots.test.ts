@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { parseArgs, main } from '../../scripts/import-spots';
 import { destinationPoint } from '../../src/engine/geo';
 import type { SpotTuple } from '../../src/data/world';
+import { MUIZENBERG_WINDS, forecastTableHtml } from '../helpers/forecastPage';
 
 let dir: string;
 afterEach(() => {
@@ -156,6 +157,63 @@ describe('main', () => {
 
     await main(['--letters', 'M', '--out', out, '--resume'], { fetchFn, log: () => {}, sleep: async () => {} });
     expect(breakFetches).toBe(1); // unchanged: Muizenberg was already in progress, not re-fetched
+  });
+
+  it("orients a spot from its own page's wind table without asking Open-Meteo — only a page whose wind does not tell falls back to elevation", async () => {
+    dir = mkdtempSync(join(tmpdir(), 'import-spots-test-'));
+    const out = join(dir, 'spots-world.json');
+    const pages: Record<string, string> = {
+      Muizenberg: blobFor('Muizenberg', -34.1026, 18.4737) + forecastTableHtml(MUIZENBERG_WINDS),
+      Tofo: blobFor('Tofo', -23.8522, 35.5478),
+    };
+    let elevationPoints = 0;
+    const fetchFn = async (url: string) => {
+      if (url.includes('/sitemaps/')) return new Response(sitemapFor(Object.keys(pages)), { status: 200 });
+      const slug = /\/breaks\/([^/]+)\//.exec(url)?.[1];
+      if (slug && pages[slug]) return new Response(pages[slug], { status: 200 });
+      if (url.includes('api.open-meteo.com/v1/elevation')) {
+        elevationPoints += new URL(url).searchParams.get('latitude')!.split(',').length;
+        return seaElevation(url);
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    };
+
+    const logs: string[] = [];
+    await main(['--letters', 'M', '--out', out], { fetchFn, log: (l) => logs.push(l), sleep: async () => {} });
+
+    const tuples = JSON.parse(readFileSync(out, 'utf8')) as SpotTuple[];
+    expect(tuples.map((t) => [t[0], t[4]])).toEqual([['Muizenberg', 124], ['Tofo', expect.any(Number)]]);
+    expect(elevationPoints).toBe(24); // Tofo's ring only
+    const progress = JSON.parse(readFileSync(`${out}.progress.json`, 'utf8'));
+    expect(progress.processed.Muizenberg).toMatchObject({ status: 'spot', facing: 124, facingFrom: 'wind' });
+    expect(progress.processed.Tofo).toMatchObject({ status: 'spot', facingFrom: 'elevation' });
+    expect(logs.join('\n')).toContain("facing read from surf-forecast's wind table for 1 spot(s), from elevation for 1");
+  });
+
+  it("at Open-Meteo's first 429, stops asking for elevation for the rest of the run and leaves those spots to --resume", async () => {
+    dir = mkdtempSync(join(tmpdir(), 'import-spots-test-'));
+    const out = join(dir, 'spots-world.json');
+    const slugs = Array.from({ length: 201 }, (_, i) => `Bare${i}`); // two chunks: 200 + 1
+    let elevationRequests = 0;
+    const fetchFn = async (url: string) => {
+      if (url.includes('/sitemaps/')) return new Response(sitemapFor(slugs), { status: 200 });
+      const slug = /\/breaks\/(Bare\d+)\//.exec(url)?.[1];
+      if (slug) return new Response(blobFor(slug, -30 + Number(slug.slice(4)) * 0.1, 30), { status: 200 });
+      if (url.includes('api.open-meteo.com/v1/elevation')) {
+        elevationRequests++;
+        return new Response('{"error":true,"reason":"Hourly API request limit exceeded. Please try again in the next hour."}', { status: 429 });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    };
+
+    const logs: string[] = [];
+    await main(['--letters', 'M', '--out', out], { fetchFn, log: (l) => logs.push(l), sleep: async () => {} });
+
+    const progress = JSON.parse(readFileSync(`${out}.progress.json`, 'utf8'));
+    expect(Object.values(progress.processed)).toEqual(Array(201).fill({ status: 'skipped', reason: 'elevation-error' }));
+    // Without the stop: 49 batches (48 for the first chunk's 4 800 ring points, 1 for the second), each retried once.
+    expect(elevationRequests).toBeLessThanOrEqual(8); // at most the 4 batches already in flight, and their retries
+    expect(logs.filter((l) => l.includes('Open-Meteo quota')).length).toBe(1);
   });
 
   describe('resilience (§report "Resilience, wiring and dedupe")', () => {

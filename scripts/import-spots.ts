@@ -1,6 +1,8 @@
 #!/usr/bin/env -S npx tsx
 // World-spot importer for the "Should I Work" bot — see .superpowers/sdd/world-import.md for the
-// full write-up (pipeline, defaults, region assignment, runtime shape, estimated cost).
+// full write-up (pipeline, defaults, region assignment, runtime shape, estimated cost). Since
+// 17/09/2026 the facing comes from each break page's wind table (scripts/lib/windFacing.ts), elevation
+// sampling being only the fallback: 24 elevation points per spot did not fit Open-Meteo's free quota.
 //
 // ---------------------------------------------------------------------------------------------
 // robots.txt, and why this script only ever fetches two kinds of URL
@@ -38,6 +40,7 @@ import { fetchBreakPages } from './lib/fetchBreaks';
 import { loadProgress, saveProgress, type ImportProgress, type ProcessedEntry } from './lib/progress';
 import { fetchSitemapSlugs } from './lib/sitemap';
 import { deriveShort, shortSlug } from './lib/shortName';
+import type { ElevationQuota } from './lib/elevation';
 import { computeFacingsForSpots } from './lib/spotFacing';
 import { toTuple } from './lib/tuple';
 import { createFetch } from './lib/userAgentFetch';
@@ -100,6 +103,11 @@ const HELP_TEXT = `Usage: tsx scripts/import-spots.ts [options]
 Imports every surf spot in surf-forecast.com's sitemap into src/data/spots-world.json (a compact
 tuple array — see .superpowers/sdd/world-import.md). Resumable: progress is saved after every
 chunk, so an interrupted run can continue with --resume instead of starting over.
+
+Each spot's facing is read from its own page's wind table — the orientation surf-forecast itself
+uses. Open-Meteo's elevation API is only a fallback when the wind does not tell; it counts every
+point against a free quota (5 000/hour, 10 000/day), and once it answers 429 the run stops asking:
+those spots stay elevation-error until a later --resume.
 
 Options:
   --limit N       Stop after considering N slugs total (from the combined, deduped sitemap list).
@@ -175,6 +183,8 @@ function writeOutput(out: string, progress: ImportProgress, curated: Spot[], log
   const syntheticRegionCount = kept.filter((s) => needsSyntheticRegion(s, REGIONS)).length;
 
   log(`[import-spots] wrote ${tuples.length} spot(s) to ${out}`);
+  const fromWind = spots.filter((s) => s.facingFrom === 'wind').length;
+  log(`[import-spots] facing read from surf-forecast's wind table for ${fromWind} spot(s), from elevation for ${spots.length - fromWind}`);
   log(`[import-spots] dropped ${droppedCount} spot(s) within ${DEDUPE_THRESHOLD_M} m of a curated spot (curated wins)`);
   log(`[import-spots] dropped ${worldDroppedCount} adjacent world spot(s) within ${WORLD_DEDUPE_THRESHOLD_M} m of another world spot (earliest by slug wins)`);
   log(
@@ -228,16 +238,30 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<void> {
   log(`[import-spots] ${targetSlugs.length} slug(s) targeted, ${targetSlugs.length - todo.length} already done, ${todo.length} to process`);
 
   const t0 = now();
+  // Open-Meteo compte chaque point d'altitude (5 000 par heure, 10 000 par jour) : un seul état pour
+  // toute l'exécution, pour qu'un quota épuisé arrête les demandes des blocs suivants aussi.
+  const elevationQuota: ElevationQuota = { exhausted: false };
   for (let i = 0; i < todo.length; i += CHUNK_SIZE) {
     const chunk = todo.slice(i, i + CHUNK_SIZE);
     try {
       const { results, skipped } = await fetchBreakPages(chunk, fetchFn, fetchOpts);
-      const facingOutcomes = await computeFacingsForSpots(results, fetchFn, fetchOpts);
+      // L'orientation lue dans le tableau de vent de la page d'abord ; l'altitude seulement quand le vent ne tranche pas.
+      for (const r of results) {
+        if (r.windFacing) progress.processed[r.slug] = { status: 'spot', name: r.name, lat: r.lat, lon: r.lon, facing: r.windFacing.facing, type: r.type, facingFrom: 'wind' };
+      }
+      const needElevation = results.filter((r) => !r.windFacing);
+      const quotaWasSpent = elevationQuota.exhausted;
+      const facingOutcomes = await computeFacingsForSpots(needElevation, fetchFn, { ...fetchOpts, quota: elevationQuota });
+      if (!quotaWasSpent && elevationQuota.exhausted) {
+        log('[import-spots] Open-Meteo quota reached: no more elevation requests this run — those spots are left as elevation-error, run again with --resume later');
+      }
 
-      results.forEach((r, idx) => {
+      needElevation.forEach((r, idx) => {
         const outcome = facingOutcomes[idx];
         progress.processed[r.slug] =
-          'skipped' in outcome ? { status: 'skipped', reason: outcome.skipped.reason } : { status: 'spot', name: r.name, lat: r.lat, lon: r.lon, facing: outcome.facing, type: r.type };
+          'skipped' in outcome
+            ? { status: 'skipped', reason: outcome.skipped.reason }
+            : { status: 'spot', name: r.name, lat: r.lat, lon: r.lon, facing: outcome.facing, type: r.type, facingFrom: 'elevation' };
       });
       for (const s of skipped) progress.processed[s.slug] = { status: 'skipped', reason: s.reason };
     } catch (err) {

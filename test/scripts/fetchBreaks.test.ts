@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { fetchBreakPages } from '../../scripts/lib/fetchBreaks';
+import { MUIZENBERG_WINDS, forecastTableHtml } from '../helpers/forecastPage';
 
 const blobFor = (name: string, lat: number, lon: number, type = 'Beach') =>
   `<script>var x = {"maps":[{"currentLocation":{"name":"${name}","filename":"${name}","lat":${lat},"lng":${lon},"type":"${type}"}}]};</script>`;
@@ -21,6 +22,22 @@ describe('fetchBreakPages', () => {
     expect(results.map((r) => r.slug).sort()).toEqual(slugs);
     expect(skipped).toEqual([]);
     expect(maxActive).toBeLessThanOrEqual(4);
+  });
+
+  it('reads the orientation surf-forecast gives each spot from the wind table of the same page — no extra request', async () => {
+    const pages: Record<string, string> = {
+      Muizenberg: blobFor('Muizenberg', -34.1026, 18.4737) + forecastTableHtml(MUIZENBERG_WINDS),
+      NoTable: blobFor('NoTable', -1, 1),
+    };
+    const requested: string[] = [];
+    const fetchFn = async (url: string) => {
+      requested.push(url);
+      return new Response(pages[url.split('/breaks/')[1].split('/')[0]], { status: 200 });
+    };
+    const { results } = await fetchBreakPages(['Muizenberg', 'NoTable'], fetchFn, { sleep: async () => {} });
+    expect(results.find((r) => r.slug === 'Muizenberg')?.windFacing).toEqual({ facing: 124, widthDeg: 21, explained: 18, usable: 19 });
+    expect(results.find((r) => r.slug === 'NoTable')?.windFacing).toBeNull();
+    expect(requested).toHaveLength(2);
   });
 
   it('skips a 404 (stale sitemap entry) without crashing the run', async () => {

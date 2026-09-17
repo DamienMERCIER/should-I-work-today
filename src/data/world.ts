@@ -32,7 +32,7 @@ const WORLD_REGION_MAX_KM = 500;
 const WORLD_OFFSHORE_KM = 30;
 
 const WORLD_NOTES =
-  'World import: facing is derived from elevation sampling around the spot; exposure, tide, levels and region are coarse, undocumented defaults, not verified.';
+  "World import: facing is read from surf-forecast's own wind-state table for the spot (elevation sampling around the spot only when the wind does not tell); exposure, tide, levels and region are coarse, undocumented defaults, not verified.";
 
 const stripDiacritics = (s: string): string => s.normalize('NFKD').replace(/[̀-ͯ]/g, '');
 

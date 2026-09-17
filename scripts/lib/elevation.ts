@@ -25,8 +25,15 @@ interface ElevationResponse {
   elevation?: number[];
 }
 
+/** Partagé par tous les appels d'une exécution : Open-Meteo compte chaque point, 5 000 par heure et 10 000 par jour. */
+export interface ElevationQuota {
+  exhausted: boolean;
+}
+
 export interface FetchElevationsOptions extends RetryOptions {
   concurrency?: number;
+  /** passé à `true` au premier 429 : plus aucune demande tant qu'il est partagé (§fetchElevations) */
+  quota?: ElevationQuota;
 }
 
 /**
@@ -40,12 +47,19 @@ export interface FetchElevationsOptions extends RetryOptions {
  * *that* batch rather than throwing (§report "Resilience, wiring and dedupe"): one bad batch out of
  * ~1928 for a full run must not discard every other spot's elevation. `computeFacingsForSpots` turns a
  * `null` into a distinct `elevation-error` skip, never silently treating it as sea level.
+ *
+ * A 429 means the free quota is spent for the hour or the day: every batch after it, in this call and
+ * in any later call sharing `opts.quota`, yields `null` without a request instead of hammering the API
+ * with requests it will refuse (the full import once sent ~180 000 points into a spent quota).
  */
 export async function fetchElevations(points: LatLon[], fetchFn: FetchLike, opts: FetchElevationsOptions = {}): Promise<(number | null)[]> {
   const chunks = chunk(points, MAX_POINTS_PER_REQUEST);
+  const quota = opts.quota ?? { exhausted: false };
   const perChunk = await mapWithConcurrency(chunks, opts.concurrency ?? DEFAULT_CONCURRENCY, async (batch): Promise<(number | null)[]> => {
+    if (quota.exhausted) return batch.map(() => null);
     try {
       const res = await fetchWithRetry(elevationUrl(batch), fetchFn, opts);
+      if (res.status === 429) quota.exhausted = true;
       if (!res.ok) return batch.map(() => null);
       const json = (await res.json()) as ElevationResponse;
       if (!Array.isArray(json.elevation) || json.elevation.length !== batch.length) return batch.map(() => null);

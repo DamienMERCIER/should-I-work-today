@@ -1,7 +1,9 @@
 import { sleep as defaultSleep, type FetchLike } from '../../src/adapters/http';
 import { breakUrl, parseBreakPage, type ParsedBreak } from './breakPage';
 import { mapWithConcurrency } from './concurrency';
+import { parseForecastTable } from './forecastTable';
 import { fetchWithRetry, type RetryOptions } from './httpRetry';
+import { facingFromWind, type WindFacing } from './windFacing';
 
 const DEFAULT_CONCURRENCY = 4;
 /** "A short delay between requests" (task spec) — also reused as the retry backoff (§httpRetry) when
@@ -15,6 +17,8 @@ export interface FetchBreaksOptions extends RetryOptions {
 
 export interface BreakResult extends ParsedBreak {
   slug: string;
+  /** l'orientation que le site donne au spot, lue dans le tableau de vent de la même page ; `null` si le vent ne tranche pas */
+  windFacing: WindFacing | null;
 }
 
 export interface SkippedBreak {
@@ -45,9 +49,10 @@ export async function fetchBreakPages(slugs: string[], fetchFn: FetchLike, opts:
       const res = await fetchWithRetry(breakUrl(slug), fetchFn, { ...opts, delayMs, sleep });
       if (res.status === 404) return { skipped: { slug, reason: '404' } };
       if (!res.ok) return { skipped: { slug, reason: `http-${res.status}` } };
-      const parsed = parseBreakPage(await res.text());
+      const html = await res.text();
+      const parsed = parseBreakPage(html);
       if (!parsed) return { skipped: { slug, reason: 'no-coordinate-blob' } };
-      return { result: { slug, ...parsed } };
+      return { result: { slug, ...parsed, windFacing: facingFromWind(parseForecastTable(html)) } };
     } catch {
       // fetchWithRetry throws only when fetchFn itself rejects on every attempt (a real network
       // failure — timeout, DNS, connection reset — surviving the built-in retry), never for an HTTP
