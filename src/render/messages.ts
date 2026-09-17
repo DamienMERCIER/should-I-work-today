@@ -597,7 +597,7 @@ export const ALL_SPOTS_CAP = 30;
 /**
  * `openSpotOrder`, capped for `/all`: the primary spot, then at most `ALL_SPOTS_CAP` more. Both
  * `renderDayView({ all: true })`'s row block and the router's trailing command line
- * (`allSpotsCommandLine`, `src/bot/router.ts`) must derive their spot list from *this*, never from
+ * (`spotsCommandLine`, `src/bot/router.ts`, through `dayViewSpotOrder`) must derive their spot list from *this*, never from
  * `openSpotOrder` directly, so the two can never disagree on which spots are shown ("one single
  * definition, not two that derive" — the same rule `openSpotOrder` itself already follows for the
  * un-capped case).
@@ -608,20 +608,34 @@ export function allSpotOrder(report: Report): string[] {
   return primaryId !== undefined ? [primaryId, ...capped] : capped;
 }
 
+/**
+ * Les spots d'une vue 📋 — ou de `/all` avec `all` —, dans l'ordre de leurs lignes : le spot du verdict, puis les
+ * rangées (au moins une étoile dans la journée ; pour `/all`, toutes jusqu'à `ALL_SPOTS_CAP`). Les rangées de
+ * `renderDayView` et la ligne de commandes que le routeur ajoute en dessous en dérivent toutes les deux : une seule
+ * définition, jamais deux listes qui divergent.
+ */
+export function dayViewSpotOrder(report: Report, opts: { all?: boolean } = {}): string[] {
+  if (opts.all) return allSpotOrder(report);
+  const [primaryId, ...others] = openSpotOrder(report);
+  const maxScore = new Map(report.spots.map((r) => [r.spotId, r.maxScore]));
+  const shown = others.filter((id) => (maxScore.get(id) ?? 0) >= DAY_VIEW_MIN_STARS);
+  return primaryId !== undefined ? [primaryId, ...shown] : shown;
+}
+
 export function renderDayView(report: Report, ctx: RenderCtx, opts: { all?: boolean } = {}): string {
   const s = STRINGS[ctx.lang];
-  const primaryId = openSpotOrder(report)[0];
+  const [primaryId, ...shownIds] = dayViewSpotOrder(report, opts);
 
   const blocks: string[] = [];
   if (primaryId) blocks.push(renderSpotDay(report, primaryId, ctx));
 
-  const others = report.spots.filter((r) => r.spotId !== primaryId).sort(compareSpotDays);
-  const shown = opts.all ? others.slice(0, ALL_SPOTS_CAP) : others.filter((r) => r.maxScore >= DAY_VIEW_MIN_STARS);
+  const byId = new Map(report.spots.map((r) => [r.spotId, r]));
+  const shown = shownIds.map((id) => byId.get(id)).filter((r): r is SpotResult => r !== undefined);
   const hours = chartHours(report);
   if (shown.length > 0) blocks.push(shown.map((r) => `<code>${spotRow(r, hours, report.date, ctx, s)}</code>`).join('\n'));
 
   const tail: string[] = [];
-  const hidden = others.length - shown.length;
+  const hidden = report.spots.filter((r) => r.spotId !== primaryId).length - shown.length;
   if (hidden > 0) tail.push(fill(opts.all ? s.dayView.moreSpots : s.dayView.flatSpots, { n: hidden }));
   if (report.tides.length > 0) {
     tail.push(fill(s.details.tides, { list: report.tides.map((e) => fill(s.tideNext[e.kind], { time: fmtTime(e.time) })).join(' · ') }));

@@ -11,7 +11,7 @@ import { notifyAdmin } from '../jobs/runs';
 import { detectLang, fill, STRINGS, type Strings } from '../render/i18n';
 import {
   detailsMarkupFor, expandCompactDate, fmtDate, goButtonsMarkup, notGoingData, renderDetails, renderEvening, renderSpotDay, renderWeek, spotById, spotMarkupFor, spotName,
-  type RenderCtx, allSpotOrder,
+  type RenderCtx, dayViewSpotOrder,
 } from '../render/messages';
 import type { Lang, Profile, Region, Report, Spot } from '../types';
 import { langKeyboard, persistentKeyboard, profileKeyboard } from './keyboards';
@@ -106,17 +106,18 @@ async function todayReport(chatId: number, profile: Profile, deps: BotDeps): Pro
 }
 
 /**
- * Telegram does not linkify a command inside a `<pre>` block, so `/all`'s per-spot sparkline rows
- * are not tappable there — this plain-text line after the block repeats them as `/slug` commands, in
- * the same order, so they are. Uses `allSpotOrder` (capped), not `openSpotOrder`, so this line can
- * never list more spots than the rows shown above it — see `ALL_SPOTS_CAP`.
+ * Telegram does not linkify a command inside a `<code>` span, so the per-spot sparkline rows of 📋 and `/all` are not
+ * tappable — this plain-text line after them repeats the spots shown as `/slug` commands, in the same order, and says
+ * what tapping one gives. `ids` comes from `dayViewSpotOrder`, the same list as the rows (capped for `/all`, see
+ * `ALL_SPOTS_CAP`), so the line never lists a spot the view does not show.
  */
-function allSpotsCommandLine(report: Report, ctx: RenderCtx): string {
-  return allSpotOrder(report)
+function spotsCommandLine(ids: string[], ctx: RenderCtx, s: Strings): string {
+  const list = ids
     .map((id) => spotById(id, ctx))
     .filter((spot): spot is Spot => spot !== undefined)
     .map((spot) => `/${spotSlug(spot)}`)
     .join(' · ');
+  return list ? fill(s.spotCommand.detailsHint, { list }) : '';
 }
 
 /**
@@ -234,7 +235,7 @@ export async function handleUpdate(update: TgUpdate, deps: BotDeps): Promise<voi
     const report = await todayReport(chatId, profile, deps);
     const ctx = renderCtx(profile.lang, deps);
     const body = renderDetails(report, ctx, { all: true });
-    const commandLine = allSpotsCommandLine(report, ctx);
+    const commandLine = spotsCommandLine(dayViewSpotOrder(report, { all: true }), ctx, s);
     await telegram.sendMessage(chatId, commandLine ? `${body}\n\n${commandLine}` : body, goButtonsMarkup(report, ctx));
     return;
   }
@@ -417,5 +418,8 @@ async function handleDetails(chatId: number, date: string, profile: Profile, dep
     await deps.telegram.sendMessage(chatId, s.details.tooOld);
     return;
   }
-  await deps.telegram.sendMessage(chatId, renderDetails(report, renderCtx(profile.lang, deps)));
+  const ctx = renderCtx(profile.lang, deps);
+  const body = renderDetails(report, ctx);
+  const commandLine = spotsCommandLine(dayViewSpotOrder(report), ctx, s);
+  await deps.telegram.sendMessage(chatId, commandLine ? `${body}\n\n${commandLine}` : body);
 }

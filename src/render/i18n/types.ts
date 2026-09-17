@@ -95,8 +95,11 @@ export interface Strings {
   coverage: { none: string; raw: string; nearest: string; nearestItem: string; farFromCoast: string };
   noData: string;
   error: string;
-  /** `/all` and `/<spot>` router commands (`src/bot/spotMatch.ts`). ambiguous: {list} · outOfRadius: {spot} {km} {radius} */
-  spotCommand: { ambiguous: string; outOfRadius: string };
+  /**
+   * `/all` and `/<spot>` router commands (`src/bot/spotMatch.ts`). ambiguous: {list} · outOfRadius: {spot} {km} {radius} ·
+   * detailsHint: {list} — the last line of 📋 and `/all`, the spots shown as commands to tap
+   */
+  spotCommand: { ambiguous: string; outOfRadius: string; detailsHint: string };
   /** `/about` : one sentence + licence + spot count. text: {count} */
   about: { text: string };
 }

@@ -419,11 +419,28 @@ describe('📋 details callback', () => {
     await store.putReports('2026-09-16', { '1': goldenReport() });
     await handleUpdate(cb('rep:2026-09-16'), deps);
     expect(sent()[0].text.startsWith('📋 <b>Your day</b> (Wed 16 Sept)')).toBe(true);
+    // les spots dont la vue montre une rangée, en commandes à taper
+    expect(sent()[0].text.split('\n').pop()).toBe('🔎 Tap a spot for its details: /long_beach · /muizenberg');
     await handleUpdate(cb('rep:2026-09-17'), deps);
     expect(sent()[1].text.startsWith('📋 <b>Your day</b> (Thu 17 Sept)')).toBe(true);
     await handleUpdate(cb('rep:2020-01-01'), deps);
     expect(sent()[2].text).toBe('Too old — run /now.');
     expect(answered()).toBe(3);
+  });
+});
+
+describe('📋 and /all end with the spot commands', () => {
+  it('lists only the spots the 📋 view shows — a spot at 0★ all day is counted, not listed — and says it in Russian too', async () => {
+    const { deps, store, sent } = setup();
+    await store.putProfiles({ '1': ready(), '2': ready({ chatId: 2, lang: 'ru' }) });
+    const flat: SpotResult = { spotId: 'muizenberg', distanceKm: 0, hours: [], windows: [], best: undefined, maxScore: 0 };
+    const report = goldenReport({ spots: [goldenReport().spots[0], flat] });
+    await store.putReports('2026-09-16', { '1': report, '2': { ...report, chatId: 2 } });
+    await handleUpdate(cb('rep:2026-09-16'), deps);
+    expect(sent()[0].text).toContain('1 spots at 0★ all day');
+    expect(sent()[0].text.split('\n').pop()).toBe('🔎 Tap a spot for its details: /long_beach');
+    await handleUpdate(msg('/all', {}, 2), deps);
+    expect(sent()[1].text.trim().split('\n').pop()).toBe('🔎 Нажми на спот, чтобы увидеть детали: /long_beach · /muizenberg');
   });
 });
 
@@ -564,7 +581,7 @@ describe('/all, /<spot> and /about', () => {
     const text = sent()[0].text;
     expect(text.startsWith('📋 <b>All spots</b> (Wed 16 Sept)')).toBe(true);
     expect(text).toContain('🏄 Kommetjie – Long Beach');
-    expect(text.trim().endsWith('/long_beach · /muizenberg')).toBe(true);
+    expect(text.trim().split('\n').pop()).toBe('🔎 Tap a spot for its details: /long_beach · /muizenberg');
     // go buttons (ordered by peak), no 📋 row — /all already lists everything, so opening the same panel again would be redundant.
     expect(sent()[0].reply_markup).toEqual({
       inline_keyboard: [
@@ -605,7 +622,8 @@ describe('/all, /<spot> and /about', () => {
     expect(text).toContain('+49 more spots not shown'); // 80 - 1 primary - 30 shown
 
     const commandLine = text.trim().split('\n').pop()!;
-    const commands = commandLine.split(' · ');
+    expect(commandLine.startsWith('🔎 Tap a spot for its details: ')).toBe(true);
+    const commands = commandLine.replace('🔎 Tap a spot for its details: ', '').split(' · ');
     expect(commands).toHaveLength(1 + ALL_SPOTS_CAP); // primary + capped others, never all 80
     expect(commands[0]).toBe('/w0'); // primary: highest score
     expect(commands[commands.length - 1]).toBe(`/w${ALL_SPOTS_CAP}`); // the ALL_SPOTS_CAP-th other — same set as the rows above

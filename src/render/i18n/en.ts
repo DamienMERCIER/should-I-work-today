@@ -137,6 +137,7 @@ export const en: Strings = {
   spotCommand: {
     ambiguous: 'Multiple matches: {list} — be more specific.',
     outOfRadius: '{spot} is a known spot, but it is {km} km away — outside your {radius} km radius.',
+    detailsHint: '🔎 Tap a spot for its details: {list}',
   },
   about: {
     text: 'Should I Work checks {count} known surf spots every evening and tells you whether to work tomorrow or go surf.\nData: Open-Meteo.com (CC-BY 4.0)',
