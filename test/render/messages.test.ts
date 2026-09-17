@@ -375,6 +375,17 @@ describe('water temperature and wetsuit', () => {
     expect(renderEvening(withWater(goldenReport(), 'kommetjie-long-beach', 13), RU).split('\n')).toContain('   🌊 вода 13° · гидрик 5/4 + боты');
   });
 
+  it('🔴 says the water at the best spot the message names — tonight as in /now', () => {
+    const red = withWater(goldenReport({ verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } }), 'kommetjie-long-beach', 13);
+    for (const report of [red, { ...red, mode: 'now' as const }]) {
+      const lines = renderEvening(report, EN).split('\n');
+      expect(lines.at(-2)?.startsWith(`Best: ${KOM} `)).toBe(true);
+      expect(lines.at(-1)).toBe('🌊 water 13° · 5/4 wetsuit + booties');
+    }
+    // sans meilleur spot nommé, pas d'eau à donner
+    expect(renderEvening({ ...red, verdict: { kind: 'red' } }, EN)).not.toContain('🌊');
+  });
+
   it('says nothing about the water when the sea gave no temperature', () => {
     expect(renderEvening(goldenReport(), EN)).not.toContain('🌊');
     expect(renderSpotDay(goldenReport(), 'kommetjie-long-beach', EN)).not.toContain('🌊');

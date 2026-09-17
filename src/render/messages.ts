@@ -258,9 +258,12 @@ export function renderEvening(report: Report, ctx: RenderCtx): string {
       // juste en dessous se contredirait a l'ecran.
       const tooShort = (best?.maxScore ?? 0) >= SCORING.good;
       const top = best && [...best.hours].sort((a, b) => b.score - a.score)[0];
+      // l'eau du meilleur spot aussi : on peut vouloir y aller quand même, et /now doit la dire quel que soit le verdict
+      const water = waterLine(best, s);
       push(
         fill(tooShort ? s.verdict.redTooShort : s.verdict.redBody, { radius: report.radiusKm, good: SCORING.good }),
         ...(best ? [fill(s.verdict.redBest, { spot: spotName(best.spotId, ctx, s), stars: starsText(best.maxScore, top?.clean ?? true), reason: lowestFactorReason(best, s) })] : []),
+        ...(water ? [water] : []),
       );
       break;
     }
