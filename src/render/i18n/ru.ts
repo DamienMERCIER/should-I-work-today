@@ -56,6 +56,11 @@ export const ru: Strings = {
   reasons: { size: 'волна {m} м', dark: 'темно', storm: 'гроза' },
   spotLine: { conditions: '{m} м · {dir} {s} с · {wind} · {tide}', sun: '☀️ {temp}° · восход {sunrise}' },
   rain: 'дождь {mm} мм',
+  water: '🌊 вода {temp}° · {suit}',
+  suits: {
+    lycra: 'лайкра', shorty: 'шорти', full32: 'гидрик 3/2', full43: 'гидрик 4/3',
+    full54: 'гидрик 5/4 + боты', full54Cold: 'гидрик 5/4 + боты, перчатки, капюшон',
+  },
   morning: {
     confirmed: '✅ Подтверждаю: {verdict}',
     changed: '⚠️ Изменение: {from} → {to}',

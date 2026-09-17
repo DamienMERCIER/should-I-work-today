@@ -334,6 +334,33 @@ describe('swell at the spot cell (§ RAPPORT-surf-forecast.md 1.2)', () => {
     expect(out).toHaveLength(atSpot.length);
   });
 
+  it('spotSwellSeries reads the sea temperature at the spot cell, and from the region hour by hour where the cell has none', () => {
+    const regional = series(3.5).map((h) => ({ ...h, seaTempC: 15 }));
+    const flat = (h: SwellHour): SwellHour => ({ ...h, primary: { ...h.primary, heightM: 0 } });
+    const atSpot = series(1.2).map((h) => {
+      if (h.time === `${GOLDEN_DATE}T07:00`) return { ...h, seaTempC: 13 }; // houle et eau à la cellule
+      if (h.time === `${GOLDEN_DATE}T08:00`) return { ...flat(h), seaTempC: 12 }; // l'eau à la cellule, la houle de la région
+      if (h.time === `${GOLDEN_DATE}T09:00`) return flat(h); // ni l'une ni l'autre
+      return h; // la houle, pas l'eau
+    });
+    const out = spotSwellSeries(atSpot, regional, 0.6);
+    const tempAt = (hour: string) => out.find((h) => h.time === `${GOLDEN_DATE}T${hour}`)!.seaTempC;
+    expect(['07:00', '08:00', '09:00', '10:00'].map(tempAt)).toEqual([13, 12, 15, 15]);
+    expect(out.find((h) => h.time === `${GOLDEN_DATE}T08:00`)!.primary.heightM).toBeCloseTo(2.1, 6);
+    expect(spotSwellSeries(undefined, regional, 0.6)[0].seaTempC).toBe(15);
+  });
+
+  it('gives each spot its water temperature from the same marine call, at its own cell or else the region', async () => {
+    const warm = (t: number): SwellHour[] => series(3.5).map((h) => ({ ...h, seaTempC: t }));
+    // point 1 = Muizenberg, 13,4 °C à sa cellule ; point 2 = Kommetjie, cellule sans température → la région, 16 °C
+    const { fn, calls } = perPointServer(warm(16), (i) => marineJson(i === 0 ? warm(13.4) : series(3.5)));
+    const r = await buildReport({ profile: profile(), date: GOLDEN_DATE, mode: 'evening' }, deps(fn));
+    const water = (id: string) => r.spots.find((s) => s.spotId === id)!.waterTempC;
+    expect(water('muizenberg')).toBe(13);
+    expect(water('kommetjie-long-beach')).toBe(16);
+    expect(calls).toHaveLength(3);
+  });
+
   it('spotSwellSeries counts a secondary swell alone as data', () => {
     const atSpot = series(0).map((h) => ({ ...h, secondary: { heightM: 0.8, periodS: 9, directionDeg: 230 } }));
     expect(spotSwellSeries(atSpot, series(3.5), 0.6)[0].secondary.heightM).toBe(0.8);

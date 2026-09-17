@@ -329,6 +329,53 @@ describe('renderEvening — other verdicts', () => {
   });
 });
 
+describe('water temperature and wetsuit', () => {
+  const withWater = (report: Report, spotId: string, waterTempC: number): Report => ({
+    ...report, spots: report.spots.map((x) => (x.spotId === spotId ? { ...x, waterTempC } : x)),
+  });
+
+  it('🟢 says the water and the wetsuit under the sun line of the spot to go to', () => {
+    const lines = renderEvening(withWater(goldenReport(), 'kommetjie-long-beach', 13), EN).split('\n');
+    expect(lines[lines.indexOf('   ☀️ 22° · sunrise 6:44') + 1]).toBe('   🌊 water 13° · 5/4 wetsuit + booties');
+    expect(renderEvening(withWater(goldenReport(), 'kommetjie-long-beach', 13), RU).split('\n')).toContain('   🌊 вода 13° · гидрик 5/4 + боты');
+  });
+
+  it('says nothing about the water when the sea gave no temperature', () => {
+    expect(renderEvening(goldenReport(), EN)).not.toContain('🌊');
+    expect(renderSpotDay(goldenReport(), 'kommetjie-long-beach', EN)).not.toContain('🌊');
+  });
+
+  it('🌅 a dawn+dusk 🟡 on one spot says the water once, and once per spot on two spots', () => {
+    const W7 = W('07:00', '09:00', 6);
+    const W17 = W('17:00', '18:00', 4);
+    const report = withWater(withWater(goldenReport(), 'kommetjie-long-beach', 12), 'muizenberg', 14);
+    const oneSpot = renderEvening({ ...report, verdict: { kind: 'yellow', dawn: { spotId: 'kommetjie-long-beach', window: W7 }, dusk: { spotId: 'kommetjie-long-beach', window: W17 } } }, EN);
+    expect(oneSpot.split('\n').filter((l) => l.includes('🌊'))).toEqual(['   🌊 water 12° · 5/4 wetsuit + booties']);
+    const twoSpots = renderEvening({ ...report, verdict: { kind: 'yellow', dawn: { spotId: 'muizenberg', window: W7 }, dusk: { spotId: 'kommetjie-long-beach', window: W17 } } }, EN);
+    expect(twoSpots.split('\n').filter((l) => l.includes('🌊'))).toEqual(['   🌊 water 14° · 4/3 wetsuit', '   🌊 water 12° · 5/4 wetsuit + booties']);
+  });
+
+  it('/<spot>, /all and 📋 say it in the spot block', () => {
+    const report = withWater(goldenReport(), 'kommetjie-long-beach', 17);
+    expect(renderSpotDay(report, 'kommetjie-long-beach', EN).split('\n')).toContain('🌊 water 17° · 3/2 wetsuit');
+    expect(renderDetails(report, EN, { all: true }).split('\n')).toContain('🌊 water 17° · 3/2 wetsuit');
+  });
+
+  it('the morning message says it too, confirmed or changed', () => {
+    const evening = goldenReport();
+    const confirmed = withWater(goldenReport({ mode: 'morning' }), 'kommetjie-long-beach', 9);
+    expect(renderMorning(confirmed, { send: true, changed: false }, evening, EN)).toBe(
+      [`✅ Confirmed: 🟢 ${KOM} 7:00–12:00`, '🌊 water 9° · 5/4 wetsuit + booties, gloves, hood'].join('\n'),
+    );
+    const changed = withWater(goldenReport({ mode: 'morning', verdict: { kind: 'green', spotId: 'kommetjie-long-beach', window: W('07:00', '10:00', 6), epic: false } }), 'kommetjie-long-beach', 21);
+    expect(renderMorning(changed, { send: true, changed: true, cause: 'wind' }, evening, EN)).toBe(
+      [`⚠️ Change: 🟢 ${KOM} 7:00–12:00 → 🟢 ${KOM} 7:00–10:00`, '3.5 m · SW 13 s · offshore SE 8 kt · incoming tide, high 9:00', '🌊 water 21° · shorty', 'cause: wind'].join('\n'),
+    );
+    const red = withWater(goldenReport({ mode: 'morning', verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } }), 'kommetjie-long-beach', 13);
+    expect(renderMorning(red, { send: true, changed: true }, evening, EN)).not.toContain('🌊');
+  });
+});
+
 describe('renderMorning', () => {
   const evening = goldenReport();
   it('confirmed', () => {
@@ -741,6 +788,11 @@ describe('renderWeek — the week ahead, best day first', () => {
         'From Sun 20 on, a trend only: check again closer to the day.',
       ].join('\n\n'),
     );
+  });
+
+  it('never says the water: a week is for picking a day, not a wetsuit', () => {
+    const warm = WEEK.map((r) => ({ ...r, spots: r.spots.map((x) => ({ ...x, waterTempC: 14 })) }));
+    expect(renderWeek(warm, EN, { today: '2026-09-16' })).not.toContain('🌊');
   });
 
   it('RU: the same week in Russian', () => {

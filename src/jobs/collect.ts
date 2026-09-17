@@ -68,6 +68,9 @@ export function mergePeakPeriod(swell: SwellHour[], peak: PeakPeriodHour[]): Swe
  * une valeur absente. Heure par heure et non série entière, pour qu'une cellule qui se tait au milieu
  * de l'échéance ne transforme pas le lendemain en « 0★ (swell 0.0 m) ». Le 16/09/2026 les 35 spots
  * curatés avaient tous une série complète ; le repli vise surtout les spots du monde importés.
+ *
+ * La température de l'eau suit sa propre règle : celle de la cellule quand elle existe, même quand la houle
+ * vient de la région — elle sort d'un autre modèle, sur une autre grille —, sinon celle de la région.
  */
 export function spotSwellSeries(atSpot: SwellHour[] | undefined, regional: SwellHour[], exposure: number): SwellHour[] {
   const scaled = (h: SwellHour): SwellHour => ({
@@ -78,9 +81,12 @@ export function spotSwellSeries(atSpot: SwellHour[] | undefined, regional: Swell
   if (!atSpot) return regional.map(scaled);
   const regionalByTime = new Map(regional.map((h) => [h.time, h]));
   return atSpot.map((h) => {
-    if (h.primary.heightM > 0 || h.secondary.heightM > 0) return h;
+    const hasSwell = h.primary.heightM > 0 || h.secondary.heightM > 0;
+    if (hasSwell && h.seaTempC !== undefined) return h;
     const r = regionalByTime.get(h.time);
-    return r ? scaled(r) : h;
+    const hour = hasSwell || !r ? h : scaled(r);
+    const seaTempC = h.seaTempC ?? r?.seaTempC;
+    return hour.seaTempC === seaTempC ? hour : { ...hour, seaTempC };
   });
 }
 

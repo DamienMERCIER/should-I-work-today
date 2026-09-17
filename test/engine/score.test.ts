@@ -21,6 +21,34 @@ const wind = windSeries('2026-09-16T00:00', '2026-09-16T23:00', (time) => ({
 const tide = computeTide(swell, DATE);
 const base = { date: DATE, swell, wind, sun: SUN_SEPT, tide, distanceKm: 13.4 };
 
+describe('evaluateSpot — water temperature', () => {
+  // nuit à 10 °C ; de jour (7:00 → 17:00, 11 h) 13 °C le matin puis 14 °C : moyenne de jour 149/11 = 13,5 → 14,
+  // moyenne sur 24 h 279/24 = 11,6 → 12
+  const warmth = (time: string): number => {
+    const hour = Number(time.slice(11, 13));
+    return hour < 7 || hour > 17 ? 10 : hour < 12 ? 13 : 14;
+  };
+  const withWater = (tempAt: (time: string) => number | undefined) =>
+    swell.map((h) => {
+      const seaTempC = tempAt(h.time);
+      return seaTempC === undefined ? h : { ...h, seaTempC };
+    });
+
+  it('is the mean over the daylight hours, rounded to the degree', () => {
+    expect(evaluateSpot({ ...base, spot: MUIZENBERG, swell: withWater(warmth) }).waterTempC).toBe(14);
+  });
+
+  it('falls back to the hours left when none of them has daylight', () => {
+    expect(evaluateSpot({ ...base, spot: MUIZENBERG, swell: withWater(warmth), fromTime: `${DATE}T19:00` }).waterTempC).toBe(10);
+  });
+
+  it('skips the hours without a value, and is left out when the sea gives none', () => {
+    const mornings = (time: string) => (Number(time.slice(11, 13)) < 12 ? warmth(time) : undefined);
+    expect(evaluateSpot({ ...base, spot: MUIZENBERG, swell: withWater(mornings) }).waterTempC).toBe(13);
+    expect('waterTempC' in evaluateSpot({ ...base, spot: MUIZENBERG })).toBe(false);
+  });
+});
+
 describe('evaluateSpot — golden scenario (3.5 m SW, SE wind building from 8 to 30 kt)', () => {
   it('Kommetjie Long Beach: SE is offshore, 6 gold stars until the wind builds, window 07:00→12:00', () => {
     const r = evaluateSpot({ ...base, spot: KOMMETJIE_LONG_BEACH });

@@ -13,10 +13,12 @@ export class OpenMeteoError extends Error {
 const MARINE_BASE = 'https://marine-api.open-meteo.com/v1/marine';
 const FORECAST_BASE = 'https://api.open-meteo.com/v1/forecast';
 const TIMEZONE = 'Africa/Johannesburg';
+// `sea_surface_temperature` : la température de l'eau, pour la combinaison. Le 17/09/2026, l'ajouter ne changeait
+// aucune autre colonne sur six points du Cap (houle, marée identiques à la valeur près).
 const MARINE_HOURLY = [
   'swell_wave_height', 'swell_wave_period', 'swell_wave_direction',
   'secondary_swell_wave_height', 'secondary_swell_wave_period', 'secondary_swell_wave_direction',
-  'sea_level_height_msl',
+  'sea_level_height_msl', 'sea_surface_temperature',
 ];
 const FORECAST_HOURLY = ['wind_speed_10m', 'wind_direction_10m', 'wind_gusts_10m', 'temperature_2m', 'precipitation', 'weather_code'];
 const FORECAST_DAILY = ['sunrise', 'sunset', 'temperature_2m_max', 'temperature_2m_min', 'precipitation_sum'];
@@ -120,6 +122,9 @@ function assertColumns(block: Record<string, unknown> | undefined, keys: readonl
   }
 }
 
+const SEA_TEMP_MIN_C = -5;
+const SEA_TEMP_MAX_C = 45;
+
 const MARINE_REQUIRED_HOURLY = [
   'swell_wave_height', 'swell_wave_period', 'swell_wave_direction',
   'secondary_swell_wave_height', 'secondary_swell_wave_period', 'secondary_swell_wave_direction',
@@ -135,12 +140,21 @@ export function parseMarine(json: unknown): SwellHour[][] {
     const h = (loc as MarineJson)?.hourly;
     if (!h || !Array.isArray(h.time)) throw new OpenMeteoError('Malformed marine response');
     assertColumns(h, MARINE_REQUIRED_HOURLY, h.time.length, 'marine');
-    return h.time.map((time, i) => ({
-      time,
-      primary: { heightM: num(column(h, 'swell_wave_height', i)), periodS: num(column(h, 'swell_wave_period', i)), directionDeg: num(column(h, 'swell_wave_direction', i)) },
-      secondary: { heightM: num(column(h, 'secondary_swell_wave_height', i)), periodS: num(column(h, 'secondary_swell_wave_period', i)), directionDeg: num(column(h, 'secondary_swell_wave_direction', i)) },
-      seaLevelM: num(column(h, 'sea_level_height_msl', i)),
-    }));
+    // La température de l'eau n'est que de l'affichage : jamais exigée, et une colonne qui ne s'aligne pas sur
+    // `time` est ignorée en entier plutôt que lue au mauvais index. Une heure sans valeur, ou avec une valeur
+    // qu'aucune mer n'a (hors de -5..45 °C, NaN et l'infini compris), la laisse absente, jamais à 0.
+    const seaTemps = Array.isArray(h.sea_surface_temperature) && h.sea_surface_temperature.length === h.time.length;
+    return h.time.map((time, i) => {
+      const hour: SwellHour = {
+        time,
+        primary: { heightM: num(column(h, 'swell_wave_height', i)), periodS: num(column(h, 'swell_wave_period', i)), directionDeg: num(column(h, 'swell_wave_direction', i)) },
+        secondary: { heightM: num(column(h, 'secondary_swell_wave_height', i)), periodS: num(column(h, 'secondary_swell_wave_period', i)), directionDeg: num(column(h, 'secondary_swell_wave_direction', i)) },
+        seaLevelM: num(column(h, 'sea_level_height_msl', i)),
+      };
+      const seaTempC = seaTemps ? column(h, 'sea_surface_temperature', i) : undefined;
+      if (typeof seaTempC === 'number' && seaTempC > SEA_TEMP_MIN_C && seaTempC < SEA_TEMP_MAX_C) hour.seaTempC = seaTempC;
+      return hour;
+    });
   });
 }
 

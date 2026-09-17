@@ -14,6 +14,7 @@ export function marineJson(series: SwellHour[]) {
       wind_wave_height: series.map(() => 0.5),
       wave_height: series.map((h) => h.primary.heightM),
       sea_level_height_msl: series.map((h) => h.seaLevelM),
+      sea_surface_temperature: series.map((h) => h.seaTempC ?? null),
     },
   };
 }

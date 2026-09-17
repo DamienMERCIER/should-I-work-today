@@ -48,6 +48,9 @@ describe('urls', () => {
     expect(u).toContain('forecast_days=3');
     expect(u).not.toContain('wind_wave_height');
   });
+  it('marineUrl asks the sea surface temperature in the same call — no request added', () => {
+    expect(marineUrl([REF, MUIZ])).toContain('sea_surface_temperature');
+  });
   it('forecastUrl asks knots, the nearest cell and daily sun', () => {
     const u = forecastUrl([MUIZ], 2);
     expect(u.startsWith('https://api.open-meteo.com/v1/forecast?')).toBe(true);
@@ -87,6 +90,21 @@ describe('parseMarine', () => {
   });
   it('maps a multi-location array', () => {
     expect(parseMarine([marineLoc, marineLoc])).toHaveLength(2);
+  });
+  it('reads the sea temperature, leaving it unset — never 0 — for a null hour or a missing column', () => {
+    const [series] = parseMarine({ ...marineLoc, hourly: { ...marineLoc.hourly, sea_surface_temperature: [13.4, null, 13.6] } });
+    expect(series.map((h) => h.seaTempC)).toEqual([13.4, undefined, 13.6]);
+    expect('seaTempC' in series[1]).toBe(false);
+    expect(parseMarine(marineLoc)[0].some((h) => 'seaTempC' in h)).toBe(false);
+  });
+  it('ignores a sea temperature no sea can have, like a corrupted 1e308', () => {
+    const [series] = parseMarine({ ...marineLoc, hourly: { ...marineLoc.hourly, sea_surface_temperature: [1e308, -40, 36] } });
+    expect(series.map((h) => h.seaTempC)).toEqual([undefined, undefined, 36]);
+  });
+  it('ignores a sea temperature column that does not line up with the hours, and keeps the swell', () => {
+    const [series] = parseMarine({ ...marineLoc, hourly: { ...marineLoc.hourly, sea_surface_temperature: [13.4] } });
+    expect(series.map((h) => h.seaTempC)).toEqual([undefined, undefined, undefined]);
+    expect(series[0].primary.heightM).toBe(0.88);
   });
   it('throws on a malformed payload', () => {
     expect(() => parseMarine({ error: true, reason: 'x' })).toThrow(OpenMeteoError);

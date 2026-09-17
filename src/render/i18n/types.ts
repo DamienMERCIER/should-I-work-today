@@ -1,3 +1,4 @@
+import type { Wetsuit } from '../../engine/water';
 import type { TideState, TideTrend, WindState } from '../../types';
 
 export interface Strings {
@@ -43,6 +44,9 @@ export interface Strings {
   spotLine: { conditions: string; sun: string };
   /** {mm} */
   rain: string;
+  /** la ligne 🌊 du spot mis en avant : {temp} {suit} · suits : la combinaison conseillée (`src/engine/water.ts`) */
+  water: string;
+  suits: Record<Wetsuit, string>;
   /** confirmed: {verdict} · changed: {from} {to} · cause: {cause} · noDataKeep: {verdict} */
   morning: { confirmed: string; changed: string; cause: string; noDataKeep: string };
   /** les étoiles ne dépendent que du vent et de la houle */

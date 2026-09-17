@@ -32,6 +32,7 @@ export function evaluateSpot(input: EvaluateSpotInput): SpotResult {
   const swellByTime = new Map(input.swell.map((h) => [h.time, h]));
   const fromMs = input.fromTime ? toMs(input.fromTime) : Number.NEGATIVE_INFINITY;
   const hours: SpotHour[] = [];
+  const water = { daySum: 0, dayCount: 0, sum: 0, count: 0 };
 
   for (const w of input.wind) {
     if (dateOf(w.time) !== date || toMs(w.time) < fromMs) continue;
@@ -48,6 +49,14 @@ export function evaluateSpot(input: EvaluateSpotInput): SpotResult {
       day: daylightFactor(w.time, input.sun.sunrise, input.sun.sunset),
       weather: weatherFactor(w.weatherCode),
     };
+    if (s.seaTempC !== undefined) {
+      water.sum += s.seaTempC;
+      water.count++;
+      if (factors.day === 1) {
+        water.daySum += s.seaTempC;
+        water.dayCount++;
+      }
+    }
     hours.push({
       time: w.time,
       heightM: eff.heightM, periodS: eff.periodS, swellDirDeg: eff.directionDeg,
@@ -58,10 +67,13 @@ export function evaluateSpot(input: EvaluateSpotInput): SpotResult {
   }
 
   const windows = findWindows(hours);
+  // l'eau des heures où l'on surfe ; la nuit seulement (un /now après le coucher), celle des heures qui restent
+  const waterTempC = water.dayCount > 0 ? Math.round(water.daySum / water.dayCount) : water.count > 0 ? Math.round(water.sum / water.count) : undefined;
   return {
     spotId: spot.id, distanceKm: input.distanceKm, hours, windows,
     best: pickBest(windows),
     maxScore: hours.reduce((m, h) => Math.max(m, h.score), 0),
+    ...(waterTempC === undefined ? {} : { waterTempC }),
   };
 }
 

@@ -6,6 +6,7 @@ import { cardinal8 } from '../engine/geo';
 import { addDays, isWeekend, toMs } from '../engine/time';
 import { rawStars, starGlyphs } from '../engine/rating';
 import { compareSpotDays, primaryPick } from '../engine/verdict';
+import { wetsuitFor } from '../engine/water';
 import type { Lang, Report, Spot, SpotHour, SpotPick, SpotResult, Window } from '../types';
 import { chartHours, hourRuler, sparkline } from './chart';
 import { fill, STRINGS, type Strings } from './i18n';
@@ -141,6 +142,12 @@ function sunLine(report: Report, s: Strings): string {
   return report.weather.precipMm >= 1 ? `${base} · ${fill(s.rain, { mm: Math.round(report.weather.precipMm) })}` : base;
 }
 
+/** 🌊 l'eau du jour au spot et la combinaison qui va avec ; rien quand la mer n'a pas donné de température. */
+function waterLine(r: SpotResult | undefined, s: Strings): string | undefined {
+  if (r?.waterTempC === undefined) return undefined;
+  return fill(s.water, { temp: r.waterTempC, suit: s.suits[wetsuitFor(r.waterTempC)] });
+}
+
 /**
  * Les deux lignes de graphe d'un spot : règle des heures, puis une note par heure. Une seule
  * définition pour le verdict et pour la vue 📋 — les deux doivent tracer exactement la même journée.
@@ -157,15 +164,18 @@ function spotChart(report: Report, spotId: string): string[] {
 }
 
 /**
- * `chart: false` pour le second créneau d'un 🟡 sur le même spot : le graphe couvre toute la journée,
- * donc le redessiner sous « après le travail » répéterait la ligne du dessus à l'identique.
+ * `sameSpotAbove` pour le second créneau d'un 🟡 sur le même spot : le graphe et l'eau valent pour toute la
+ * journée, donc les redonner sous « après le travail » répéterait les lignes du dessus à l'identique.
  */
-function primaryBlock(pick: SpotPick, report: Report, ctx: RenderCtx, s: Strings, opts: { chart?: boolean } = {}): string[] {
+function primaryBlock(pick: SpotPick, report: Report, ctx: RenderCtx, s: Strings, opts: { sameSpotAbove?: boolean } = {}): string[] {
   const r = report.spots.find((x) => x.spotId === pick.spotId);
   const lines = [`🏄 ${spotName(pick.spotId, ctx, s)} · ${fmtWindow(pick.window)} · ${windowStars(r, pick.window)}`];
   if (r) lines.push(`   ${conditionsLine(r, pick.window, report, s)}`);
   lines.push(`   ${sunLine(report, s)}`);
-  if (opts.chart !== false) lines.push(...spotChart(report, pick.spotId));
+  if (opts.sameSpotAbove) return lines;
+  const water = waterLine(r, s);
+  if (water) lines.push(`   ${water}`);
+  lines.push(...spotChart(report, pick.spotId));
   return lines;
 }
 
@@ -238,7 +248,7 @@ export function renderEvening(report: Report, ctx: RenderCtx): string {
       break;
     case 'yellow':
       if (v.dawn) push(fill(s.verdict.dawn, dateVars(report, ctx)), ...primaryBlock(v.dawn, report, ctx, s));
-      if (v.dusk) push(fill(s.verdict.dusk, dateVars(report, ctx)), ...primaryBlock(v.dusk, report, ctx, s, { chart: v.dusk.spotId !== v.dawn?.spotId }));
+      if (v.dusk) push(fill(s.verdict.dusk, dateVars(report, ctx)), ...primaryBlock(v.dusk, report, ctx, s, { sameSpotAbove: v.dusk.spotId === v.dawn?.spotId }));
       break;
     case 'red': {
       push(redTitle(report, ctx, s));
@@ -296,11 +306,14 @@ export function renderShortVerdict(report: Report | undefined, ctx: RenderCtx): 
 export function renderMorning(morning: Report, delta: Delta, evening: Report | undefined, ctx: RenderCtx): string {
   const s = STRINGS[ctx.lang];
   if (morning.verdict.kind === 'noData') return fill(s.morning.noDataKeep, { verdict: renderShortVerdict(evening, ctx) });
-  if (!delta.changed) return fill(s.morning.confirmed, { verdict: renderShortVerdict(morning, ctx) });
-  const lines = [fill(s.morning.changed, { from: renderShortVerdict(evening, ctx), to: renderShortVerdict(morning, ctx) })];
   const pick = primaryPick(morning.verdict);
   const r = pick ? morning.spots.find((x) => x.spotId === pick.spotId) : undefined;
+  // le matin, juste avant d'y aller : quelle combinaison prendre
+  const water = waterLine(r, s);
+  if (!delta.changed) return [fill(s.morning.confirmed, { verdict: renderShortVerdict(morning, ctx) }), ...(water ? [water] : [])].join('\n');
+  const lines = [fill(s.morning.changed, { from: renderShortVerdict(evening, ctx), to: renderShortVerdict(morning, ctx) })];
   if (pick && r) lines.push(conditionsLine(r, pick.window, morning, s));
+  if (water) lines.push(water);
   if (delta.cause) lines.push(fill(s.morning.cause, { cause: s.causes[delta.cause] }));
   return lines.join('\n');
 }
@@ -495,6 +508,8 @@ export function renderSpotDay(report: Report, spotId: string, ctx: RenderCtx): s
     }));
     if (r.best) rest.push(...explanationLines(r, peak, plotted, s));
   }
+  const water = waterLine(r, s);
+  if (water) rest.push(water);
   return rest.length > 0 ? [title, chart, rest.join('\n')].join('\n\n') : [title, chart].join('\n\n');
 }
 
