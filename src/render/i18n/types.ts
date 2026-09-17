@@ -29,6 +29,8 @@ export interface Strings {
   stopped: string;
   reactivated: string;
   locationSaved: string;
+  /** le bouton 📍 est arrivé en simple texte, sans position (localisation refusée ou coupée pour Telegram) : {button} */
+  locationNeeded: string;
   backHomeDone: string;
   /** en tete d'un rapport « maintenant » bascule sur demain, faute de jour restant aujourd'hui */
   dayIsDone: string;

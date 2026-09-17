@@ -42,7 +42,7 @@ function who(msg: TgMessage): string {
   return handle ? `@${handle} (${id})` : id;
 }
 
-const isButton = (text: string, key: 'backHome' | 'now'): boolean =>
+const isButton = (text: string, key: 'backHome' | 'now' | 'useMyLocation'): boolean =>
   text === STRINGS.en.buttons[key] || text === STRINGS.ru.buttons[key];
 
 /** Un chat_id Telegram est toujours un entier ; refuse toute autre valeur (ex. "__proto__") avant tout accès au store. */
@@ -173,7 +173,7 @@ export async function handleUpdate(update: TgUpdate, deps: BotDeps): Promise<voi
   if (text.length > 512) return void (await telegram.sendMessage(chatId, s.help));
 
   if (profile.awaiting === 'hours') {
-    const escapes = text.startsWith('/') || isButton(text, 'now') || isButton(text, 'backHome') || Boolean(msg.location);
+    const escapes = text.startsWith('/') || isButton(text, 'now') || isButton(text, 'backHome') || isButton(text, 'useMyLocation') || Boolean(msg.location);
     if (!escapes) return handleHours(chatId, text, profile, deps);
     profile = await store.updateProfile(chatId, (cur) => {
       const next = { ...(cur ?? profile!) };
@@ -189,6 +189,13 @@ export async function handleUpdate(update: TgUpdate, deps: BotDeps): Promise<voi
     const report = await nowReport(updated, deps);
     const ctx = renderCtx(profile.lang, deps);
     await telegram.sendMessage(chatId, `${rolloverPrefix(report, deps, s)}${renderEvening(report, ctx)}\n\n${s.locationSaved}`, detailsMarkupFor(report, ctx));
+    return;
+  }
+  // Le bouton 📍 demande la position à Telegram. Quand Telegram ne peut pas la joindre (localisation refusée ou coupée
+  // pour l'application), certaines applications envoient à la place le texte du bouton : dire quoi activer plutôt que
+  // de répondre par l'aide.
+  if (isButton(text, 'useMyLocation')) {
+    await telegram.sendMessage(chatId, fill(s.locationNeeded, { button: s.buttons.useMyLocation }));
     return;
   }
   if (text === '/now' || isButton(text, 'now')) {

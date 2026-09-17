@@ -37,6 +37,7 @@ export const en: Strings = {
   stopped: 'OK, no more messages. /start to come back.',
   reactivated: 'Good to see you again — your profile is still here.',
   locationSaved: 'Location saved — the 19:00 verdict will use it.',
+  locationNeeded: "📍 Your location didn't come through. Turn on location access for Telegram in your phone settings, then tap “{button}” again (or send it via 📎 → Location).",
   backHomeDone: 'Location: back to Muizenberg.',
   dayIsDone: '🌙 Today is done, the light has gone. Here is tomorrow:',
   verdict: {

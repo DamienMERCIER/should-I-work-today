@@ -187,6 +187,23 @@ describe('location and /now', () => {
       ],
     });
   });
+  it('asks to turn location on when the 📍 button arrives as plain text — Telegram could not attach the position', async () => {
+    const { deps, store, sent, omCalls } = setup();
+    await store.putProfiles({ '1': ready(), '2': ready({ chatId: 2, lang: 'ru' }) });
+    await handleUpdate(msg('📍 Use my location'), deps);
+    expect(sent()[0].text).toBe("📍 Your location didn't come through. Turn on location access for Telegram in your phone settings, then tap “📍 Use my location” again (or send it via 📎 → Location).");
+    await handleUpdate(msg('📍 Использовать моё местоположение', {}, 2), deps);
+    expect(sent()[1].text).toBe('📍 Местоположение не пришло. Включи доступ к геолокации для Telegram в настройках телефона и снова нажми «📍 Использовать моё местоположение» (или отправь через 📎 → Геопозиция).');
+    expect(omCalls).toHaveLength(0);
+    expect((await store.getProfile(1))?.location.source).toBe('default');
+  });
+  it('the 📍 button leaves the hours question instead of being read as badly written hours', async () => {
+    const { deps, store, sent } = setup();
+    await store.putProfiles({ '1': ready({ awaiting: 'hours' }) });
+    await handleUpdate(msg('📍 Use my location'), deps);
+    expect(sent()[0].text.startsWith("📍 Your location didn't come through.")).toBe(true);
+    expect((await store.getProfile(1))?.awaiting).toBeUndefined();
+  });
   it('the home button resets the location', async () => {
     const { deps, store, sent } = setup();
     await store.putProfiles({ '1': ready({ location: { lat: -34.12, lon: 18.45, source: 'custom' } }) });
