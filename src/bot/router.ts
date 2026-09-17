@@ -10,8 +10,8 @@ import { buildReport, buildWeek, nearbySpots, type CollectDeps } from '../jobs/c
 import { notifyAdmin } from '../jobs/runs';
 import { detectLang, fill, STRINGS, type Strings } from '../render/i18n';
 import {
-  detailsMarkupFor, expandCompactDate, fmtDate, goButtonsMarkup, notGoingData, renderDetails, renderEvening, renderSpotDay, renderWeek, spotById, spotMarkupFor, spotName,
-  type RenderCtx, dayViewSpotOrder,
+  detailsMarkupFor, expandCompactDate, fmtDate, notGoingData, renderDetails, renderEvening, renderSpotDay, renderWeek, spotById,
+  spotMarkupFor, spotName, withSpotButtons, type RenderCtx,
 } from '../render/messages';
 import type { Lang, Profile, Region, Report, Spot } from '../types';
 import { langKeyboard, persistentKeyboard, profileKeyboard } from './keyboards';
@@ -105,20 +105,6 @@ async function todayReport(chatId: number, profile: Profile, deps: BotDeps): Pro
   return stored ?? nowReport(profile, deps);
 }
 
-/**
- * Telegram does not linkify a command inside a `<code>` span, so the per-spot sparkline rows of 📋 and `/all` are not
- * tappable — this plain-text line after them repeats the spots shown as `/slug` commands, in the same order, and says
- * what tapping one gives. `ids` comes from `dayViewSpotOrder`, the same list as the rows (capped for `/all`, see
- * `ALL_SPOTS_CAP`), so the line never lists a spot the view does not show.
- */
-function spotsCommandLine(ids: string[], ctx: RenderCtx, s: Strings): string {
-  const list = ids
-    .map((id) => spotById(id, ctx))
-    .filter((spot): spot is Spot => spot !== undefined)
-    .map((spot) => `/${spotSlug(spot)}`)
-    .join(' · ');
-  return list ? fill(s.spotCommand.detailsHint, { list }) : '';
-}
 
 /**
  * `/<spot>`: resolve the text after `/` against the whole spot database (`deps.spots`, not just
@@ -130,14 +116,20 @@ async function handleSpotCommand(chatId: number, query: string, profile: Profile
   const match = matchSpot(query, deps.spots, deps.worldTuples);
   if (match.kind === 'none') return false;
 
-  const ctx = renderCtx(profile.lang, deps);
   if (match.kind === 'ambiguous') {
     const list = match.spots.map((spot) => `/${spotSlug(spot)}`).join(', ');
     await deps.telegram.sendMessage(chatId, fill(s.spotCommand.ambiguous, { list }));
     return true;
   }
 
-  const { spot } = match;
+  await sendSpotDay(chatId, match.spot, profile, deps);
+  return true;
+}
+
+/** La journée d'un spot, demandée par sa commande ou par son bouton (📋, `/all`) : la même réponse dans les deux cas. */
+async function sendSpotDay(chatId: number, spot: Spot, profile: Profile, deps: BotDeps): Promise<void> {
+  const s = STRINGS[profile.lang];
+  const ctx = renderCtx(profile.lang, deps);
   ctx.spots.set(spot.id, spot); // un spot importé n'est pas dans le contexte, qui ne tient que les spots curatés
   const radiusKm = deps.radiusKm ?? RADIUS_KM;
   const distanceKm = haversineKm(profile.location, spot);
@@ -145,14 +137,13 @@ async function handleSpotCommand(chatId: number, query: string, profile: Profile
     await deps.telegram.sendMessage(chatId, fill(s.spotCommand.outOfRadius, {
       spot: spotName(spot.id, ctx, s), km: Math.round(distanceKm), radius: radiusKm,
     }));
-    return true;
+    return;
   }
 
   const report = await todayReport(chatId, profile, deps);
   // `renderSpotDay` ne porte aucune date : sans ce prefixe, un rapport bascule sur demain passerait
   // pour celui d'aujourd'hui.
   await deps.telegram.sendMessage(chatId, `${rolloverPrefix(report, deps, s)}${renderSpotDay(report, spot.id, ctx)}`, spotMarkupFor(report, spot.id, ctx));
-  return true;
 }
 
 export async function handleUpdate(update: TgUpdate, deps: BotDeps): Promise<void> {
@@ -234,9 +225,8 @@ export async function handleUpdate(update: TgUpdate, deps: BotDeps): Promise<voi
   if (text.startsWith('/all')) {
     const report = await todayReport(chatId, profile, deps);
     const ctx = renderCtx(profile.lang, deps);
-    const body = renderDetails(report, ctx, { all: true });
-    const commandLine = spotsCommandLine(dayViewSpotOrder(report, { all: true }), ctx, s);
-    await telegram.sendMessage(chatId, commandLine ? `${body}\n\n${commandLine}` : body, goButtonsMarkup(report, ctx));
+    const { text: allText, markup } = withSpotButtons(renderDetails(report, ctx, { all: true }), report, ctx, { all: true });
+    await telegram.sendMessage(chatId, allText, markup);
     return;
   }
   if (text.startsWith('/about')) {
@@ -347,6 +337,12 @@ async function handleCallback(cb: TgCallbackQuery, deps: BotDeps): Promise<void>
     }
     case 'rep':
       return handleDetails(chatId, value, profile, deps);
+    case 'spot': {
+      // un bouton de 📋 ou de /all ; un id inconnu — ou fabriqué — ne répond rien
+      const spot = spotById(value, renderCtx(profile.lang, deps));
+      if (spot) await sendSpotDay(chatId, spot, profile, deps);
+      return;
+    }
     case 'go':
       return handleGoing(chatId, value, rest, profile, deps);
     case 'nogo':
@@ -419,7 +415,6 @@ async function handleDetails(chatId: number, date: string, profile: Profile, dep
     return;
   }
   const ctx = renderCtx(profile.lang, deps);
-  const body = renderDetails(report, ctx);
-  const commandLine = spotsCommandLine(dayViewSpotOrder(report), ctx, s);
-  await deps.telegram.sendMessage(chatId, commandLine ? `${body}\n\n${commandLine}` : body);
+  const { text, markup } = withSpotButtons(renderDetails(report, ctx), report, ctx);
+  await deps.telegram.sendMessage(chatId, text, markup);
 }

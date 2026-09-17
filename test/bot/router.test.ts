@@ -419,8 +419,11 @@ describe('📋 details callback', () => {
     await store.putReports('2026-09-16', { '1': goldenReport() });
     await handleUpdate(cb('rep:2026-09-16'), deps);
     expect(sent()[0].text.startsWith('📋 <b>Your day</b> (Wed 16 Sept)')).toBe(true);
-    // les spots dont la vue montre une rangée, en commandes à taper
-    expect(sent()[0].text.split('\n').pop()).toBe('🔎 Tap a spot for its details: /long_beach · /muizenberg');
+    // les spots dont la vue montre une rangée, en boutons qui ouvrent leur journée
+    expect(sent()[0].text.split('\n').pop()).toBe('👇 Tap a spot for its day');
+    expect(sent()[0].reply_markup).toEqual({
+      inline_keyboard: [[{ text: 'Long Beach 6⭐', callback_data: 'spot:kommetjie-long-beach' }, { text: 'Muizenberg 2☆', callback_data: 'spot:muizenberg' }]],
+    });
     await handleUpdate(cb('rep:2026-09-17'), deps);
     expect(sent()[1].text.startsWith('📋 <b>Your day</b> (Thu 17 Sept)')).toBe(true);
     await handleUpdate(cb('rep:2020-01-01'), deps);
@@ -429,8 +432,8 @@ describe('📋 details callback', () => {
   });
 });
 
-describe('📋 and /all end with the spot commands', () => {
-  it('lists only the spots the 📋 view shows — a spot at 0★ all day is counted, not listed — and says it in Russian too', async () => {
+describe('📋 and /all end with a button per spot', () => {
+  it('offers only the spots the 📋 view shows — a spot at 0★ all day is counted, not offered —, the name alone without stars, and says it in Russian too', async () => {
     const { deps, store, sent } = setup();
     await store.putProfiles({ '1': ready(), '2': ready({ chatId: 2, lang: 'ru' }) });
     const flat: SpotResult = { spotId: 'muizenberg', distanceKm: 0, hours: [], windows: [], best: undefined, maxScore: 0 };
@@ -438,9 +441,24 @@ describe('📋 and /all end with the spot commands', () => {
     await store.putReports('2026-09-16', { '1': report, '2': { ...report, chatId: 2 } });
     await handleUpdate(cb('rep:2026-09-16'), deps);
     expect(sent()[0].text).toContain('1 spots at 0★ all day');
-    expect(sent()[0].text.split('\n').pop()).toBe('🔎 Tap a spot for its details: /long_beach');
+    expect(sent()[0].reply_markup).toEqual({ inline_keyboard: [[{ text: 'Long Beach 6⭐', callback_data: 'spot:kommetjie-long-beach' }]] });
     await handleUpdate(msg('/all', {}, 2), deps);
-    expect(sent()[1].text.trim().split('\n').pop()).toBe('🔎 Нажми на спот, чтобы увидеть детали: /long_beach · /muizenberg');
+    expect(sent()[1].text.trim().split('\n').pop()).toBe('👇 Нажми на спот, чтобы открыть его день');
+    expect(sent()[1].reply_markup.inline_keyboard[0]).toEqual([
+      { text: 'Long Beach 6⭐', callback_data: 'spot:kommetjie-long-beach' }, { text: 'Muizenberg', callback_data: 'spot:muizenberg' },
+    ]);
+  });
+
+  it('a spot button opens that spot\'s day, exactly like its command', async () => {
+    const { deps, store, sent } = setup();
+    await store.putProfiles({ '1': ready() });
+    await store.putReports('2026-09-16', { '1': goldenReport() });
+    await handleUpdate(msg('/long_beach'), deps);
+    await handleUpdate(cb('spot:kommetjie-long-beach'), deps);
+    expect(sent()).toHaveLength(2);
+    expect(sent()[1]).toEqual({ ...sent()[0] });
+    await handleUpdate(cb('spot:nope'), deps);
+    expect(sent()).toHaveLength(2);
   });
 });
 
@@ -581,26 +599,29 @@ describe('/all, /<spot> and /about', () => {
     const text = sent()[0].text;
     expect(text.startsWith('📋 <b>All spots</b> (Wed 16 Sept)')).toBe(true);
     expect(text).toContain('🏄 Kommetjie – Long Beach');
-    expect(text.trim().split('\n').pop()).toBe('🔎 Tap a spot for its details: /long_beach · /muizenberg');
-    // go buttons (ordered by peak), no 📋 row — /all already lists everything, so opening the same panel again would be redundant.
+    expect(text.trim().split('\n').pop()).toBe('👇 Tap a spot for its day');
+    // a button per spot, two per row, in the rows' order; then the go buttons (ordered by peak), no 📋 row —
+    // /all already lists everything, so opening the same panel again would be redundant.
     expect(sent()[0].reply_markup).toEqual({
       inline_keyboard: [
+        [{ text: 'Long Beach 6⭐', callback_data: 'spot:kommetjie-long-beach' }, { text: 'Muizenberg 2☆', callback_data: 'spot:muizenberg' }],
         [{ text: '📍 Go to Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
       ],
     });
   });
 
-  it('/all lists an imported spot in its tappable command line too', async () => {
+  it('/all offers an imported spot a button too', async () => {
     const tuple = allWorldTuples()[0];
     const imported: SpotResult = { spotId: worldSpotId(tuple[0], tuple[2], tuple[3]), distanceKm: 5, hours: [], windows: [], best: undefined, maxScore: 3 };
     const { deps, store, sent } = setup();
     await store.putProfiles({ '1': ready() });
     await store.putReports('2026-09-16', { '1': goldenReport({ spots: [...goldenReport().spots, imported] }) });
     await handleUpdate(msg('/all'), deps);
-    expect(sent()[0].text.trim().split('\n').pop()!.split(' · ')).toContain(`/${worldTupleSlug(tuple)}`);
+    const buttons = sent()[0].reply_markup.inline_keyboard.flat() as { text: string; callback_data?: string }[];
+    expect(buttons).toContainEqual({ text: `${tuple[1]} 3⭐`, callback_data: `spot:${imported.spotId}` });
   });
 
-  it('/all in a dense cluster caps at ALL_SPOTS_CAP rows and keeps the trailing command line in exact sync with them (§report "Resilience, wiring and dedupe")', async () => {
+  it('/all in a dense cluster caps at ALL_SPOTS_CAP rows and keeps its spot buttons in exact sync with them (§report "Resilience, wiring and dedupe")', async () => {
     const n = 80;
     const manySpots: Spot[] = Array.from({ length: n }, (_, i) => ({
       id: `world-${i}`, name: `World Spot ${i}`, short: `W${i}`, region: 'cape-peninsula', lat: 0, lon: 0, facing: 0,
@@ -621,12 +642,10 @@ describe('/all, /<spot> and /about', () => {
     expect(text.length).toBeLessThan(2500); // comfortably under Telegram's 4096-char limit
     expect(text).toContain('+49 more spots not shown'); // 80 - 1 primary - 30 shown
 
-    const commandLine = text.trim().split('\n').pop()!;
-    expect(commandLine.startsWith('🔎 Tap a spot for its details: ')).toBe(true);
-    const commands = commandLine.replace('🔎 Tap a spot for its details: ', '').split(' · ');
-    expect(commands).toHaveLength(1 + ALL_SPOTS_CAP); // primary + capped others, never all 80
-    expect(commands[0]).toBe('/w0'); // primary: highest score
-    expect(commands[commands.length - 1]).toBe(`/w${ALL_SPOTS_CAP}`); // the ALL_SPOTS_CAP-th other — same set as the rows above
+    const spotButtons = (sent()[0].reply_markup.inline_keyboard.flat() as { callback_data?: string }[]).filter((b) => b.callback_data?.startsWith('spot:'));
+    expect(spotButtons).toHaveLength(1 + ALL_SPOTS_CAP); // primary + capped others, never all 80
+    expect(spotButtons[0].callback_data).toBe('spot:world-0'); // primary: highest score
+    expect(spotButtons[spotButtons.length - 1].callback_data).toBe(`spot:world-${ALL_SPOTS_CAP}`); // the ALL_SPOTS_CAP-th other — same set as the rows above
   });
 
   it('/<spot> renders that spot\'s day for a spot with a window (fresh now-mode computation, nothing stored)', async () => {

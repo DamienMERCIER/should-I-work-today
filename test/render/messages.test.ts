@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   esc, fmtTime, fmtDate, fmtDay, renderAlert, renderEvening, renderShortVerdict, renderMorning, renderDetails, renderSpotDay, renderDayView, renderWeek,
-  detailsMarkupFor, goButtons, goButtonsMarkup, openSpotOrder, allSpotOrder, ALL_SPOTS_CAP, spotMarkupFor, spotName, type RenderCtx,
+  detailsMarkupFor, goButtons, goButtonsMarkup, openSpotOrder, allSpotOrder, ALL_SPOTS_CAP, spotDayRows, spotMarkupFor, spotName, type RenderCtx,
 } from '../../src/render/messages';
 import { STRINGS } from '../../src/render/i18n';
 import { allWorldTuples, worldSpotId } from '../../src/data/world';
@@ -89,6 +89,26 @@ describe('🙋 going buttons', () => {
     expect(buttonsFor(`far-${'x'.repeat(50)}`).going).toHaveLength(1);
     expect(buttonsFor(`far-${'x'.repeat(51)}`).going).toEqual([]);
     expect(buttonsFor(`far-${'x'.repeat(51)}`).markup).toBeDefined(); // les autres boutons restent
+  });
+});
+
+describe('spot buttons of 📋 and /all', () => {
+  it('lays the buttons two per row, in the rows\' order, with the day\'s stars when there are some', () => {
+    const extra: SpotResult = { spotId: 'kalk-bay-reef', distanceKm: 4, hours: [], windows: [], best: undefined, maxScore: 0 };
+    const rows = spotDayRows(goldenReport({ spots: [...goldenReport().spots, extra] }), EN, { all: true });
+    expect(rows.map((row) => row.map((b) => b.text))).toEqual([['Long Beach 6⭐', 'Muizenberg 2☆'], ['Kalk Bay']]);
+  });
+
+  it('leaves out a spot whose id would not fit in the 64 bytes of a Telegram button, and keeps the others', () => {
+    const buttonsFor = (id: string) => {
+      const spot = { ...SPOTS.find((x) => x.id === 'muizenberg')!, id, short: 'Far' };
+      const ctx: RenderCtx = { lang: 'en', spots: new Map([...spots, [id, spot]]) };
+      const report = goldenReport({ spots: [...goldenReport().spots, { spotId: id, distanceKm: 3, hours: [], windows: [], best: undefined, maxScore: 1 }] });
+      return spotDayRows(report, ctx, { all: true }).flat().map((b) => b.callback_data);
+    };
+    // `spot:` fait 5 octets : un id de 59 caractères remplit tout juste les 64, un de 60 les dépasse
+    expect(buttonsFor(`far-${'x'.repeat(55)}`)).toContain(`spot:far-${'x'.repeat(55)}`);
+    expect(buttonsFor(`far-${'x'.repeat(56)}`)).toEqual(['spot:kommetjie-long-beach', 'spot:muizenberg']);
   });
 });
 

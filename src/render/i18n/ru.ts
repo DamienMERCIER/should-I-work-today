@@ -137,7 +137,7 @@ export const ru: Strings = {
   spotCommand: {
     ambiguous: 'Несколько совпадений: {list} — уточни запрос.',
     outOfRadius: '{spot} — известный спот, но он в {km} км от тебя — за пределами радиуса {radius} км.',
-    detailsHint: '🔎 Нажми на спот, чтобы увидеть детали: {list}',
+    detailsHint: '👇 Нажми на спот, чтобы открыть его день',
   },
   about: {
     text: 'Should I Work каждый вечер проверяет {count} известных спотов и подсказывает: завтра сёрфить или работать.\nДанные: Open-Meteo.com (CC-BY 4.0)',

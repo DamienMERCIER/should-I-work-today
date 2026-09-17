@@ -97,7 +97,7 @@ export interface Strings {
   error: string;
   /**
    * `/all` and `/<spot>` router commands (`src/bot/spotMatch.ts`). ambiguous: {list} · outOfRadius: {spot} {km} {radius} ·
-   * detailsHint: {list} — the last line of 📋 and `/all`, the spots shown as commands to tap
+   * detailsHint — the last line of 📋 and `/all`, above the spot buttons (`spotDayRows`)
    */
   spotCommand: { ambiguous: string; outOfRadius: string; detailsHint: string };
   /** `/about` : one sentence + licence + spot count. text: {count} */

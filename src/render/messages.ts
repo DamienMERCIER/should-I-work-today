@@ -582,25 +582,23 @@ export function openSpotOrder(report: Report): string[] {
  * Hard cap on how many non-primary spots the `/all` surface shows or lists. `/all`'s spot list is
  * bounded only by the caller's radius query (`nearbySpots`), and once that query considers curated +
  * world spots (§report "Resilience, wiring and dedupe"), a dense real-world cluster of adjacent breaks
- * can put dozens of spots in one report — uncapped, both the row block (≤ 33 chars/row,
- * § "row width budget" below) and the trailing command line would grow without bound and risk
- * exceeding Telegram's 4096-character message limit.
+ * can put dozens of spots in one report — uncapped, the row block (≤ 33 chars/row, § "row width budget"
+ * below) would grow without bound and risk exceeding Telegram's 4096-character message limit, and the
+ * spot buttons under it (`spotDayRows`) would pile up past any usable keyboard.
  *
- * 30 is chosen with real margin, not just "under the limit": 30 rows × 34 chars ≈ 1050 chars, plus 31
- * command-line entries (primary + 30) × ~17 chars ≈ 530 chars, leaving well over 2000 characters of
- * headroom for the primary spot's own block, tide and sun lines even in a
- * pathological cluster (verified in this session up to 200 synthetic spots — see the report for
- * the measured message length).
+ * 30 is chosen with real margin, not just "under the limit": 30 rows × 34 chars ≈ 1050 chars, leaving well
+ * over 2000 characters of headroom for the primary spot's own block, tide and sun lines even in a
+ * pathological cluster (verified up to 200 synthetic spots — see the report for the measured message
+ * length), and at most 31 spot buttons.
  */
 export const ALL_SPOTS_CAP = 30;
 
 /**
  * `openSpotOrder`, capped for `/all`: the primary spot, then at most `ALL_SPOTS_CAP` more. Both
- * `renderDayView({ all: true })`'s row block and the router's trailing command line
- * (`spotsCommandLine`, `src/bot/router.ts`, through `dayViewSpotOrder`) must derive their spot list from *this*, never from
- * `openSpotOrder` directly, so the two can never disagree on which spots are shown ("one single
- * definition, not two that derive" — the same rule `openSpotOrder` itself already follows for the
- * un-capped case).
+ * `renderDayView({ all: true })`'s row block and the spot buttons under it (`spotDayRows`, through
+ * `dayViewSpotOrder`) must derive their spot list from *this*, never from `openSpotOrder` directly, so
+ * the two can never disagree on which spots are shown ("one single definition, not two that derive" —
+ * the same rule `openSpotOrder` itself already follows for the un-capped case).
  */
 export function allSpotOrder(report: Report): string[] {
   const [primaryId, ...others] = openSpotOrder(report);
@@ -611,7 +609,7 @@ export function allSpotOrder(report: Report): string[] {
 /**
  * Les spots d'une vue 📋 — ou de `/all` avec `all` —, dans l'ordre de leurs lignes : le spot du verdict, puis les
  * rangées (au moins une étoile dans la journée ; pour `/all`, toutes jusqu'à `ALL_SPOTS_CAP`). Les rangées de
- * `renderDayView` et la ligne de commandes que le routeur ajoute en dessous en dérivent toutes les deux : une seule
+ * `renderDayView` et les boutons de spots qui les suivent (`spotDayRows`) en dérivent tous les deux : une seule
  * définition, jamais deux listes qui divergent.
  */
 export function dayViewSpotOrder(report: Report, opts: { all?: boolean } = {}): string[] {
@@ -737,7 +735,41 @@ export function spotMarkupFor(report: Report, spotId: string, ctx: RenderCtx): R
   return toMarkup([...(going ? [going] : []), ...goButtons(report, ctx, { spotId })]);
 }
 
-/** `goButtons` wrapped into a `ReplyMarkup` — the `/all` surface (no 📋 row involved). */
+/**
+ * 📋 et `/all` : un bouton par spot montré, dans l'ordre des rangées (`dayViewSpotOrder`), deux par ligne, qui ouvre sa
+ * journée comme sa commande. Le libellé porte les étoiles du jour quand il y en a. Un spot dont les données dépasseraient
+ * les 64 octets d'un bouton Telegram reste sans bouton plutôt que de faire refuser le message entier.
+ */
+export function spotDayRows(report: Report, ctx: RenderCtx, opts: { all?: boolean } = {}): InlineButton[][] {
+  const byId = new Map(report.spots.map((r) => [r.spotId, r]));
+  const buttons: InlineButton[] = [];
+  for (const id of dayViewSpotOrder(report, opts)) {
+    const spot = spotById(id, ctx);
+    const data = `spot:${id}`;
+    if (!spot || new TextEncoder().encode(data).length > CALLBACK_DATA_MAX_BYTES) continue;
+    const r = byId.get(id);
+    const stars = r && r.maxScore > 0 ? ` ${starsShort(r.maxScore, peakHour(r)?.clean ?? true)}` : '';
+    buttons.push({ text: `${spot.short}${stars}`, callback_data: data });
+  }
+  const rows: InlineButton[][] = [];
+  for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
+  return rows;
+}
+
+/**
+ * La fin de la vue 📋 — ou de `/all` avec `all` — : Telegram ne rend pas cliquable une commande dans un `<code>`, donc les
+ * rangées de spots ne s'ouvrent pas d'un appui ; un bouton par spot le fait, annoncé par une ligne. `/all` garde ensuite
+ * ses 📍 vers les spots à créneau. Sans spot, ni ligne ni bouton de spot.
+ */
+export function withSpotButtons(body: string, report: Report, ctx: RenderCtx, opts: { all?: boolean } = {}): { text: string; markup: ReplyMarkup | undefined } {
+  const rows = spotDayRows(report, ctx, opts);
+  return {
+    text: rows.length > 0 ? `${body}\n\n${STRINGS[ctx.lang].spotCommand.detailsHint}` : body,
+    markup: toMarkup(opts.all ? [...rows, ...goButtons(report, ctx)] : rows),
+  };
+}
+
+/** `goButtons` wrapped into a `ReplyMarkup` — a surface with go buttons only (no 📋 row involved). */
 export const goButtonsMarkup = (report: Report, ctx: RenderCtx, opts: { spotId?: string } = {}): ReplyMarkup | undefined =>
   toMarkup(goButtons(report, ctx, opts));
 
