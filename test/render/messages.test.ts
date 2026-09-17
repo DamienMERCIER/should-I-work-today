@@ -30,10 +30,11 @@ describe('formatting', () => {
   it('esc', () => {
     expect(esc('a < b & c > d')).toBe('a &lt; b &amp; c &gt; d');
   });
-  it('detailsMarkupFor: go buttons (ordered by peak) then the 📋 row, for a verdict with windows', () => {
+  it('detailsMarkupFor: the 🙋 going button, go buttons (ordered by peak), then the 📋 row, for a verdict with windows', () => {
     // Muizenberg n'a pas de fenêtre dans le scénario golden (2☆ sous le cross-onshore) : pas de bouton
     expect(detailsMarkupFor(goldenReport(), EN)).toEqual({
       inline_keyboard: [
+        [{ text: "🙋 I'm going: Long Beach", callback_data: 'go:260916:kommetjie-long-beach' }],
         [{ text: '📍 Go to Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
         [{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }],
       ],
@@ -46,6 +47,40 @@ describe('formatting', () => {
   it('detailsMarkupFor: no button at all for outOfCoverage/noData (real reports never carry spots there — §9)', () => {
     expect(detailsMarkupFor(goldenReport({ spots: [], tides: [], verdict: { kind: 'outOfCoverage', nearest: [] } }), EN)).toBeUndefined();
     expect(detailsMarkupFor(goldenReport({ spots: [], verdict: { kind: 'noData', reason: 'x' } }), EN)).toBeUndefined();
+  });
+});
+
+describe('🙋 going buttons', () => {
+  const goingButtons = (report: Report, ctx: RenderCtx) =>
+    (detailsMarkupFor(report, ctx) as { inline_keyboard: { text: string; callback_data?: string }[][] } | undefined)?.inline_keyboard
+      .flat().filter((b) => b.callback_data?.startsWith('go:')).map((b) => [b.text, b.callback_data]) ?? [];
+
+  it('one per spot of a 🟡 — dawn and dusk on two spots — and a single one when both are the same spot', () => {
+    const dawn = { spotId: 'muizenberg', window: W('07:00', '09:00', 4) };
+    const dusk = { spotId: 'kommetjie-long-beach', window: W('17:00', '18:00', 4) };
+    expect(goingButtons(goldenReport({ verdict: { kind: 'yellow', dawn, dusk } }), EN)).toEqual([
+      ["🙋 I'm going: Muizenberg", 'go:260916:muizenberg'],
+      ["🙋 I'm going: Long Beach", 'go:260916:kommetjie-long-beach'],
+    ]);
+    expect(goingButtons(goldenReport({ verdict: { kind: 'yellow', dawn: { ...dusk, window: W('07:00', '09:00', 4) }, dusk } }), EN)).toHaveLength(1);
+  });
+
+  it('none without a window to go to, and the label follows the language', () => {
+    expect(goingButtons(goldenReport({ verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } }), EN)).toEqual([]);
+    expect(goingButtons(goldenReport(), RU)).toEqual([['🙋 Я еду: Long Beach', 'go:260916:kommetjie-long-beach']]);
+  });
+
+  it('leaves out a spot whose id would not fit in the 64 bytes of a Telegram button — the whole message would be refused', () => {
+    const buttonsFor = (id: string) => {
+      const spot = { ...SPOTS.find((x) => x.id === 'muizenberg')!, id, short: 'Far' };
+      const ctx: RenderCtx = { lang: 'en', spots: new Map([...spots, [id, spot]]) };
+      const report = goldenReport({ verdict: { kind: 'green', spotId: id, window: W('07:00', '12:00', 6), epic: true } });
+      return { going: goingButtons(report, ctx), markup: detailsMarkupFor(report, ctx) };
+    };
+    // `go:260916:` fait 10 octets : un id de 54 caractères remplit tout juste les 64, un de 55 les dépasse
+    expect(buttonsFor(`far-${'x'.repeat(50)}`).going).toHaveLength(1);
+    expect(buttonsFor(`far-${'x'.repeat(51)}`).going).toEqual([]);
+    expect(buttonsFor(`far-${'x'.repeat(51)}`).markup).toBeDefined(); // les autres boutons restent
   });
 });
 

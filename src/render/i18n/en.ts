@@ -3,7 +3,10 @@ import type { Strings } from './types';
 export const en: Strings = {
   locale: 'en-GB',
   cardinal: ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'],
-  buttons: { useMyLocation: '📍 Use my location', backHome: '🏠 Back to Muizenberg', now: '🔎 Right now', allSpots: '📋 All spots', goTo: '📍 Go to {spot}' },
+  buttons: {
+    useMyLocation: '📍 Use my location', backHome: '🏠 Back to Muizenberg', now: '🔎 Right now', allSpots: '📋 All spots', goTo: '📍 Go to {spot}',
+    going: "🙋 I'm going: {spot}", notGoing: "✖️ I'm not going any more",
+  },
   windStates: { glassy: 'glassy', off: 'offshore', 'cross-off': 'cross-offshore', cross: 'cross-shore', 'cross-on': 'cross-onshore', on: 'onshore' },
   then: 'then',
   today: 'today',
@@ -91,6 +94,7 @@ export const en: Strings = {
       getsDark: 'gets dark',
     },
   },
+  going: { title: "🙋 <b>Who's going</b> ({date})", you: 'you', someone: 'a friend', cancelled: "👌 Noted, you're not going on {date}." },
   alert: {
     title: '🔥 <b>BIG DAY AHEAD</b> ({date})',
     footer: "Plan ahead — I'll confirm the evening before.",

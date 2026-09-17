@@ -157,6 +157,76 @@ describe('Store profiles', () => {
   });
 });
 
+describe('Store going', () => {
+  const byChat = (entries: { chatId: number }[]) => [...entries].sort((a, b) => a.chatId - b.chatId);
+
+  it('keeps who is going where: one key per friend and date for 3 days, the spot in metadata, read back by list, removed on cancel', async () => {
+    const kv = new MemoryKV(2); // des pages de 2 clés : le curseur sert
+    const store = new Store(kv);
+    await store.setGoing('2026-09-18', 1, 'kommetjie-long-beach', '2026-09-17T19:05');
+    await store.setGoing('2026-09-18', 22, 'muizenberg', '2026-09-17T19:07');
+    await store.setGoing('2026-09-18', 333, 'muizenberg', '2026-09-17T19:09');
+    await store.setGoing('2026-09-19', 4, 'muizenberg', '2026-09-17T20:00');
+    expect(kv.data.get('going:2026-09-18:22')?.ttl).toBe(3 * 24 * 3600);
+    expect(byChat(await store.goingOn('2026-09-18'))).toEqual([
+      { chatId: 1, spotId: 'kommetjie-long-beach', at: '2026-09-17T19:05' },
+      { chatId: 22, spotId: 'muizenberg', at: '2026-09-17T19:07' },
+      { chatId: 333, spotId: 'muizenberg', at: '2026-09-17T19:09' },
+    ]);
+    await store.cancelGoing('2026-09-18', 22);
+    expect(byChat(await store.goingOn('2026-09-18')).map((e) => e.chatId)).toEqual([1, 333]);
+  });
+
+  it('reads one friend\'s entry for a date, nothing for a missing or unreadable one', async () => {
+    const kv = new MemoryKV();
+    const store = new Store(kv);
+    await store.setGoing('2026-09-18', 1, 'muizenberg', '2026-09-17T19:05');
+    await kv.put('going:2026-09-18:2', JSON.stringify({ spotId: 42 }));
+    expect(await store.goingOf('2026-09-18', 1)).toEqual({ chatId: 1, spotId: 'muizenberg', at: '2026-09-17T19:05' });
+    expect(await store.goingOf('2026-09-18', 2)).toBeUndefined();
+    expect(await store.goingOf('2026-09-18', 3)).toBeUndefined();
+  });
+
+  it('reads an entry without metadata from its value, and skips one it cannot read rather than failing the list', async () => {
+    const kv = new MemoryKV();
+    const store = new Store(kv);
+    await kv.put('going:2026-09-18:5', JSON.stringify({ spotId: 'muizenberg', at: '2026-09-17T19:00' }));
+    await kv.put('going:2026-09-18:oops', '{}', { metadata: { spotId: 'muizenberg', at: '2026-09-17T19:00' } });
+    await kv.put('going:2026-09-18:6', '{}', { metadata: { spotId: 42, at: '2026-09-17T19:00' } });
+    await kv.put('going:2026-09-18:7', 'null');
+    expect(await store.goingOn('2026-09-18')).toEqual([{ chatId: 5, spotId: 'muizenberg', at: '2026-09-17T19:00' }]);
+  });
+
+  it('writes and deletes again once, a second later, when a quick double tap hits the same entry within a second', async () => {
+    const kv = new MemoryKV();
+    const waits: number[] = [];
+    const store = new Store(kv, { sleep: async (ms) => void waits.push(ms) });
+    const put = kv.put.bind(kv);
+    const del = kv.delete.bind(kv);
+    let putRefused = false;
+    let deleteRefused = false;
+    kv.put = async (key, value, options) => {
+      if (!putRefused) {
+        putRefused = true;
+        throw new Error('KV PUT failed: 429 Too Many Requests');
+      }
+      return put(key, value, options);
+    };
+    kv.delete = async (key) => {
+      if (!deleteRefused) {
+        deleteRefused = true;
+        throw new Error('KV DELETE failed: 429 Too Many Requests');
+      }
+      return del(key);
+    };
+    await store.setGoing('2026-09-18', 1, 'muizenberg', '2026-09-17T19:05');
+    expect(await store.goingOn('2026-09-18')).toHaveLength(1);
+    await store.cancelGoing('2026-09-18', 1);
+    expect(await store.goingOn('2026-09-18')).toEqual([]);
+    expect(waits).toEqual([1100, 1100]);
+  });
+});
+
 describe('Store reports and locks', () => {
   const W = { start: '2026-09-16T07:00', end: '2026-09-16T09:00', peak: 3, mean: 3 };
   // Comme l'évaluation mémorisée : un seul objet par spot-journée, copié par ami avec sa propre distance.

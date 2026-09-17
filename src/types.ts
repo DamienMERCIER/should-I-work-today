@@ -98,6 +98,8 @@ export interface SpotResult {
   waterTempC?: number;
 }
 export interface TideEvent { time: string; kind: 'high' | 'low'; heightM: number }
+/** Un ami qui a dit « j'y vais » : où, et quand il l'a dit. */
+export interface GoingEntry { chatId: number; spotId: string; at: string }
 export interface RawConditions { swellHeightM: number; periodS: number; swellDirDeg: number; windKt: number; windDirDeg: number }
 export interface SpotPick { spotId: string; window: Window }
 

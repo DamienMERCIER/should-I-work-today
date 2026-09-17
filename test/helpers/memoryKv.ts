@@ -21,6 +21,11 @@ export class MemoryKV implements KVStore {
     this.writes.push(key);
   }
 
+  async delete(key: string): Promise<void> {
+    this.data.delete(key);
+    this.writes.push(key);
+  }
+
   async list(options: { prefix: string; cursor?: string }): Promise<KVListResult> {
     const names = [...this.data.keys()].filter((k) => k.startsWith(options.prefix)).sort();
     const start = options.cursor ? Number(options.cursor) : 0;

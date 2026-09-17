@@ -3,7 +3,10 @@ import type { Strings } from './types';
 export const ru: Strings = {
   locale: 'ru-RU',
   cardinal: ['С', 'СВ', 'В', 'ЮВ', 'Ю', 'ЮЗ', 'З', 'СЗ'],
-  buttons: { useMyLocation: '📍 Использовать моё местоположение', backHome: '🏠 Вернуться в Muizenberg', now: '🔎 Сейчас', allSpots: '📋 Все споты', goTo: '📍 Маршрут до {spot}' },
+  buttons: {
+    useMyLocation: '📍 Использовать моё местоположение', backHome: '🏠 Вернуться в Muizenberg', now: '🔎 Сейчас', allSpots: '📋 Все споты', goTo: '📍 Маршрут до {spot}',
+    going: '🙋 Я еду: {spot}', notGoing: '✖️ Я больше не еду',
+  },
   windStates: { glassy: 'штиль', off: 'оффшор', 'cross-off': 'кросс-оффшор', cross: 'кросс', 'cross-on': 'кросс-оншор', on: 'оншор' },
   then: 'затем',
   today: 'сегодня',
@@ -91,6 +94,7 @@ export const ru: Strings = {
       getsDark: 'темнеет',
     },
   },
+  going: { title: '🙋 <b>Кто едет</b> ({date})', you: 'ты', someone: 'друг', cancelled: '👌 Понял, {date} ты не едешь.' },
   alert: {
     title: '🔥 <b>БУДЕТ ЭПИЧНО</b> ({date})',
     footer: 'Планируй заранее — накануне вечером подтвержу.',

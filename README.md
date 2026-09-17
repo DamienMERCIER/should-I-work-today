@@ -4,7 +4,7 @@ Bot Telegram qui dit chaque soir à 19h (SAST) s'il faut aller travailler le len
 
 ## Commandes du bot
 
-`/start <code>` · `📍 Use my location` · `🏠 Back to Muizenberg` · `🔎 Right now` / `/now` · `/week` (la semaine à venir, meilleur jour en tête ; envoyée aussi chaque dimanche à 19h05) · `/all` · `/about` · `/profil` · `/lang` · `/stop` · bouton `📋 All spots` · `/<spot>` (commande par spot dérivée du `short`, ex. `/long_beach` — voir `/about` et `src/bot/spotMatch.ts`) · `/amis` (admin seulement, absente de `/setcommands` : chaque ami avec son nom Telegram, sa langue, son lieu, ses horaires, sa date d'arrivée, et s'il s'est mis en pause ou a bloqué le bot).
+`/start <code>` · `📍 Use my location` · `🏠 Back to Muizenberg` · `🔎 Right now` / `/now` · `/week` (la semaine à venir, meilleur jour en tête ; envoyée aussi chaque dimanche à 19h05) · `/all` · `/about` · `/profil` · `/lang` · `/stop` · bouton `📋 All spots` · bouton `🙋 I'm going: <spot>` sous le verdict quand il y a un créneau (🟢, 🌅, 🌇 — soir, matin, `/now`) : note où l'ami va ce jour-là et lui montre, à lui seul, qui y va ; `✖️` pour se désister · `/<spot>` (commande par spot dérivée du `short`, ex. `/long_beach` — voir `/about` et `src/bot/spotMatch.ts`) · `/amis` (admin seulement, absente de `/setcommands` : chaque ami avec son nom Telegram, sa langue, son lieu, ses horaires, sa date d'arrivée, et s'il s'est mis en pause ou a bloqué le bot).
 
 ## Développement
 
@@ -34,7 +34,7 @@ Variables locales dans `.dev.vars` (ignoré par git) : `TELEGRAM_BOT_TOKEN`, `WE
 
 ## Exploitation
 
-- Le push de 19h est le heartbeat ; toute erreur de run arrive sur Telegram à `ADMIN_CHAT_ID`. L'admin y est aussi prévenu, avec le nom Telegram et l'id, de chaque ami qui rejoint le bot, de chaque accès refusé (sans code, mauvais code, `INVITE_CODE` absent) et de chaque inconnu qui écrit sans l'avoir rejoint. Le dimanche, un second cron à 19h05 envoie la semaine à venir. Chaque jour à 12h, un troisième cherche les grosses journées à J+2 et J+3 ; qui a été prévenu de quelle date est gardé 5 jours (`alerted:<date>:<chatId>`).
+- Le push de 19h est le heartbeat ; toute erreur de run arrive sur Telegram à `ADMIN_CHAT_ID`. L'admin y est aussi prévenu, avec le nom Telegram et l'id, de chaque ami qui rejoint le bot, de chaque accès refusé (sans code, mauvais code, `INVITE_CODE` absent) et de chaque inconnu qui écrit sans l'avoir rejoint. Le dimanche, un second cron à 19h05 envoie la semaine à venir. Chaque jour à 12h, un troisième cherche les grosses journées à J+2 et J+3 ; qui a été prévenu de quelle date est gardé 5 jours (`alerted:<date>:<chatId>`). Qui va où (bouton 🙋) : `going:<date>:<chatId>`, le spot et l'heure de l'appui en métadonnées, gardé 3 jours.
 - Logs : `npx wrangler tail`.
 - Calibrer : lancer `npm run compare:sf` chaque jour pendant quelques semaines ; le CSV met face à face étoiles, hauteurs, vent et état du vent du site et du bot, spot par spot. Les constantes de la note sont dans `src/engine/rating.ts`, les seuils du verdict dans `src/config.ts`, l'orientation de chaque spot (`facing`) dans `src/data/spots.json`.
 - Verrou coincé (run planté après le verrou) : `npx wrangler kv key delete --binding KV "run:<date>:evening"` (ou `morning`, `week`, `alert` — celui-ci à la date du jour) avant de relancer.

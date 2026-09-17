@@ -6,7 +6,7 @@ export interface Strings {
   /** N, NE, E, SE, S, SW, W, NW */
   cardinal: readonly [string, string, string, string, string, string, string, string];
   /** goTo: {spot} — the 📍 "go to this spot" map button (`src/render/messages.ts` `goButtons`). */
-  buttons: { useMyLocation: string; backHome: string; now: string; allSpots: string; goTo: string };
+  buttons: { useMyLocation: string; backHome: string; now: string; allSpots: string; goTo: string; going: string; notGoing: string };
   /** les six états de vent de surf-forecast, du plus propre au pire */
   windStates: Record<WindState, string>;
   then: string;
@@ -81,6 +81,8 @@ export interface Strings {
       getsDark: string;
     };
   };
+  /** 🙋 qui va surfer ce jour-là. title: {date} · cancelled: {date} ; `buttons.going` : {spot} */
+  going: { title: string; you: string; someone: string; cancelled: string };
   /** L'alerte de midi, une grosse journée à J+2 ou J+3. title: {date} */
   alert: { title: string; footer: string };
   /** La semaine à venir (`/week`, envoi du dimanche). best: {day} {spot} {stars} · trend: {day} */

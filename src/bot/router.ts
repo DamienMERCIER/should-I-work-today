@@ -9,10 +9,14 @@ import type { SpotTuple } from '../data/world';
 import { buildReport, buildWeek, nearbySpots, type CollectDeps } from '../jobs/collect';
 import { notifyAdmin } from '../jobs/runs';
 import { detectLang, fill, STRINGS, type Strings } from '../render/i18n';
-import { detailsMarkupFor, goButtonsMarkup, renderDetails, renderEvening, renderSpotDay, renderWeek, spotById, spotName, type RenderCtx, allSpotOrder } from '../render/messages';
+import {
+  detailsMarkupFor, expandCompactDate, fmtDate, goButtonsMarkup, notGoingData, renderDetails, renderEvening, renderSpotDay, renderWeek, spotById, spotName,
+  type RenderCtx, allSpotOrder,
+} from '../render/messages';
 import type { Lang, Profile, Region, Report, Spot } from '../types';
 import { langKeyboard, persistentKeyboard, profileKeyboard } from './keyboards';
 import { renderFriends, telegramName } from './friends';
+import { renderGoing } from './going';
 import { newProfile, parseHours, profileSummary, welcomeText } from './profile';
 import { matchSpot, spotSlug, totalSpotCount } from './spotMatch';
 import { oneLine } from './text';
@@ -320,7 +324,7 @@ async function handleCallback(cb: TgCallbackQuery, deps: BotDeps): Promise<void>
   if (!stored) return;
   const profile = await refreshName(chatId, stored, cb.from, deps);
   const s = STRINGS[profile.lang];
-  const [kind, value = ''] = (cb.data ?? '').split(':');
+  const [kind, value = '', rest = ''] = (cb.data ?? '').split(':');
   const { telegram, store } = deps;
 
   // `lvl:*`, `board:*`, `prof:level` et `prof:board` venaient de l'ancien onboarding : leurs boutons
@@ -342,9 +346,60 @@ async function handleCallback(cb: TgCallbackQuery, deps: BotDeps): Promise<void>
     }
     case 'rep':
       return handleDetails(chatId, value, profile, deps);
+    case 'go':
+      return handleGoing(chatId, value, rest, profile, deps);
+    case 'nogo':
+      return handleNotGoing(chatId, value, profile, deps);
     default:
       return;
   }
+}
+
+/**
+ * Jusqu'où un bouton 🙋 peut viser : ceux des messages parlent d'aujourd'hui (/now, matin) ou de demain (soir). Plus loin,
+ * c'est un bouton fabriqué — et une entrée gardée 3 jours à partir de l'appui expirerait avant sa date.
+ */
+const GOING_MAX_DAYS_AHEAD = 1;
+
+/** La date d'un bouton 🙋 : une vraie date du calendrier, au plus une semaine après aujourd'hui, et si ce jour est déjà fini. */
+function goingDate(compact: string, today: string): { date: string; past: boolean } | undefined {
+  const date = expandCompactDate(compact);
+  if (!date) return undefined;
+  const parsed = new Date(`${date}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date || date > addDays(today, GOING_MAX_DAYS_AHEAD)) return undefined;
+  return { date, past: date < today };
+}
+
+/**
+ * 🙋 « J'y vais » : noter où l'ami va ce jour-là, puis lui montrer — à lui seul, personne d'autre n'est prévenu — qui y va,
+ * avec de quoi se désister. Les données d'un bouton se falsifient : date et spot sont vérifiés avant toute écriture. Les
+ * 1 000 écritures KV du jour servent aussi aux envois programmés : un appui qui ne change rien n'en coûte aucune.
+ */
+async function handleGoing(chatId: number, compact: string, spotId: string, profile: Profile, deps: BotDeps): Promise<void> {
+  const s = STRINGS[profile.lang];
+  const ctx = renderCtx(profile.lang, deps);
+  const now = deps.now();
+  const day = goingDate(compact, dateOf(now));
+  if (!day || !spotById(spotId, ctx)) return;
+  if (day.past) return void (await deps.telegram.sendMessage(chatId, s.details.tooOld));
+  const current = await deps.store.goingOf(day.date, chatId);
+  const mine = current?.spotId === spotId ? current : { chatId, spotId, at: now };
+  if (mine !== current) await deps.store.setGoing(day.date, chatId, spotId, now);
+  const [listed, profiles] = await Promise.all([deps.store.goingOn(day.date), deps.store.getProfiles()]);
+  // `list` peut ne pas avoir encore vu cet appui, ou montrer l'ancien choix de l'ami : sa place est celle qu'il vient de choisir
+  const going = [...listed.filter((e) => e.chatId !== chatId), mine];
+  await deps.telegram.sendMessage(chatId, renderGoing(day.date, going, chatId, profiles, ctx), {
+    inline_keyboard: [[{ text: s.buttons.notGoing, callback_data: notGoingData(day.date) }]],
+  });
+}
+
+async function handleNotGoing(chatId: number, compact: string, profile: Profile, deps: BotDeps): Promise<void> {
+  const s = STRINGS[profile.lang];
+  const day = goingDate(compact, dateOf(deps.now()));
+  if (!day) return;
+  if (day.past) return void (await deps.telegram.sendMessage(chatId, s.details.tooOld));
+  if (await deps.store.goingOf(day.date, chatId)) await deps.store.cancelGoing(day.date, chatId);
+  await deps.telegram.sendMessage(chatId, fill(s.going.cancelled, { date: fmtDate(day.date, profile.lang) }));
 }
 
 async function handleDetails(chatId: number, date: string, profile: Profile, deps: BotDeps): Promise<void> {

@@ -1,5 +1,5 @@
-import { ALERTED_TTL_S, LANGS, LOCK_TTL_S, REPORT_TTL_S } from '../config';
-import type { Profile, Report, SpotHour, SpotResult } from '../types';
+import { ALERTED_TTL_S, GOING_TTL_S, LANGS, LOCK_TTL_S, REPORT_TTL_S } from '../config';
+import type { GoingEntry, Profile, Report, SpotHour, SpotResult } from '../types';
 import { sleep as defaultSleep } from './http';
 
 /**
@@ -101,8 +101,12 @@ function unpackReports(stored: unknown): Record<string, Report> {
 export interface KVStore {
   get(key: string, type: 'json'): Promise<unknown>;
   put(key: string, value: string, options?: { expirationTtl?: number; metadata?: unknown }): Promise<void>;
+  delete(key: string): Promise<void>;
   list(options: { prefix: string; cursor?: string }): Promise<KVListResult>;
 }
+
+const isGoing = (x: unknown): x is Omit<GoingEntry, 'chatId'> =>
+  typeof x === 'object' && x !== null && typeof (x as GoingEntry).spotId === 'string' && typeof (x as GoingEntry).at === 'string';
 
 export type RunKind = 'evening' | 'morning' | 'week' | 'alert';
 
@@ -176,14 +180,61 @@ export class Store {
     const key = `${PROFILE_PREFIX}${id}`;
     const value = JSON.stringify(profile);
     const options = new TextEncoder().encode(value).length <= METADATA_MAX_BYTES ? { metadata: profile } : undefined;
+    await this.twice(() => this.kv.put(key, value, options));
+  }
+
+  /**
+   * Le 429 d'une seconde écriture dans la seconde sur la même clé, ou une panne passagère : la même écriture, une fois, un
+   * peu plus tard. Sans dépendre du texte de l'erreur ; un second échec remonte tel quel.
+   */
+  private async twice(write: () => Promise<void>): Promise<void> {
     try {
-      await this.kv.put(key, value, options);
+      await write();
     } catch {
-      // Le 429 d'une seconde écriture dans la seconde, ou une panne passagère : la même écriture, une fois, un peu plus
-      // tard. Sans dépendre du texte de l'erreur ; un second échec remonte tel quel.
       await this.sleep(SAME_KEY_RETRY_MS);
-      await this.kv.put(key, value, options);
+      await write();
     }
+  }
+
+  /**
+   * « J'y vais » : une clé par ami et par date (`going:<date>:<chatId>`), le spot et l'heure aussi en métadonnées pour tout
+   * relire d'un `list`. Un ami ne va qu'à un spot par jour : la nouvelle entrée remplace l'ancienne. Un double appui arrive
+   * dans la même seconde sur la même clé, d'où le nouvel essai.
+   */
+  async setGoing(date: string, chatId: number, spotId: string, at: string): Promise<void> {
+    const entry = { spotId, at };
+    await this.twice(() => this.kv.put(`going:${date}:${chatId}`, JSON.stringify(entry), { expirationTtl: GOING_TTL_S, metadata: entry }));
+  }
+
+  /** Où un ami a dit qu'il allait ce jour-là : une lecture, pour n'écrire que ce qui change. */
+  async goingOf(date: string, chatId: number): Promise<GoingEntry | undefined> {
+    const entry = await this.kv.get(`going:${date}:${chatId}`, 'json');
+    return isGoing(entry) ? { chatId, spotId: entry.spotId, at: entry.at } : undefined;
+  }
+
+  async cancelGoing(date: string, chatId: number): Promise<void> {
+    await this.twice(() => this.kv.delete(`going:${date}:${chatId}`));
+  }
+
+  /**
+   * Qui y va ce jour-là. `list` suit les écritures avec jusqu'à une minute de retard : l'appui qu'on vient d'enregistrer
+   * peut manquer, l'appelant le rajoute. Une entrée illisible est sautée, jamais fatale à la liste.
+   */
+  async goingOn(date: string): Promise<GoingEntry[]> {
+    const prefix = `going:${date}:`;
+    const entries: GoingEntry[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await this.kv.list({ prefix, cursor });
+      for (const { name, metadata } of page.keys) {
+        const chatId = Number(name.slice(prefix.length));
+        if (!Number.isInteger(chatId)) continue;
+        const entry = metadata ?? (await this.kv.get(name, 'json'));
+        if (isGoing(entry)) entries.push({ chatId, spotId: entry.spotId, at: entry.at });
+      }
+      cursor = page.list_complete ? undefined : page.cursor;
+    } while (cursor);
+    return entries;
   }
 
   /**

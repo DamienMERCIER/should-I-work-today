@@ -45,6 +45,8 @@ export const ALERT_DAYS_AHEAD: readonly number[] = [2, 3];
 export const ALERTED_TTL_S = 5 * 24 * 3600;
 export const REPORT_TTL_S = 48 * 3600;
 export const LOCK_TTL_S = 6 * 3600;
+/** Qui va surfer quel jour (bouton 🙋) : gardé jusqu'au lendemain de la date au moins, puis oublié. */
+export const GOING_TTL_S = 3 * 24 * 3600;
 /**
  * Requêtes externes (fetch : Open-Meteo, Telegram) par invocation : 50 sur le plan gratuit, les lectures et écritures
  * KV ayant leur propre limite de 1 000. 3 gardées pour les alertes admin d'un envoi qui échoue. Les nouveaux essais

@@ -182,6 +182,7 @@ describe('location and /now', () => {
     // go buttons (ordered by peak) before the 📋 row — same verdict rendering path as the evening/morning push.
     expect(sent()[0].reply_markup).toEqual({
       inline_keyboard: [
+        [{ text: "🙋 I'm going: Long Beach", callback_data: 'go:260916:kommetjie-long-beach' }],
         [{ text: '📍 Go to Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
         [{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }],
       ],
@@ -401,6 +402,74 @@ describe('📋 details callback', () => {
     await handleUpdate(cb('rep:2020-01-01'), deps);
     expect(sent()[2].text).toBe('Too old — run /now.');
     expect(answered()).toBe(3);
+  });
+});
+
+describe('🙋 going — who is surfing that day', () => {
+  const LB = 'kommetjie-long-beach';
+  const KOM = 'Kommetjie – Long Beach';
+  const MUIZ = "Muizenberg – Surfer's Corner";
+
+  it('saves where the friend goes and answers them alone with who is going that day, them first', async () => {
+    const { deps, store, sent } = setup();
+    await store.putProfiles({
+      '1': ready({ name: 'Damien' }), '2': ready({ chatId: 2, name: '<b>Ivan</b>' }), '3': ready({ chatId: 3, username: 'olga' }), '4': ready({ chatId: 4 }),
+    });
+    await store.setGoing('2026-09-16', 2, LB, '2026-09-15T19:10');
+    await store.setGoing('2026-09-16', 3, 'muizenberg', '2026-09-15T19:20');
+    await store.setGoing('2026-09-16', 4, LB, '2026-09-15T19:30');
+    await handleUpdate(cb(`go:260916:${LB}`), deps);
+    expect(await store.goingOn('2026-09-16')).toContainEqual({ chatId: 1, spotId: LB, at: NOW });
+    expect(sent().map((m) => m.chat_id)).toEqual([1]);
+    expect(sent()[0].text).toBe(["🙋 <b>Who's going</b> (Wed 16 Sept)", `${KOM}: you, &lt;b&gt;Ivan&lt;/b&gt;, a friend`, `${MUIZ}: @olga`].join('\n'));
+    expect(sent()[0].reply_markup).toEqual({ inline_keyboard: [[{ text: "✖️ I'm not going any more", callback_data: 'nogo:260916' }]] });
+  });
+
+  it('shows the friend where they just chose even when the list has not caught up yet — they can only be at one spot a day', async () => {
+    const { deps, store, kv, sent } = setup();
+    await store.putProfiles({ '1': ready() });
+    await store.setGoing('2026-09-16', 1, 'muizenberg', '2026-09-16T07:00');
+    const stale = await kv.list({ prefix: 'going:2026-09-16:' });
+    const list = kv.list.bind(kv);
+    kv.list = async (o) => (o.prefix.startsWith('going:') ? stale : list(o));
+    await handleUpdate(cb(`go:260916:${LB}`), deps);
+    expect(sent()[0].text).toBe(["🙋 <b>Who's going</b> (Wed 16 Sept)", `${KOM}: you`].join('\n'));
+  });
+
+  it('spends no KV write on a tap that changes nothing — the same spot again, or ✖️ with nothing to cancel', async () => {
+    const { deps, store, kv, sent } = setup();
+    await store.putProfiles({ '1': ready() });
+    await handleUpdate(cb(`go:260916:${LB}`), deps);
+    deps.now = () => '2026-09-16T08:45';
+    await handleUpdate(cb(`go:260916:${LB}`), deps);
+    expect(kv.writes.filter((k) => k.startsWith('going:'))).toEqual(['going:2026-09-16:1']);
+    expect(await store.goingOf('2026-09-16', 1)).toMatchObject({ at: NOW }); // l'heure du premier appui reste
+    await handleUpdate(cb('nogo:260917'), deps);
+    expect(kv.writes.filter((k) => k.startsWith('going:'))).toEqual(['going:2026-09-16:1']);
+    expect(sent().at(-1)?.text).toBe("👌 Noted, you're not going on Thu 17 Sept.");
+  });
+
+  it('✖️ removes the entry and says so, in the friend\'s language', async () => {
+    const { deps, store, sent } = setup();
+    await store.putProfiles({ '1': ready(), '2': ready({ chatId: 2, lang: 'ru' }) });
+    await store.setGoing('2026-09-16', 1, LB, '2026-09-16T07:00');
+    await handleUpdate(cb('nogo:260916'), deps);
+    expect(await store.goingOn('2026-09-16')).toEqual([]);
+    expect(sent()[0].text).toBe("👌 Noted, you're not going on Wed 16 Sept.");
+    await handleUpdate(cb(`go:260916:${LB}`, 2), deps);
+    expect(sent()[1].text.split('\n')).toEqual([`🙋 <b>Кто едет</b> (${fmtDate('2026-09-16', 'ru')})`, `${KOM}: ты`]);
+  });
+
+  it('ignores a forged or broken button, and says a past day is over', async () => {
+    const { deps, store, kv, sent } = setup();
+    await store.putProfiles({ '1': ready() });
+    // 30 février : `Date` le lirait comme le 2 mars
+    // les boutons ne visent qu'aujourd'hui ou demain : après-demain vient d'un bouton fabriqué
+    for (const data of ['go:260916:nope', `go:2609:${LB}`, `go:260918:${LB}`, `go:260230:${LB}`, 'go:260916', 'nogo:xx']) await handleUpdate(cb(data), deps);
+    expect(sent()).toEqual([]);
+    await handleUpdate(cb(`go:260915:${LB}`), deps);
+    expect(sent().map((m) => m.text)).toEqual(['Too old — run /now.']);
+    expect(kv.writes.filter((k) => k.startsWith('going:'))).toEqual([]);
   });
 });
 

@@ -628,6 +628,32 @@ export function renderDetails(report: Report, ctx: RenderCtx, opts: { all?: bool
 
 const detailsButtonRow = (date: string, lang: Lang): InlineButton[] => [{ text: STRINGS[lang].buttons.allSpots, callback_data: `rep:${date}` }];
 
+/**
+ * Boutons 🙋 : `go:<aammjj>:<spot>` et `nogo:<aammjj>`. La date perd siècle et tirets pour que les ids importés les plus
+ * longs tiennent dans les 64 octets qu'un bouton Telegram accepte — un seul bouton trop long et Telegram refuse le
+ * message entier, donc l'envoi du soir à tout un groupe.
+ */
+const CALLBACK_DATA_MAX_BYTES = 64;
+const compactDate = (date: string): string => date.slice(2).replace(/-/g, '');
+/** `aammjj` → `AAAA-MM-JJ`, ou `undefined` pour tout ce qui n'en a pas la forme. */
+export const expandCompactDate = (compact: string): string | undefined =>
+  /^\d{6}$/.test(compact) ? `20${compact.slice(0, 2)}-${compact.slice(2, 4)}-${compact.slice(4, 6)}` : undefined;
+export const notGoingData = (date: string): string => `nogo:${compactDate(date)}`;
+
+/** Un bouton 🙋 par spot où le verdict propose d'aller — le 🟢, ou l'aube et le soir d'un 🟡 —, dans l'ordre du message. */
+function goingRows(report: Report, ctx: RenderCtx): InlineButton[][] {
+  const v = report.verdict;
+  const picks = v.kind === 'green' ? [v.spotId] : v.kind === 'yellow' ? [v.dawn?.spotId, v.dusk?.spotId] : [];
+  const s = STRINGS[ctx.lang];
+  const rows: InlineButton[][] = [];
+  for (const spotId of new Set(picks)) {
+    if (spotId === undefined || !spotById(spotId, ctx)) continue;
+    const data = `go:${compactDate(report.date)}:${spotId}`;
+    if (new TextEncoder().encode(data).length > CALLBACK_DATA_MAX_BYTES) continue;
+    rows.push([{ text: fill(s.buttons.going, { spot: spotShort(spotId, ctx, s) }), callback_data: data }]);
+  }
+  return rows;
+}
 
 /** Rows → `undefined` rather than `{ inline_keyboard: [] }` — Telegram rejects an empty keyboard. */
 const toMarkup = (rows: InlineButton[][]): ReplyMarkup | undefined => (rows.length > 0 ? { inline_keyboard: rows } : undefined);
@@ -672,12 +698,12 @@ export const goButtonsMarkup = (report: Report, ctx: RenderCtx, opts: { spotId?:
 
 /**
  * The verdict surface (`/now`, the location reply, and the evening/morning push — same rendering path):
- * go buttons first (own rows — spot names are long), then the 📋 row. Pas de verdict (hors-couverture,
+ * the 🙋 going buttons, then go buttons (own rows — spot names are long), then the 📋 row. Pas de verdict (hors-couverture,
  * pas de données) → pas de bouton 📋 : le panneau qu'il ouvrirait serait fabriqué (§9) — and in practice
  * those reports never carry `spots` either, so no go buttons show there anyway.
  */
 export function detailsMarkupFor(report: Report, ctx: RenderCtx): ReplyMarkup | undefined {
   const hasDetails = report.verdict.kind === 'green' || report.verdict.kind === 'yellow' || report.verdict.kind === 'red';
-  const rows = [...goButtons(report, ctx), ...(hasDetails ? [detailsButtonRow(report.date, ctx.lang)] : [])];
+  const rows = [...goingRows(report, ctx), ...goButtons(report, ctx), ...(hasDetails ? [detailsButtonRow(report.date, ctx.lang)] : [])];
   return toMarkup(rows);
 }
