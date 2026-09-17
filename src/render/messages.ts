@@ -5,7 +5,7 @@ import type { Delta } from '../engine/delta';
 import { cardinal8 } from '../engine/geo';
 import { addDays, isWeekend, toMs } from '../engine/time';
 import { rawStars, starGlyphs } from '../engine/rating';
-import { primaryPick } from '../engine/verdict';
+import { compareSpotDays, primaryPick } from '../engine/verdict';
 import type { Lang, Report, Spot, SpotHour, SpotPick, SpotResult, Window } from '../types';
 import { chartHours, hourRuler, sparkline } from './chart';
 import { fill, STRINGS, type Strings } from './i18n';
@@ -508,9 +508,8 @@ function spotRow(r: SpotResult, hours: number[], date: string, ctx: RenderCtx, s
  */
 export function openSpotOrder(report: Report): string[] {
   const pick = primaryPick(report.verdict);
-  const byScore = (a: SpotResult, b: SpotResult): number => b.maxScore - a.maxScore;
-  const primaryId = pick?.spotId ?? [...report.spots].sort(byScore)[0]?.spotId;
-  const others = report.spots.filter((r) => r.spotId !== primaryId).sort(byScore).map((r) => r.spotId);
+  const primaryId = pick?.spotId ?? [...report.spots].sort(compareSpotDays)[0]?.spotId;
+  const others = report.spots.filter((r) => r.spotId !== primaryId).sort(compareSpotDays).map((r) => r.spotId);
   return primaryId ? [primaryId, ...others] : others;
 }
 
@@ -551,7 +550,7 @@ export function renderDayView(report: Report, ctx: RenderCtx, opts: { all?: bool
   const blocks: string[] = [];
   if (primaryId) blocks.push(renderSpotDay(report, primaryId, ctx));
 
-  const others = report.spots.filter((r) => r.spotId !== primaryId).sort((a, b) => b.maxScore - a.maxScore);
+  const others = report.spots.filter((r) => r.spotId !== primaryId).sort(compareSpotDays);
   const shown = opts.all ? others.slice(0, ALL_SPOTS_CAP) : others.filter((r) => r.maxScore >= DAY_VIEW_MIN_STARS);
   const hours = chartHours(report);
   if (shown.length > 0) blocks.push(shown.map((r) => `<code>${spotRow(r, hours, report.date, ctx, s)}</code>`).join('\n'));

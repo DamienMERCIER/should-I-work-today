@@ -51,13 +51,31 @@ function best(cands: Candidate[]): Candidate | undefined {
   )[0];
 }
 
+const hoursScoring = (r: SpotResult, test: (score: number) => boolean): number => r.hours.filter((h) => test(h.score)).length;
+
+/**
+ * Le meilleur spot de la journée d'abord : le plus d'étoiles, puis, à égalité, celui qui les tient le plus
+ * d'heures, puis celui qui a le plus d'heures à au moins une étoile, puis le plus proche. Sans ça, le plus
+ * proche gagnait : The Hoek passait devant Long Beach pour 2 heures à 2★ contre 5 (/all, jeudi 17/09).
+ * Sert au 🔴 (`bestSpotId`), à la tête de `/all` et à l'ordre des autres spots (src/render/messages.ts).
+ */
+export function compareSpotDays(a: SpotResult, b: SpotResult): number {
+  return (
+    b.maxScore - a.maxScore ||
+    // score > 0 : un jour à 0★ partout, « le plus d'heures au meilleur niveau » compterait la nuit et avantagerait le spot le plus long à évaluer
+    hoursScoring(b, (score) => score > 0 && score === b.maxScore) - hoursScoring(a, (score) => score > 0 && score === a.maxScore) ||
+    hoursScoring(b, (score) => score > 0) - hoursScoring(a, (score) => score > 0) ||
+    a.distanceKm - b.distanceKm
+  );
+}
+
 const toPick = (c: Candidate): SpotPick => ({ spotId: c.spotId, window: c.window });
 const longEnough = (w: Window): boolean => windowHours(w) >= SCORING.sessionMinH;
 const isEpic = (w: Window): boolean => w.peak >= SCORING.epic && longEnough(w);
 
 export function decideVerdict(results: SpotResult[], opts: VerdictOptions): Verdict {
   const cands = candidates(results);
-  const bestSpotId = [...results].sort((a, b) => b.maxScore - a.maxScore)[0]?.spotId;
+  const bestSpotId = [...results].sort(compareSpotDays)[0]?.spotId;
 
   if (opts.mode === 'now' || isWeekend(opts.date)) {
     const c = best(cands.filter((x) => longEnough(x.window)));

@@ -1,4 +1,4 @@
-import type { HourFactors, Report, SpotHour } from '../../src/types';
+import type { HourFactors, Report, SpotHour, SpotResult } from '../../src/types';
 
 export const DATE = '2026-09-16';
 
@@ -10,6 +10,12 @@ export function makeHour(time: string, score: number, factors: Partial<HourFacto
     factors: { swell: 0.4, wind: 1, day: 1, weather: 1, ...factors },
     score,
   };
+}
+
+/** Un spot et sa journée notée heure par heure depuis 6h, sans fenêtre : de quoi départager des spots à égalité d'étoiles. */
+export function makeSpotDay(spotId: string, distanceKm: number, scores: number[], date = DATE): SpotResult {
+  const hours = scores.map((score, i) => makeHour(`${date}T${String(6 + i).padStart(2, '0')}:00`, score));
+  return { spotId, distanceKm, hours, windows: [], best: undefined, maxScore: Math.max(...scores) };
 }
 
 export function makeReport(overrides: Partial<Report>): Report {

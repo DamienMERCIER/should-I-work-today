@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { decideVerdict, overlapHours, hoursBefore, hoursAfter, primaryPick } from '../../src/engine/verdict';
 import type { SpotResult, Window } from '../../src/types';
+import { makeSpotDay } from '../helpers/reports';
 
 const DATE = '2026-09-16'; // mercredi
 const SAT = '2026-09-19';
@@ -60,6 +61,25 @@ describe('weekday verdict', () => {
   it('🔴 with the best spot when nothing reaches 4★', () => {
     const v = day([res('a', [W(DATE, '07:00', '10:00', 3)], { maxScore: 3 }), res('b', [], { maxScore: 2 })]);
     expect(v).toEqual({ kind: 'red', bestSpotId: 'a' });
+  });
+  const spotDay = (spotId: string, distanceKm: number, scores: number[]): SpotResult => makeSpotDay(spotId, distanceKm, scores, DATE);
+
+  it('🔴 two spots at the same stars: the one holding them for more hours wins, not the nearer one', () => {
+    // The Hoek a même plus d'heures à au moins une étoile : les heures au meilleur niveau passent avant.
+    const v = day([spotDay('noordhoek', 13, [1, 2, 2, 1, 1, 1, 1, 1]), spotDay('kommetjie-long-beach', 15, [0, 2, 2, 2, 2, 2, 0, 0])]);
+    expect(v).toEqual({ kind: 'red', bestSpotId: 'kommetjie-long-beach' });
+  });
+  it('🔴 same stars for as many hours: the one with more hours carrying at least one star wins', () => {
+    const v = day([spotDay('short', 5, [0, 2, 2, 1, 0, 0]), spotDay('long', 9, [1, 2, 2, 1, 1, 1])]);
+    expect(v).toEqual({ kind: 'red', bestSpotId: 'long' });
+  });
+  it('🔴 a perfect tie goes to the nearer spot, whatever the order they come in', () => {
+    expect(day([spotDay('far', 9, [0, 2, 1]), spotDay('near', 5, [0, 2, 1])])).toEqual({ kind: 'red', bestSpotId: 'near' });
+    expect(day([spotDay('near', 5, [0, 2, 1]), spotDay('far', 9, [0, 2, 1])])).toEqual({ kind: 'red', bestSpotId: 'near' });
+  });
+  it('🔴 a flat day (0★ everywhere) goes to the nearer spot — not to the one with more hours evaluated', () => {
+    const v = day([spotDay('far', 20, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), spotDay('near', 5, [0, 0, 0, 0])]);
+    expect(v).toEqual({ kind: 'red', bestSpotId: 'near' });
   });
   it('a 3★ window is surfable but not worth skipping work: 🔴', () => {
     expect(day([res('a', [W(DATE, '07:00', '12:00', 3)])]).kind).toBe('red');

@@ -9,7 +9,7 @@ import { SPOTS } from '../../src/data/index';
 import type { Report, SpotHour, SpotResult, TideTrend, Verdict, Window } from '../../src/types';
 import { rawStars, starBase } from '../../src/engine/rating';
 import { GOLDEN_DATE, goldenReport } from '../helpers/golden';
-import { makeHour, makeReport } from '../helpers/reports';
+import { makeHour, makeReport, makeSpotDay } from '../helpers/reports';
 
 const spots = new Map(SPOTS.map((s) => [s.id, s]));
 const EN: RenderCtx = { lang: 'en', spots };
@@ -46,6 +46,34 @@ describe('formatting', () => {
   it('detailsMarkupFor: no button at all for outOfCoverage/noData (real reports never carry spots there — §9)', () => {
     expect(detailsMarkupFor(goldenReport({ spots: [], tides: [], verdict: { kind: 'outOfCoverage', nearest: [] } }), EN)).toBeUndefined();
     expect(detailsMarkupFor(goldenReport({ spots: [], verdict: { kind: 'noData', reason: 'x' } }), EN)).toBeUndefined();
+  });
+});
+
+describe('spot order on a day without a window to pick', () => {
+  const spotDay = makeSpotDay;
+  // Jeudi 17/09 au Cap, /all : The Hoek, plus proche, passait en tête pour 2 heures à 2★ quand Long Beach les tenait 5 heures.
+  const report = makeReport({
+    verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' },
+    spots: [
+      spotDay('noordhoek', 13, [0, 2, 2, 1, 0, 0, 0, 0]),
+      spotDay('inner-kom', 14, [0, 1, 0, 0, 0, 0, 0, 0]),
+      spotDay('outer-kom', 14.5, [1, 1, 1, 0, 0, 0, 0, 0]),
+      spotDay('kommetjie-long-beach', 15, [0, 2, 2, 2, 2, 2, 1, 0]),
+      spotDay('llandudno', 18, [0, 2, 2, 2, 0, 0, 2, 0]),
+    ],
+  });
+
+  it('ranks spots tied on stars by the hours at those stars, then by the hours with at least one star', () => {
+    expect(openSpotOrder(report)).toEqual(['kommetjie-long-beach', 'llandudno', 'noordhoek', 'outer-kom', 'inner-kom']);
+  });
+
+  it('/all heads with that spot and lists the others in the same order', () => {
+    const out = renderDayView(report, EN, { all: true });
+    const at = (label: string): number => out.indexOf(label);
+    expect(at('🏄 Kommetjie – Long Beach')).toBeGreaterThanOrEqual(0);
+    expect(at('Llandudno')).toBeLessThan(at('The Hoek'));
+    expect(at('The Hoek')).toBeLessThan(at('Outer Kom'));
+    expect(at('Outer Kom')).toBeLessThan(at('Inner Kom'));
   });
 });
 
