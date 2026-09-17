@@ -32,25 +32,27 @@ export const en: Strings = {
       "🙋 tap a spot to say you're going — and see who else goes\n" +
       '🔎 /now — the rest of today · /week — the week ahead\n' +
       "/all — every spot · /long_beach — any spot's day\n" +
-      '/profile — work hours · /lang · /stop\n' +
+      '/profile — work hours and the stars you get up for · /lang · /stop\n' +
       '\n' +
       'Data: Open-Meteo.com (CC-BY 4.0)',
   },
   privateBot: 'Private bot — you need the invite link.',
   help:
     'Commands:\n/now — the rest of the day\n/week — the week ahead, best day first\n/all — every spot\n/about — about this bot\n' +
-    '/profile — work hours\n/lang — language\n/stop — no more messages\n📍 the button sends your location\n' +
+    '/profile — work hours and the stars you get up for\n/lang — language\n/stop — no more messages\n📍 the button sends your location\n' +
     'Each spot has its own command too — e.g. /long_beach shows its day\n' +
     "🙋 under a forecast: tap a spot to say you're going — see who else goes\n" +
     '⭐ clean waves · ☆ spoilt by onshore wind · 🌡️ water and wetsuit',
   profile: {
-    summary: 'Profile\nWork: {start}–{end}\nLocation: {location}',
+    summary: 'Profile\nWork: {start}–{end}\nLocation: {location}\nTell me to surf from {stars}',
     askHours: 'Send your work hours, e.g. 9-18',
     badHours: "I didn't get that. Format: 9-18",
     saved: 'Saved.',
     locationDefault: 'Muizenberg (default)',
     locationCustom: 'custom location ({lat}, {lon})',
     changeHours: 'Hours',
+    changeStars: 'Stars',
+    askStars: 'From how many stars should I tell you to go surf?',
   },
   lang: { ask: 'Language / Язык', set: 'Language: English' },
   stopped: 'OK, no more messages. /start to come back.',

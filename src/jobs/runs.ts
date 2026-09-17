@@ -6,7 +6,7 @@ import { compareReports } from '../engine/delta';
 import { addDays, dateOf } from '../engine/time';
 import { detailsMarkupFor, esc, renderAlert, renderEvening, renderMorning, renderWeek, type RenderCtx } from '../render/messages';
 import type { Lang, Profile, Region, Report, Spot } from '../types';
-import { buildReportList, buildReports, nearbyByPlace, placeKey, WEEK_DAYS, type EvalRequest } from './collect';
+import { buildReportList, buildReports, minStars, nearbyByPlace, placeKey, WEEK_DAYS, type EvalRequest } from './collect';
 
 export interface JobDeps {
   store: Store;
@@ -68,7 +68,7 @@ const renderCtx = (lang: Lang, deps: JobDeps): RenderCtx => ({ lang, spots: new 
  * rédige une fois par groupe, pas une fois par ami. Le rendu ne lit rien d'autre du profil : ajouter un texte
  * personnel à ces messages demanderait d'élargir cette clé.
  */
-const messageKey = (p: Profile): string => `${p.lang}|${placeKey(p.location)}|${p.workHours.start}-${p.workHours.end}`;
+const messageKey = (p: Profile): string => `${p.lang}|${placeKey(p.location)}|${p.workHours.start}-${p.workHours.end}|${minStars(p)}`;
 
 /** Le premier appel calcule, les suivants avec la même clé reprennent le résultat. */
 function memoized<T>(compute: (key: string) => T): (key: string) => T {

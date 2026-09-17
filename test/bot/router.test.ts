@@ -80,14 +80,14 @@ describe('/start and onboarding', () => {
     expect(p).not.toHaveProperty('board');
     expect(p).not.toHaveProperty('onboarding');
     expect(sent()).toHaveLength(1);
-    expect(sent()[0].text).toBe("🏄 Готово! Каждый вечер в 19:00 я скажу, работать завтра или идти сёрфить.\n📍 Muizenberg · работа 9:00–18:00 — отправь позицию, если переехал.\n\n<b>Когда я пишу</b>\n🌅 6:00 — подтверждаю или поправляю день сёрфа\n🔥 12:00 — большой день через 2–3 дня\n📅 воскресенье 19:05 — неделя вперёд\n\n<b>Как читать</b>\n⭐ чистая волна · ☆ испорчена оншором\n🕐 часы · 🌊 уровень · ⭐ часы с жёлтыми звёздами\n🌡️ температура воды и какой гидрик взять\n\n<b>Кнопки и команды</b>\n🙋 нажми на спот, чтобы сказать, что едешь — и посмотри, кто ещё едет\n🔎 /now — остаток дня · /week — неделя вперёд\n/all — все споты · /long_beach — день любого спота\n/profile — рабочие часы · /lang · /stop\n\nДанные: Open-Meteo.com (CC-BY 4.0)");
+    expect(sent()[0].text).toBe("🏄 Готово! Каждый вечер в 19:00 я скажу, работать завтра или идти сёрфить.\n📍 Muizenberg · работа 9:00–18:00 — отправь позицию, если переехал.\n\n<b>Когда я пишу</b>\n🌅 6:00 — подтверждаю или поправляю день сёрфа\n🔥 12:00 — большой день через 2–3 дня\n📅 воскресенье 19:05 — неделя вперёд\n\n<b>Как читать</b>\n⭐ чистая волна · ☆ испорчена оншором\n🕐 часы · 🌊 уровень · ⭐ часы с жёлтыми звёздами\n🌡️ температура воды и какой гидрик взять\n\n<b>Кнопки и команды</b>\n🙋 нажми на спот, чтобы сказать, что едешь — и посмотри, кто ещё едет\n🔎 /now — остаток дня · /week — неделя вперёд\n/all — все споты · /long_beach — день любого спота\n/profile — рабочие часы и с каких звёзд тебя звать · /lang · /stop\n\nДанные: Open-Meteo.com (CC-BY 4.0)");
     expect(sent()[0].reply_markup.keyboard[0][0]).toEqual({ text: '🔎 Сейчас' });
     expect(sent()[0].reply_markup.keyboard[1][1]).toEqual({ text: '📍 Использовать моё местоположение', request_location: true });
   });
   it('welcomes with when it writes, how to read a forecast, and the buttons and commands', async () => {
     const { deps, sent } = setup({ inviteCode: 'surf' });
     await handleUpdate(msg('/start surf', { from: { id: 1, language_code: 'en' } }), deps);
-    expect(sent()[0].text).toBe("🏄 All set! Every evening at 19:00 I tell you whether to work tomorrow or go surf.\n📍 Muizenberg · work 9:00–18:00 — send your location if you move.\n\n<b>When I write</b>\n🌅 6:00 — I confirm or update a surf day\n🔥 12:00 — a big day coming in 2–3 days\n📅 Sunday 19:05 — the week ahead\n\n<b>How to read it</b>\n⭐ clean waves · ☆ spoilt by onshore wind\n🕐 hours · 🌊 level · ⭐ hours with yellow stars\n🌡️ water temperature and the wetsuit to take\n\n<b>Buttons and commands</b>\n🙋 tap a spot to say you're going — and see who else goes\n🔎 /now — the rest of today · /week — the week ahead\n/all — every spot · /long_beach — any spot's day\n/profile — work hours · /lang · /stop\n\nData: Open-Meteo.com (CC-BY 4.0)");
+    expect(sent()[0].text).toBe("🏄 All set! Every evening at 19:00 I tell you whether to work tomorrow or go surf.\n📍 Muizenberg · work 9:00–18:00 — send your location if you move.\n\n<b>When I write</b>\n🌅 6:00 — I confirm or update a surf day\n🔥 12:00 — a big day coming in 2–3 days\n📅 Sunday 19:05 — the week ahead\n\n<b>How to read it</b>\n⭐ clean waves · ☆ spoilt by onshore wind\n🕐 hours · 🌊 level · ⭐ hours with yellow stars\n🌡️ water temperature and the wetsuit to take\n\n<b>Buttons and commands</b>\n🙋 tap a spot to say you're going — and see who else goes\n🔎 /now — the rest of today · /week — the week ahead\n/all — every spot · /long_beach — any spot's day\n/profile — work hours and the stars you get up for · /lang · /stop\n\nData: Open-Meteo.com (CC-BY 4.0)");
   });
   it('refuses every /start when no invite code is configured', async () => {
     const { deps, store, sent } = setup();
@@ -347,8 +347,8 @@ describe('/profil, hours, /lang, help', () => {
     const { deps, store, sent } = setup();
     await store.putProfiles({ '1': ready() });
     await handleUpdate(msg('/profil'), deps);
-    expect(sent()[0].text).toBe('Profile\nWork: 9:00–18:00\nLocation: Muizenberg (default)');
-    expect(sent()[0].reply_markup.inline_keyboard[0].map((b: { callback_data: string }) => b.callback_data)).toEqual(['prof:hours']);
+    expect(sent()[0].text).toBe('Profile\nWork: 9:00–18:00\nLocation: Muizenberg (default)\nTell me to surf from ⭐⭐⭐⭐');
+    expect(sent()[0].reply_markup.inline_keyboard[0].map((b: { callback_data: string }) => b.callback_data)).toEqual(['prof:hours', 'prof:stars']);
 
     await handleUpdate(cb('prof:hours'), deps);
     expect((await store.getProfile(1))?.awaiting).toBe('hours');
@@ -364,6 +364,28 @@ describe('/profil, hours, /lang, help', () => {
     expect(p?.awaiting).toBeUndefined();
     expect(sent()[3].text.startsWith('Saved.')).toBe(true);
   });
+  it('sets the bar from the profile, and ignores a bar nobody can pick', async () => {
+    const { deps, store, kv, sent } = setup();
+    await store.putProfiles({ '1': ready() });
+    await handleUpdate(cb('prof:stars'), deps);
+    expect(sent()[0].text).toBe('From how many stars should I tell you to go surf?');
+    expect(sent()[0].reply_markup.inline_keyboard[0]).toEqual([
+      { text: '3⭐', callback_data: 'stars:3' }, { text: '4⭐', callback_data: 'stars:4' },
+      { text: '5⭐', callback_data: 'stars:5' }, { text: '6⭐', callback_data: 'stars:6' },
+    ]);
+    await handleUpdate(cb('stars:6'), deps);
+    expect((await store.getProfile(1))?.minStars).toBe(6);
+    expect(sent()[1].text).toBe('Saved.\nProfile\nWork: 9:00–18:00\nLocation: Muizenberg (default)\nTell me to surf from ⭐⭐⭐⭐⭐⭐');
+    for (const data of ['stars:9', 'stars:2', 'stars:x', 'stars:']) await handleUpdate(cb(data), deps);
+    expect((await store.getProfile(1))?.minStars).toBe(6);
+    expect(sent()).toHaveLength(2);
+    // le même seuil à nouveau : on répond, sans écrire pour rien
+    const writes = kv.writes.length;
+    await handleUpdate(cb('stars:6'), deps);
+    expect(kv.writes).toHaveLength(writes);
+    expect(sent()).toHaveLength(3);
+  });
+
   it('a command escapes the awaiting state', async () => {
     const { deps, store, sent } = setup();
     await store.putProfiles({ '1': ready({ awaiting: 'hours' }) });

@@ -28,6 +28,25 @@ describe('window arithmetic', () => {
   });
 });
 
+describe('the bar each friend sets', () => {
+  const at = (good: number, windows: Window[]) => decideVerdict([res('kommetjie-long-beach', windows)], { date: DATE, workHours: WORK, mode: 'day', good });
+  it('4★ by default; higher, the same day is 🔴; lower, a smaller window is already 🟢', () => {
+    const four = [W(DATE, '07:00', '12:00', 4)];
+    expect(day([res('kommetjie-long-beach', four)]).kind).toBe('green');
+    expect(at(4, four).kind).toBe('green');
+    expect(at(5, four)).toEqual({ kind: 'red', bestSpotId: 'kommetjie-long-beach' });
+    expect(at(3, [W(DATE, '07:00', '12:00', 3)]).kind).toBe('green');
+    expect(day([res('kommetjie-long-beach', [W(DATE, '07:00', '12:00', 3)])]).kind).toBe('red');
+  });
+  it('the bar moves the dawn and dusk windows too, and never the epic flag', () => {
+    expect(at(5, [W(DATE, '07:00', '09:00', 4)])).toEqual({ kind: 'red', bestSpotId: 'kommetjie-long-beach' });
+    expect(at(3, [W(DATE, '07:00', '09:00', 3)])).toMatchObject({ kind: 'yellow' });
+    // epic reste le 6★ du barème commun, quel que soit le seuil
+    expect(at(3, [W(DATE, '07:00', '12:00', 6)])).toMatchObject({ kind: 'green', epic: true });
+    expect(at(6, [W(DATE, '07:00', '12:00', 6)])).toMatchObject({ kind: 'green', epic: true });
+  });
+});
+
 describe('weekday verdict', () => {
   it('🟢 when a good window (≥ 4★) bites ≥ 2 h into work hours', () => {
     const v = day([res('kommetjie-long-beach', [W(DATE, '07:00', '12:00', 5)])]);

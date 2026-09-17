@@ -202,16 +202,19 @@ describe('budget guard', () => {
     expect(sent().find((m) => m.chat_id === 999)?.text).toContain('4 profil(s) reportés');
   });
 
-  it('shares messages only between friends with the same language, place and hours — a night worker still gets their own verdict', async () => {
-    // 2,3 m toute la journée : 4★, bon sans être epic — les horaires décident donc du verdict
+  it('shares messages only between friends with the same language, place, hours and bar — a night worker or a picky friend still gets their own verdict', async () => {
+    // 2,3 m toute la journée : 4★, bon sans être epic — les horaires et le seuil décident donc du verdict
     const { deps, sent, seed } = setup({ now: '2026-09-15T19:00', data: weekData('2026-09-16', 2, () => 2.3) });
-    await seed([ready(1), ready(2), ready(3, { workHours: { start: '19:00', end: '23:00' } }), ready(4, { lang: 'ru' })]);
+    await seed([ready(1), ready(2), ready(3, { workHours: { start: '19:00', end: '23:00' } }), ready(4, { lang: 'ru' }), ready(5, { minStars: 6 })]);
     await runEvening(deps);
     const texts = new Map(sent().map((m) => [m.chat_id, m.text]));
     expect(texts.get(2)).toBe(texts.get(1));
     expect(texts.get(1)?.startsWith('🟢')).toBe(true);
     expect(texts.get(3)?.startsWith('🟢')).toBe(false);
     expect(texts.get(4)).toContain('ЗАВТРА НЕ ИДИ НА РАБОТУ');
+    // même lieu, mêmes horaires, mais il ne se lève que pour 6★ : son verdict et son message sont les siens
+    expect(texts.get(5)?.startsWith('🔴')).toBe(true);
+    expect(texts.get(5)).toContain('Nothing ≥ 6★ within 20 km.');
   });
 });
 

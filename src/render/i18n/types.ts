@@ -19,11 +19,13 @@ export interface Strings {
   onboarding: { welcome: string };
   privateBot: string;
   help: string;
-  /** summary: {start} {end} {location} · locationCustom: {lat} {lon} */
+  /** summary: {start} {end} {location} {stars} · locationCustom: {lat} {lon} */
   profile: {
     summary: string; askHours: string; badHours: string; saved: string;
     locationDefault: string; locationCustom: string;
     changeHours: string;
+    /** le bouton et la question du seuil d'étoiles (`STAR_CHOICES`) */
+    changeStars: string; askStars: string;
   };
   lang: { ask: string; set: string };
   stopped: string;

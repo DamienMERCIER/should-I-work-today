@@ -58,3 +58,9 @@ export const MAX_EXTERNAL_SUBREQUESTS = 47;
 // Valeurs admises du seul champ fermé du profil : une seule source, lue par le routeur
 // (validation des callbacks) et par le Store (données KV écrites par une version antérieure).
 export const LANGS: readonly Lang[] = ['en', 'ru'];
+
+/**
+ * Les seuils qu'un ami peut choisir dans `/profil` : à partir de combien d'étoiles le bot lui dit d'aller surfer.
+ * Sous 3★ il n'y a pas de créneau du tout (`SCORING.windowMin`), au-delà de 6★ les journées se comptent dans l'année.
+ */
+export const STAR_CHOICES: readonly number[] = [3, 4, 5, 6];

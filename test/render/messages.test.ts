@@ -357,6 +357,11 @@ describe('renderEvening — other verdicts', () => {
     kom.maxScore = 2;
     expect(renderEvening(r, EN).split('\n')).toContain(`Best: ${KOM} ⭐⭐ (offshore SE 22 kt)`);
   });
+  it('🔴 quotes the friend\'s own bar, not the common one', () => {
+    const r = goldenReport({ spots: goldenReport().spots.filter((x) => x.spotId === 'muizenberg'), verdict: { kind: 'red', bestSpotId: 'muizenberg' }, minStars: 6 });
+    expect(renderEvening(r, EN).split('\n')).toContain('Nothing ≥ 6★ within 20 km.');
+    expect(renderEvening({ ...r, minStars: undefined }, EN).split('\n')).toContain('Nothing ≥ 4★ within 20 km.');
+  });
   it('🔴 says the good window does not fit, never « nothing ≥ 4★ », when the best spot does reach 4★', () => {
     const lines = renderEvening(goldenReport({ verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } }), EN).split('\n');
     expect(lines).toContain('The good window within 20 km is too short or clashes with work.');

@@ -8,6 +8,8 @@ export interface VerdictOptions {
   workHours: WorkHours;
   /** 'now' = reste de la journée, règle week-end (§7.7). */
   mode: 'day' | 'now';
+  /** le seuil de l'ami : à partir de combien d'étoiles un créneau vaut la peine. Par défaut celui de tout le monde. */
+  good?: number;
 }
 
 interface Candidate extends SpotPick { distanceKm: number }
@@ -32,11 +34,11 @@ export function hoursAfter(w: Window, limit: string): number {
   return Math.max(0, (toMs(w.end) - Math.max(toMs(w.start), l)) / HOUR_MS);
 }
 
-function candidates(results: SpotResult[]): Candidate[] {
+function candidates(results: SpotResult[], good: number): Candidate[] {
   return results
     .flatMap((r) =>
       r.windows
-        .filter((w) => w.peak >= SCORING.good)
+        .filter((w) => w.peak >= good)
         .map((window) => ({ spotId: r.spotId, window, distanceKm: r.distanceKm })),
     );
 }
@@ -74,7 +76,7 @@ const longEnough = (w: Window): boolean => windowHours(w) >= SCORING.sessionMinH
 const isEpic = (w: Window): boolean => w.peak >= SCORING.epic && longEnough(w);
 
 export function decideVerdict(results: SpotResult[], opts: VerdictOptions): Verdict {
-  const cands = candidates(results);
+  const cands = candidates(results, opts.good ?? SCORING.good);
   const bestSpotId = [...results].sort(compareSpotDays)[0]?.spotId;
 
   if (opts.mode === 'now' || isWeekend(opts.date)) {

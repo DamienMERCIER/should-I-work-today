@@ -1,7 +1,7 @@
 import { safeEqual, type FetchLike } from '../adapters/http';
 import type { Store } from '../adapters/kv';
 import type { Telegram, TgCallbackQuery, TgMessage, TgUpdate, TgUser } from '../adapters/telegram';
-import { LANGS, DEFAULT_LOCATION, RADIUS_KM } from '../config';
+import { LANGS, DEFAULT_LOCATION, RADIUS_KM, STAR_CHOICES } from '../config';
 import { hasDaylightLeft } from '../engine/factors';
 import { haversineKm } from '../engine/geo';
 import { addDays, dateOf, floorHour } from '../engine/time';
@@ -14,7 +14,7 @@ import {
   spotMarkupFor, spotName, withSpotButtons, type RenderCtx,
 } from '../render/messages';
 import type { Lang, Profile, Region, Report, Spot } from '../types';
-import { langKeyboard, persistentKeyboard, profileKeyboard } from './keyboards';
+import { langKeyboard, persistentKeyboard, profileKeyboard, starsKeyboard } from './keyboards';
 import { renderFriends, telegramName } from './friends';
 import { renderGoing } from './going';
 import { newProfile, parseHours, profileSummary, welcomeText } from './profile';
@@ -326,6 +326,16 @@ async function handleCallback(cb: TgCallbackQuery, deps: BotDeps): Promise<void>
         await store.updateProfile(chatId, (cur) => ({ ...(cur ?? profile), awaiting: 'hours' }));
         await telegram.sendMessage(chatId, s.profile.askHours);
       }
+      else if (value === 'stars') await telegram.sendMessage(chatId, s.profile.askStars, starsKeyboard());
+      return;
+    }
+    case 'stars': {
+      // un seuil que le clavier ne propose pas vient d'un bouton fabriqué
+      const minStars = Number(value);
+      if (!STAR_CHOICES.includes(minStars)) return;
+      // le même seuil à nouveau ne vaut pas une écriture : les 1 000 du jour servent aussi aux envois
+      const p = profile.minStars === minStars ? profile : await store.updateProfile(chatId, (cur) => ({ ...(cur ?? profile), minStars }));
+      await telegram.sendMessage(chatId, `${s.profile.saved}\n${profileSummary(p, s)}`);
       return;
     }
     case 'lang': {

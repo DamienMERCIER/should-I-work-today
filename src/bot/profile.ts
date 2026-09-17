@@ -1,6 +1,6 @@
-import { DEFAULT_LOCATION, DEFAULT_LOCATION_NAME, DEFAULT_WORK_HOURS } from '../config';
+import { DEFAULT_LOCATION, DEFAULT_LOCATION_NAME, DEFAULT_WORK_HOURS, SCORING } from '../config';
 import { fill, type Strings } from '../render/i18n';
-import { fmtTime } from '../render/messages';
+import { fmtTime, starsText } from '../render/messages';
 import type { Lang, Profile, WorkHours } from '../types';
 
 export function newProfile(chatId: number, lang: Lang, now: string): Profile {
@@ -35,7 +35,10 @@ export function profileSummary(p: Profile, s: Strings): string {
   const location = p.location.source === 'default'
     ? s.profile.locationDefault
     : fill(s.profile.locationCustom, { lat: p.location.lat.toFixed(3), lon: p.location.lon.toFixed(3) });
-  return fill(s.profile.summary, { start: fmtTime(p.workHours.start), end: fmtTime(p.workHours.end), location });
+  return fill(s.profile.summary, {
+    start: fmtTime(p.workHours.start), end: fmtTime(p.workHours.end), location,
+    stars: starsText(p.minStars ?? SCORING.good, true),
+  });
 }
 
 export const welcomeText = (p: Profile, s: Strings): string =>

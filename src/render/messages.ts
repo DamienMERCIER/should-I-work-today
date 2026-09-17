@@ -295,8 +295,10 @@ export function renderEvening(report: Report, ctx: RenderCtx): string {
       // Un rouge a deux causes distinctes : rien d'assez bon, ou bien une fenetre assez bonne mais
       // trop courte (ou tombant en plein travail). Dire « rien ≥ 4★ » puis afficher « ★★★★ »
       // juste en dessous se contredirait a l'ecran.
-      const tooShort = (best?.maxScore ?? 0) >= SCORING.good;
-      const body = fill(tooShort ? s.verdict.redTooShort : s.verdict.redBody, { radius: report.radiusKm, good: SCORING.good });
+      // le seuil de l'ami, celui qui a rendu ce jour rouge, et pas le barème commun
+      const good = report.minStars ?? SCORING.good;
+      const tooShort = (best?.maxScore ?? 0) >= good;
+      const body = fill(tooShort ? s.verdict.redTooShort : s.verdict.redBody, { radius: report.radiusKm, good });
       // l'eau du meilleur spot aussi : on peut vouloir y aller quand même, et /now doit la dire quel que soit le verdict
       const water = waterLine(best, s);
       const vars = (r: SpotResult): { spot: string; stars: string; reason: string } => ({ spot: spotName(r.spotId, ctx, s), stars: dayStars(r), reason: lowestFactorReason(r, s) });

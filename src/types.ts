@@ -28,6 +28,8 @@ export interface Profile {
   /** pourquoi `active` est faux : `/stop`, ou le bot bloqué par l'ami (absent avant le 17/09/2026) */
   inactiveReason?: 'stopped' | 'blocked';
   awaiting?: 'hours';
+  /** à partir de combien d'étoiles le bot dit d'aller surfer ; absent = le seuil commun (`SCORING.good`) */
+  minStars?: number;
   createdAt: string;
   /** nom et pseudo Telegram, sur une ligne, pour la liste `/amis` de l'admin */
   name?: string;
@@ -113,6 +115,8 @@ export type Verdict =
 export interface Report {
   chatId: number;
   date: string;
+  /** le seuil de l'ami au moment du calcul ; absent dans les rapports écrits avant le 17/09/2026 */
+  minStars?: number;
   mode: ReportMode;
   generatedAt: string;
   sentAt?: string;

@@ -1,5 +1,5 @@
 import { fetchForecast, fetchMarine, fetchPeakPeriod, OpenMeteoError, type FetchLike, type ForecastSeries, type PeakPeriodHour } from '../adapters/openMeteo';
-import { FAR_FROM_COAST_KM, RADIUS_KM } from '../config';
+import { FAR_FROM_COAST_KM, RADIUS_KM, SCORING } from '../config';
 import { nearestWorldSpots, worldSpots, type SpotTuple } from '../data/world';
 import { haversineKm } from '../engine/geo';
 import { evaluateSpot } from '../engine/score';
@@ -190,7 +190,7 @@ export async function buildReportList(reqs: EvalRequest[], deps: CollectDeps, op
   return Promise.all(
     perRequest.map(async ({ req, nearby }) => {
       const { location, workHours, chatId } = req.profile;
-      const key = `${req.date}|${req.mode}|${req.fromTime ?? ''}|${placeKey(location)}|${workHours.start}-${workHours.end}`;
+      const key = `${req.date}|${req.mode}|${req.fromTime ?? ''}|${placeKey(location)}|${workHours.start}-${workHours.end}|${minStars(req.profile)}`;
       let body = bodies.get(key);
       if (!body) {
         body = nearby.length === 0 ? outOfCoverage(req, deps, radiusKm) : Promise.resolve(assembleSafely(req, nearby, regionData, deps, radiusKm, cache));
@@ -200,6 +200,9 @@ export async function buildReportList(reqs: EvalRequest[], deps: CollectDeps, op
     }),
   );
 }
+
+/** Le seuil d'un ami, ou celui de tout le monde s'il n'y a pas touché. */
+export const minStars = (p: Profile): number => p.minStars ?? SCORING.good;
 
 /** Une position comme clé de regroupement : les amis au même endroit partagent spots proches, rapport et message. */
 export const placeKey = (at: LatLon): string => `${at.lat},${at.lon}`;
@@ -246,7 +249,7 @@ export async function buildReport(req: EvalRequest, deps: CollectDeps): Promise<
 
 function baseReport(req: EvalRequest, deps: CollectDeps, radiusKm: number): Omit<Report, 'verdict'> {
   return {
-    chatId: req.profile.chatId, date: req.date, mode: req.mode, generatedAt: deps.now,
+    chatId: req.profile.chatId, date: req.date, mode: req.mode, generatedAt: deps.now, minStars: minStars(req.profile),
     location: req.profile.location, radiusKm,
     spots: [], tides: [],
     weather: { tempMaxC: 0, tempMinC: 0, precipMm: 0, code: 0 },
@@ -309,7 +312,7 @@ function assemble(req: EvalRequest, nearby: Near[], regionData: Map<string, Regi
     tides: tideFor(closest.data, req.date).events,
     weather: { tempMaxC: daily.tempMaxC, tempMinC: daily.tempMinC, precipMm: daily.precipMm, code: noon?.weatherCode ?? 0 },
     sun: { sunrise: daily.sunrise, sunset: daily.sunset },
-    verdict: decideVerdict(results, { date: req.date, workHours: req.profile.workHours, mode: req.mode === 'now' ? 'now' : 'day' }),
+    verdict: decideVerdict(results, { date: req.date, workHours: req.profile.workHours, mode: req.mode === 'now' ? 'now' : 'day', good: minStars(req.profile) }),
   };
 }
 
