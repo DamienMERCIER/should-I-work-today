@@ -5,7 +5,7 @@ export const en: Strings = {
   cardinal: ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'],
   buttons: {
     useMyLocation: '📍 Use my location', backHome: '🏠 Back to Muizenberg', now: '🔎 Right now', allSpots: '📋 All spots', goTo: 'Go to {spot}',
-    going: "🙋 I'm going: {spot}", notGoing: "✖️ I'm not going any more",
+    going: '🙋 {spot}', notGoing: "✖️ I'm not going any more",
   },
   windStates: { glassy: 'glassy', off: 'offshore', 'cross-off': 'cross-offshore', cross: 'cross-shore', 'cross-on': 'cross-onshore', on: 'onshore' },
   then: 'then',
@@ -29,7 +29,7 @@ export const en: Strings = {
       '🌡️ water temperature and the wetsuit to take\n' +
       '\n' +
       '<b>Buttons and commands</b>\n' +
-      "🙋 I'm going — say where you surf, see who else goes\n" +
+      "🙋 tap a spot to say you're going — and see who else goes\n" +
       '🔎 /now — the rest of today · /week — the week ahead\n' +
       "/all — every spot · /long_beach — any spot's day\n" +
       '/profile — work hours · /lang · /stop\n' +
@@ -41,7 +41,7 @@ export const en: Strings = {
     'Commands:\n/now — the rest of the day\n/week — the week ahead, best day first\n/all — every spot\n/about — about this bot\n' +
     '/profile — work hours\n/lang — language\n/stop — no more messages\n📍 the button sends your location\n' +
     'Each spot has its own command too — e.g. /long_beach shows its day\n' +
-    "🙋 I'm going, under a forecast — see who else goes\n" +
+    "🙋 under a forecast: tap a spot to say you're going — see who else goes\n" +
     '⭐ clean waves · ☆ spoilt by onshore wind · 🌡️ water and wetsuit',
   profile: {
     summary: 'Profile\nWork: {start}–{end}\nLocation: {location}',

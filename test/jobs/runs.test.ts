@@ -51,7 +51,7 @@ describe('runEvening', () => {
     // the evening push carries the 📍 go buttons (ordered by peak) before the 📋 row — same verdict rendering path as /now.
     expect(sent()[0].reply_markup).toEqual({
       inline_keyboard: [
-        [{ text: "🙋 I'm going: Long Beach", callback_data: 'go:260916:kommetjie-long-beach' }, { text: '📍', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
+        [{ text: "🙋 Long Beach", callback_data: 'go:260916:kommetjie-long-beach' }, { text: '📍', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
         [{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }],
       ],
     });
@@ -142,7 +142,7 @@ describe('runMorning', () => {
     // the morning push is the same rendering path as the evening one — it carries the go buttons too.
     expect(sent()[0].reply_markup).toEqual({
       inline_keyboard: [
-        [{ text: "🙋 I'm going: Long Beach", callback_data: 'go:260916:kommetjie-long-beach' }, { text: '📍', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
+        [{ text: "🙋 Long Beach", callback_data: 'go:260916:kommetjie-long-beach' }, { text: '📍', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
         [{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }],
       ],
     });

@@ -34,7 +34,7 @@ describe('formatting', () => {
     // Muizenberg n'a pas de fenêtre dans le scénario golden (2☆ sous le cross-onshore) : pas de bouton
     expect(detailsMarkupFor(goldenReport(), EN)).toEqual({
       inline_keyboard: [
-        [{ text: "🙋 I'm going: Long Beach", callback_data: 'go:260916:kommetjie-long-beach' }, { text: '📍', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
+        [{ text: "🙋 Long Beach", callback_data: 'go:260916:kommetjie-long-beach' }, { text: '📍', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
         [{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }],
       ],
     });
@@ -58,15 +58,15 @@ describe('🙋 going buttons', () => {
     const dawn = { spotId: 'muizenberg', window: W('07:00', '09:00', 4) };
     const dusk = { spotId: 'kommetjie-long-beach', window: W('17:00', '18:00', 4) };
     expect(goingButtons(goldenReport({ verdict: { kind: 'yellow', dawn, dusk } }), EN)).toEqual([
-      ["🙋 I'm going: Muizenberg", 'go:260916:muizenberg'],
-      ["🙋 I'm going: Long Beach", 'go:260916:kommetjie-long-beach'],
+      ["🙋 Muizenberg", 'go:260916:muizenberg'],
+      ["🙋 Long Beach", 'go:260916:kommetjie-long-beach'],
     ]);
     expect(goingButtons(goldenReport({ verdict: { kind: 'yellow', dawn: { ...dusk, window: W('07:00', '09:00', 4) }, dusk } }), EN)).toHaveLength(1);
   });
 
   it('on a 🔴, one for each spot the message names, 🥇 first — none when it names none, or when the message does not show them', () => {
     const red = goldenReport({ verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } });
-    expect(goingButtons(red, EN)).toEqual([["🙋 I'm going: Long Beach", 'go:260916:kommetjie-long-beach'], ["🙋 I'm going: Muizenberg", 'go:260916:muizenberg']]);
+    expect(goingButtons(red, EN)).toEqual([["🙋 Long Beach", 'go:260916:kommetjie-long-beach'], ["🙋 Muizenberg", 'go:260916:muizenberg']]);
     expect(goingButtons(goldenReport({ verdict: { kind: 'red' } }), EN)).toEqual([]);
     expect(goingButtons(goldenReport({ spots: [], verdict: { kind: 'outOfCoverage', nearest: [] } }), EN)).toEqual([]);
     // le message du matin passé au 🔴 dit « go to work » sans nommer de spot : ni 🙋 ni 📍
@@ -74,7 +74,7 @@ describe('🙋 going buttons', () => {
   });
 
   it('the label follows the language', () => {
-    expect(goingButtons(goldenReport(), RU)).toEqual([['🙋 Я еду: Long Beach', 'go:260916:kommetjie-long-beach']]);
+    expect(goingButtons(goldenReport(), RU)).toEqual([['🙋 Long Beach', 'go:260916:kommetjie-long-beach']]);
   });
 
   it('leaves out a spot whose id would not fit in the 64 bytes of a Telegram button — the whole message would be refused', () => {
@@ -395,7 +395,7 @@ describe('renderEvening — other verdicts', () => {
     );
     // sous le message : une ligne par spot, son 🙋 et son 📍 côte à côte, dans le même ordre
     expect((detailsMarkupFor(report, EN) as { inline_keyboard: { text: string }[][] }).inline_keyboard.map((row) => row.map((b) => b.text))).toEqual([
-      ["🙋 I'm going: Glen Beach", '📍'], ["🙋 I'm going: Llandudno", '📍'], ["🙋 I'm going: Long Beach", '📍'], ['📋 All spots'],
+      ["🙋 Glen Beach", '📍'], ["🙋 Llandudno", '📍'], ["🙋 Long Beach", '📍'], ['📋 All spots'],
     ]);
     expect(renderEvening(report, RU).split('\n')).toContain(`🥇 ${name('glen-beach')} ⭐⭐⭐ (волна 2.0 м)`);
   });

@@ -80,14 +80,14 @@ describe('/start and onboarding', () => {
     expect(p).not.toHaveProperty('board');
     expect(p).not.toHaveProperty('onboarding');
     expect(sent()).toHaveLength(1);
-    expect(sent()[0].text).toBe("🏄 Готово! Каждый вечер в 19:00 я скажу, работать завтра или идти сёрфить.\n📍 Muizenberg · работа 9:00–18:00 — отправь позицию, если переехал.\n\n<b>Когда я пишу</b>\n🌅 6:00 — подтверждаю или поправляю день сёрфа\n🔥 12:00 — большой день через 2–3 дня\n📅 воскресенье 19:05 — неделя вперёд\n\n<b>Как читать</b>\n⭐ чистая волна · ☆ испорчена оншором\n🕐 часы · 🌊 уровень · ⭐ часы с жёлтыми звёздами\n🌡️ температура воды и какой гидрик взять\n\n<b>Кнопки и команды</b>\n🙋 Я еду — скажи, где катаешь, и посмотри, кто ещё едет\n🔎 /now — остаток дня · /week — неделя вперёд\n/all — все споты · /long_beach — день любого спота\n/profile — рабочие часы · /lang · /stop\n\nДанные: Open-Meteo.com (CC-BY 4.0)");
+    expect(sent()[0].text).toBe("🏄 Готово! Каждый вечер в 19:00 я скажу, работать завтра или идти сёрфить.\n📍 Muizenberg · работа 9:00–18:00 — отправь позицию, если переехал.\n\n<b>Когда я пишу</b>\n🌅 6:00 — подтверждаю или поправляю день сёрфа\n🔥 12:00 — большой день через 2–3 дня\n📅 воскресенье 19:05 — неделя вперёд\n\n<b>Как читать</b>\n⭐ чистая волна · ☆ испорчена оншором\n🕐 часы · 🌊 уровень · ⭐ часы с жёлтыми звёздами\n🌡️ температура воды и какой гидрик взять\n\n<b>Кнопки и команды</b>\n🙋 нажми на спот, чтобы сказать, что едешь — и посмотри, кто ещё едет\n🔎 /now — остаток дня · /week — неделя вперёд\n/all — все споты · /long_beach — день любого спота\n/profile — рабочие часы · /lang · /stop\n\nДанные: Open-Meteo.com (CC-BY 4.0)");
     expect(sent()[0].reply_markup.keyboard[0][0]).toEqual({ text: '🔎 Сейчас' });
     expect(sent()[0].reply_markup.keyboard[1][1]).toEqual({ text: '📍 Использовать моё местоположение', request_location: true });
   });
   it('welcomes with when it writes, how to read a forecast, and the buttons and commands', async () => {
     const { deps, sent } = setup({ inviteCode: 'surf' });
     await handleUpdate(msg('/start surf', { from: { id: 1, language_code: 'en' } }), deps);
-    expect(sent()[0].text).toBe("🏄 All set! Every evening at 19:00 I tell you whether to work tomorrow or go surf.\n📍 Muizenberg · work 9:00–18:00 — send your location if you move.\n\n<b>When I write</b>\n🌅 6:00 — I confirm or update a surf day\n🔥 12:00 — a big day coming in 2–3 days\n📅 Sunday 19:05 — the week ahead\n\n<b>How to read it</b>\n⭐ clean waves · ☆ spoilt by onshore wind\n🕐 hours · 🌊 level · ⭐ hours with yellow stars\n🌡️ water temperature and the wetsuit to take\n\n<b>Buttons and commands</b>\n🙋 I'm going — say where you surf, see who else goes\n🔎 /now — the rest of today · /week — the week ahead\n/all — every spot · /long_beach — any spot's day\n/profile — work hours · /lang · /stop\n\nData: Open-Meteo.com (CC-BY 4.0)");
+    expect(sent()[0].text).toBe("🏄 All set! Every evening at 19:00 I tell you whether to work tomorrow or go surf.\n📍 Muizenberg · work 9:00–18:00 — send your location if you move.\n\n<b>When I write</b>\n🌅 6:00 — I confirm or update a surf day\n🔥 12:00 — a big day coming in 2–3 days\n📅 Sunday 19:05 — the week ahead\n\n<b>How to read it</b>\n⭐ clean waves · ☆ spoilt by onshore wind\n🕐 hours · 🌊 level · ⭐ hours with yellow stars\n🌡️ water temperature and the wetsuit to take\n\n<b>Buttons and commands</b>\n🙋 tap a spot to say you're going — and see who else goes\n🔎 /now — the rest of today · /week — the week ahead\n/all — every spot · /long_beach — any spot's day\n/profile — work hours · /lang · /stop\n\nData: Open-Meteo.com (CC-BY 4.0)");
   });
   it('refuses every /start when no invite code is configured', async () => {
     const { deps, store, sent } = setup();
@@ -187,7 +187,7 @@ describe('location and /now', () => {
     // go buttons (ordered by peak) before the 📋 row — same verdict rendering path as the evening/morning push.
     expect(sent()[0].reply_markup).toEqual({
       inline_keyboard: [
-        [{ text: "🙋 I'm going: Long Beach", callback_data: 'go:260916:kommetjie-long-beach' }, { text: '📍', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
+        [{ text: "🙋 Long Beach", callback_data: 'go:260916:kommetjie-long-beach' }, { text: '📍', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
         [{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }],
       ],
     });
@@ -233,7 +233,7 @@ describe('/now on a 🔴 day', () => {
     await handleUpdate(msg('/now'), deps);
     expect(sent()[0].text).toContain('🥇 Kommetjie – Long Beach');
     expect(sent()[0].reply_markup.inline_keyboard[0]).toEqual([
-      { text: "🙋 I'm going: Long Beach", callback_data: 'go:260916:kommetjie-long-beach' },
+      { text: "🙋 Long Beach", callback_data: 'go:260916:kommetjie-long-beach' },
       { text: '📍', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' },
     ]);
   });
@@ -264,7 +264,7 @@ describe('/now once the light has gone', () => {
     const { deps, store, sent } = setup(evening);
     await store.putProfiles({ '1': ready() });
     await handleUpdate(msg('/long_beach'), deps);
-    expect(sent()[0].reply_markup.inline_keyboard[0][0]).toEqual({ text: "🙋 I'm going: Long Beach", callback_data: 'go:260917:kommetjie-long-beach' });
+    expect(sent()[0].reply_markup.inline_keyboard[0][0]).toEqual({ text: "🙋 Long Beach", callback_data: 'go:260917:kommetjie-long-beach' });
   });
 
   it('says it in Russian for a Russian profile', async () => {
@@ -660,7 +660,7 @@ describe('/all, /<spot> and /about', () => {
     // the per-spot command's 🙋 for that spot and day, then its go button, in English.
     expect(sent()[0].reply_markup).toEqual({
       inline_keyboard: [
-        [{ text: "🙋 I'm going: Long Beach", callback_data: 'go:260916:kommetjie-long-beach' }, { text: '📍', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
+        [{ text: "🙋 Long Beach", callback_data: 'go:260916:kommetjie-long-beach' }, { text: '📍', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
       ],
     });
   });
@@ -671,7 +671,7 @@ describe('/all, /<spot> and /about', () => {
     await handleUpdate(msg('/long_beach'), deps);
     expect(sent()[0].reply_markup).toEqual({
       inline_keyboard: [
-        [{ text: '🙋 Я еду: Long Beach', callback_data: 'go:260916:kommetjie-long-beach' }, { text: '📍', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
+        [{ text: '🙋 Long Beach', callback_data: 'go:260916:kommetjie-long-beach' }, { text: '📍', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
       ],
     });
   });
@@ -688,14 +688,14 @@ describe('/all, /<spot> and /about', () => {
     expect(sent()[0].text).not.toContain('closed');
     expect(sent()[0].reply_markup).toEqual({
       inline_keyboard: [
-        [{ text: "🙋 I'm going: Outer Kom", callback_data: 'go:260916:outer-kom' }, { text: '📍', url: 'https://www.google.com/maps/search/?api=1&query=-34.142%2C18.319' }],
+        [{ text: "🙋 Outer Kom", callback_data: 'go:260916:outer-kom' }, { text: '📍', url: 'https://www.google.com/maps/search/?api=1&query=-34.142%2C18.319' }],
       ],
     });
 
     await handleUpdate(msg('/muizenberg'), deps);
     expect(sent()[1].reply_markup).toEqual({
       inline_keyboard: [
-        [{ text: "🙋 I'm going: Muizenberg", callback_data: 'go:260916:muizenberg' }, { text: '📍', url: 'https://www.google.com/maps/search/?api=1&query=-34.1085%2C18.4715' }],
+        [{ text: "🙋 Muizenberg", callback_data: 'go:260916:muizenberg' }, { text: '📍', url: 'https://www.google.com/maps/search/?api=1&query=-34.1085%2C18.4715' }],
       ],
     });
   });
@@ -767,7 +767,7 @@ describe('/all, /<spot> and /about', () => {
     expect(text).toContain('/week');
     expect(text).toContain('/about');
     expect(text).toContain('/long_beach');
-    expect(text).toContain("🙋 I'm going, under a forecast — see who else goes");
+    expect(text).toContain("🙋 under a forecast: tap a spot to say you're going — see who else goes");
     expect(text).toContain('⭐ clean waves · ☆ spoilt by onshore wind · 🌡️ water and wetsuit');
   });
 
@@ -777,7 +777,7 @@ describe('/all, /<spot> and /about', () => {
     await handleUpdate(msg('привет'), deps);
     const text = sent()[0].text;
     expect(text.startsWith('Команды:')).toBe(true);
-    expect(text).toContain('🙋 «Я еду» под прогнозом — посмотри, кто ещё едет');
+    expect(text).toContain('🙋 под прогнозом: нажми на спот, чтобы сказать, что едешь — посмотри, кто ещё едет');
     expect(text).toContain('⭐ чистая волна · ☆ испорчена оншором · 🌡️ вода и гидрик');
   });
 
