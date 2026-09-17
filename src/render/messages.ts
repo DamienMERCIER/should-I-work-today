@@ -142,7 +142,7 @@ function sunLine(report: Report, s: Strings): string {
   return report.weather.precipMm >= 1 ? `${base} · ${fill(s.rain, { mm: Math.round(report.weather.precipMm) })}` : base;
 }
 
-/** 🌊 l'eau du jour au spot et la combinaison qui va avec ; rien quand la mer n'a pas donné de température. */
+/** 🌡️ l'eau du jour au spot et la combinaison qui va avec ; rien quand la mer n'a pas donné de température. */
 function waterLine(r: SpotResult | undefined, s: Strings): string | undefined {
   if (r?.waterTempC === undefined) return undefined;
   return fill(s.water, { temp: r.waterTempC, suit: s.suits[wetsuitFor(r.waterTempC)] });
@@ -155,12 +155,14 @@ function waterLine(r: SpotResult | undefined, s: Strings): string | undefined {
  * un conteneur défilant avec bouton copier qui rognait la dernière colonne de la règle.
  * Sans indentation, comme le titre du spot : les 3 espaces des lignes de conditions sont en police
  * proportionnelle et n'alignent rien ici, et chaque caractère gagné éloigne le rognage sur mobile.
+ * Chaque ligne dit ce qu'elle trace — 🕐 les heures, 🌊 le niveau de chaque heure —, emoji hors du `<code>` :
+ * deux emojis de même largeur devant les deux lignes gardent la règle alignée sur la courbe.
  */
 function spotChart(report: Report, spotId: string): string[] {
   const r = report.spots.find((x) => x.spotId === spotId);
   const hours = chartHours(report);
   const aligned = r ? alignedHours(r, report.date, hours) : hours.map(() => undefined);
-  return [`<code>${hourRuler(hours)}</code>`, `<code>${sparkline(aligned.map((h) => h?.score ?? 0))}</code>`];
+  return [`🕐 <code>${hourRuler(hours)}</code>`, `🌊 <code>${sparkline(aligned.map((h) => h?.score ?? 0))}</code>`];
 }
 
 /**

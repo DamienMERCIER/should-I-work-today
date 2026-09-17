@@ -46,7 +46,7 @@ export interface Strings {
   spotLine: { conditions: string; sun: string };
   /** {mm} */
   rain: string;
-  /** la ligne 🌊 du spot mis en avant : {temp} {suit} · suits : la combinaison conseillée (`src/engine/water.ts`) */
+  /** la ligne 🌡️ du spot mis en avant : {temp} {suit} · suits : la combinaison conseillée (`src/engine/water.ts`) */
   water: string;
   suits: Record<Wetsuit, string>;
   /** confirmed: {verdict} · changed: {from} {to} · cause: {cause} · noDataKeep: {verdict} */

@@ -238,8 +238,8 @@ describe('renderEvening — golden 🟢', () => {
           `🏄 ${KOM} · 7:00–12:00 · ★★★★★★`,
           '   3.5 m · SW 13 s · offshore SE 8 kt · incoming tide, high 9:00',
           '   ☀️ 22° · sunrise 6:44',
-          '<code>6  9  12 15 18</code>',
-          '<code>·▆▆▆▆▅▂······</code>',
+          '🕐 <code>6  9  12 15 18</code>',
+          '🌊 <code>·▆▆▆▆▅▂······</code>',
         ].join('\n'),
       ].join('\n\n'),
     );
@@ -278,8 +278,8 @@ describe('renderEvening — golden 🟢', () => {
     expect(i).toBeGreaterThan(-1);
     expect(lines[i + 1]).toBe('   3.5 m · cross-onshore SE 8 kt');
     // et son propre graphe juste dessous — c'est le second spot du message
-    expect(lines[i + 2]).toBe('<code>6  9  12 15 18</code>');
-    expect(lines[i + 3]).toBe('<code>·▂▂▂·········</code>');
+    expect(lines[i + 2]).toBe('🕐 <code>6  9  12 15 18</code>');
+    expect(lines[i + 3]).toBe('🌊 <code>·▂▂▂·········</code>');
   });
   it('mentions the wind state change at the end of the window', () => {
     const r = goldenReport();
@@ -343,7 +343,7 @@ describe('renderEvening — other verdicts', () => {
     const pick = { spotId: 'kommetjie-long-beach', window: W('07:00', '09:00', 6) };
     const r = goldenReport({ verdict: { kind: 'yellow', dawn: pick, dusk: { spotId: 'kommetjie-long-beach', window: W('17:00', '18:00', 4) } } });
     const lines = renderEvening(r, EN).split('\n');
-    expect(lines.filter((l) => l === '<code>6  9  12 15 18</code>').length).toBe(1);
+    expect(lines.filter((l) => l === '🕐 <code>6  9  12 15 18</code>').length).toBe(1);
   });
   it('🌅 a dawn+dusk 🟡 on two different spots draws one chart each', () => {
     const r = goldenReport({
@@ -354,7 +354,7 @@ describe('renderEvening — other verdicts', () => {
       },
     });
     const lines = renderEvening(r, EN).split('\n');
-    expect(lines.filter((l) => l === '<code>6  9  12 15 18</code>').length).toBe(2);
+    expect(lines.filter((l) => l === '🕐 <code>6  9  12 15 18</code>').length).toBe(2);
   });
   it('out of coverage with raw conditions and nearest spots', () => {
     const r = goldenReport({
@@ -388,8 +388,8 @@ describe('water temperature and wetsuit', () => {
 
   it('🟢 says the water and the wetsuit under the sun line of the spot to go to', () => {
     const lines = renderEvening(withWater(goldenReport(), 'kommetjie-long-beach', 13), EN).split('\n');
-    expect(lines[lines.indexOf('   ☀️ 22° · sunrise 6:44') + 1]).toBe('   🌊 water 13° · 5/4 wetsuit + booties');
-    expect(renderEvening(withWater(goldenReport(), 'kommetjie-long-beach', 13), RU).split('\n')).toContain('   🌊 вода 13° · гидрик 5/4 + боты');
+    expect(lines[lines.indexOf('   ☀️ 22° · sunrise 6:44') + 1]).toBe('   🌡️ water 13° · 5/4 wetsuit + booties');
+    expect(renderEvening(withWater(goldenReport(), 'kommetjie-long-beach', 13), RU).split('\n')).toContain('   🌡️ вода 13° · гидрик 5/4 + боты');
   });
 
   it('🔴 says the water at the best spot the message names — tonight as in /now', () => {
@@ -397,15 +397,15 @@ describe('water temperature and wetsuit', () => {
     for (const report of [red, { ...red, mode: 'now' as const }]) {
       const lines = renderEvening(report, EN).split('\n');
       expect(lines.at(-2)?.startsWith(`Best: ${KOM} `)).toBe(true);
-      expect(lines.at(-1)).toBe('🌊 water 13° · 5/4 wetsuit + booties');
+      expect(lines.at(-1)).toBe('🌡️ water 13° · 5/4 wetsuit + booties');
     }
     // sans meilleur spot nommé, pas d'eau à donner
-    expect(renderEvening({ ...red, verdict: { kind: 'red' } }, EN)).not.toContain('🌊');
+    expect(renderEvening({ ...red, verdict: { kind: 'red' } }, EN)).not.toContain('🌡️');
   });
 
   it('says nothing about the water when the sea gave no temperature', () => {
-    expect(renderEvening(goldenReport(), EN)).not.toContain('🌊');
-    expect(renderSpotDay(goldenReport(), 'kommetjie-long-beach', EN)).not.toContain('🌊');
+    expect(renderEvening(goldenReport(), EN)).not.toContain('🌡️');
+    expect(renderSpotDay(goldenReport(), 'kommetjie-long-beach', EN)).not.toContain('🌡️');
   });
 
   it('🌅 a dawn+dusk 🟡 on one spot says the water once, and once per spot on two spots', () => {
@@ -413,29 +413,29 @@ describe('water temperature and wetsuit', () => {
     const W17 = W('17:00', '18:00', 4);
     const report = withWater(withWater(goldenReport(), 'kommetjie-long-beach', 12), 'muizenberg', 14);
     const oneSpot = renderEvening({ ...report, verdict: { kind: 'yellow', dawn: { spotId: 'kommetjie-long-beach', window: W7 }, dusk: { spotId: 'kommetjie-long-beach', window: W17 } } }, EN);
-    expect(oneSpot.split('\n').filter((l) => l.includes('🌊'))).toEqual(['   🌊 water 12° · 5/4 wetsuit + booties']);
+    expect(oneSpot.split('\n').filter((l) => l.includes('🌡️'))).toEqual(['   🌡️ water 12° · 5/4 wetsuit + booties']);
     const twoSpots = renderEvening({ ...report, verdict: { kind: 'yellow', dawn: { spotId: 'muizenberg', window: W7 }, dusk: { spotId: 'kommetjie-long-beach', window: W17 } } }, EN);
-    expect(twoSpots.split('\n').filter((l) => l.includes('🌊'))).toEqual(['   🌊 water 14° · 4/3 wetsuit', '   🌊 water 12° · 5/4 wetsuit + booties']);
+    expect(twoSpots.split('\n').filter((l) => l.includes('🌡️'))).toEqual(['   🌡️ water 14° · 4/3 wetsuit', '   🌡️ water 12° · 5/4 wetsuit + booties']);
   });
 
   it('/<spot>, /all and 📋 say it in the spot block', () => {
     const report = withWater(goldenReport(), 'kommetjie-long-beach', 17);
-    expect(renderSpotDay(report, 'kommetjie-long-beach', EN).split('\n')).toContain('🌊 water 17° · 3/2 wetsuit');
-    expect(renderDetails(report, EN, { all: true }).split('\n')).toContain('🌊 water 17° · 3/2 wetsuit');
+    expect(renderSpotDay(report, 'kommetjie-long-beach', EN).split('\n')).toContain('🌡️ water 17° · 3/2 wetsuit');
+    expect(renderDetails(report, EN, { all: true }).split('\n')).toContain('🌡️ water 17° · 3/2 wetsuit');
   });
 
   it('the morning message says it too, confirmed or changed', () => {
     const evening = goldenReport();
     const confirmed = withWater(goldenReport({ mode: 'morning' }), 'kommetjie-long-beach', 9);
     expect(renderMorning(confirmed, { send: true, changed: false }, evening, EN)).toBe(
-      [`✅ Confirmed: 🟢 ${KOM} 7:00–12:00`, '🌊 water 9° · 5/4 wetsuit + booties, gloves, hood'].join('\n'),
+      [`✅ Confirmed: 🟢 ${KOM} 7:00–12:00`, '🌡️ water 9° · 5/4 wetsuit + booties, gloves, hood'].join('\n'),
     );
     const changed = withWater(goldenReport({ mode: 'morning', verdict: { kind: 'green', spotId: 'kommetjie-long-beach', window: W('07:00', '10:00', 6), epic: false } }), 'kommetjie-long-beach', 21);
     expect(renderMorning(changed, { send: true, changed: true, cause: 'wind' }, evening, EN)).toBe(
-      [`⚠️ Change: 🟢 ${KOM} 7:00–12:00 → 🟢 ${KOM} 7:00–10:00`, '3.5 m · SW 13 s · offshore SE 8 kt · incoming tide, high 9:00', '🌊 water 21° · shorty', 'cause: wind'].join('\n'),
+      [`⚠️ Change: 🟢 ${KOM} 7:00–12:00 → 🟢 ${KOM} 7:00–10:00`, '3.5 m · SW 13 s · offshore SE 8 kt · incoming tide, high 9:00', '🌡️ water 21° · shorty', 'cause: wind'].join('\n'),
     );
     const red = withWater(goldenReport({ mode: 'morning', verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } }), 'kommetjie-long-beach', 13);
-    expect(renderMorning(red, { send: true, changed: true }, evening, EN)).not.toContain('🌊');
+    expect(renderMorning(red, { send: true, changed: true }, evening, EN)).not.toContain('🌡️');
   });
 });
 
@@ -448,8 +448,8 @@ describe('renderAlert — a big day two or three days out', () => {
           `🏄 ${KOM} · 7:00–12:00 · ★★★★★★`,
           '   3.5 m · SW 13 s · offshore SE 8 kt · incoming tide, high 9:00',
           '   ☀️ 22° · sunrise 6:44',
-          '<code>6  9  12 15 18</code>',
-          '<code>·▆▆▆▆▅▂······</code>',
+          '🕐 <code>6  9  12 15 18</code>',
+          '🌊 <code>·▆▆▆▆▅▂······</code>',
         ].join('\n'),
         "Plan ahead — I'll confirm the evening before.",
       ].join('\n\n'),
@@ -498,8 +498,8 @@ describe('renderDetails', () => {
         '📋 <b>Your day</b> (Wed 16 Sept)',
         `🏄 ${KOM} · 7:00–12:00`,
         '',
-        '<code>6  9  12 15 18</code>',
-        '<code>·▆▆▆▆▅▂······</code>',
+        '🕐 <code>6  9  12 15 18</code>',
+        '🌊 <code>·▆▆▆▆▅▂······</code>',
         '',
         'peak ★★★★★★ at 7:00',
         '3.5 m · SW 13 s · offshore SE 8→30 kt · incoming tide, high 9:00',
@@ -579,7 +579,7 @@ function komResult(hours: SpotHour[], best: Window | undefined): SpotResult {
   };
 }
 
-const KOM_CHART = '<code>6  9  12 15 18</code>\n<code>·▄▅▄▂▂▂▂▂▁▁▁·</code>';
+const KOM_CHART = '🕐 <code>6  9  12 15 18</code>\n🌊 <code>·▄▅▄▂▂▂▂▂▁▁▁·</code>';
 const KOM_BLOCK = [
   `🏄 ${KOM} · 7:00–10:00`,
   '',
@@ -641,7 +641,7 @@ describe('renderSpotDay', () => {
       [
         `🏄 ${KOM} · ★★`, // sans fenêtre, l'en-tête chiffre quand même la journée
         '',
-        '<code>6  9  12 15 18</code>\n<code>·▂▂▂▂▂▂▂▂▂▂▂·</code>',
+        '🕐 <code>6  9  12 15 18</code>\n🌊 <code>·▂▂▂▂▂▂▂▂▂▂▂·</code>',
         '',
         '3.1 m · SW 12 s · offshore SE 10 kt · incoming tide, high 9:00',
       ].join('\n'),
@@ -650,7 +650,7 @@ describe('renderSpotDay', () => {
   it('a spot with no rated hour at all: its name and an empty chart, nothing invented', () => {
     const report = makeReport({ spots: [{ spotId: 'outer-kom', distanceKm: 14.5, hours: [], windows: [], best: undefined, maxScore: 0 }] });
     expect(renderSpotDay(report, 'outer-kom', EN)).toBe(
-      ['🏄 Kommetjie – Outer Kom', '', '<code>6  9  12 15 18</code>\n<code>·············</code>'].join('\n'),
+      ['🏄 Kommetjie – Outer Kom', '', '🕐 <code>6  9  12 15 18</code>\n🌊 <code>·············</code>'].join('\n'),
     );
   });
   it('says nothing when the day is flat: a window exists but every factor is steady all day', () => {
@@ -880,7 +880,7 @@ describe('renderWeek — the week ahead, best day first', () => {
 
   it('never says the water: a week is for picking a day, not a wetsuit', () => {
     const warm = WEEK.map((r) => ({ ...r, spots: r.spots.map((x) => ({ ...x, waterTempC: 14 })) }));
-    expect(renderWeek(warm, EN, { today: '2026-09-16' })).not.toContain('🌊');
+    expect(renderWeek(warm, EN, { today: '2026-09-16' })).not.toContain('🌡️');
   });
 
   it('RU: the same week in Russian', () => {

@@ -60,7 +60,7 @@ export const en: Strings = {
   reasons: { size: 'swell {m} m', dark: 'dark', storm: 'thunderstorm' },
   spotLine: { conditions: '{m} m · {dir} {s} s · {wind} · {tide}', sun: '☀️ {temp}° · sunrise {sunrise}' },
   rain: 'rain {mm} mm',
-  water: '🌊 water {temp}° · {suit}',
+  water: '🌡️ water {temp}° · {suit}',
   suits: {
     lycra: 'lycra', shorty: 'shorty', full32: '3/2 wetsuit', full43: '4/3 wetsuit',
     full54: '5/4 wetsuit + booties', full54Cold: '5/4 wetsuit + booties, gloves, hood',
