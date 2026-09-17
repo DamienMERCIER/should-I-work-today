@@ -193,8 +193,8 @@ const MEDALS = ['🥇', '🥈', '🥉'] as const;
 
 /**
  * Les spots qu'un verdict nomme, dans l'ordre du message : le 🟢 et son 🥈 ; l'aube et le soir d'un 🟡 ; pour un 🔴, son
- * meilleur spot puis ceux qui ont au moins une étoile, jusqu'à trois, avec le départage du verdict. Les boutons 📍 en
- * dérivent : chaque bouton a sa ligne dans le message, et 🥇 est toujours le spot mis en avant.
+ * meilleur spot puis ceux qui ont au moins une étoile, jusqu'à trois, avec le départage du verdict. Les lignes 🙋 + 📍
+ * sous le message en dérivent : chaque ligne a son spot dans le texte, dans le même ordre, 🥇 d'abord.
  */
 function namedSpots(report: Report): SpotResult[] {
   const v = report.verdict;
@@ -304,9 +304,9 @@ export function renderEvening(report: Report, ctx: RenderCtx): string {
         push(body, ...(best ? [fill(s.verdict.redBest, vars(best))] : []), ...(water ? [water] : []));
         break;
       }
-      // plusieurs spots valent le coup d'œil : 🥇🥈🥉 à la place de « Best: », un par ligne dans leur propre bloc
+      // plusieurs spots valent le coup d'œil : 🥇🥈🥉 à la place de « Best: », chacun dans son bloc pour aérer
       push(body);
-      push(...named.flatMap((r, i) => [fill(s.verdict.redRanked, { medal: MEDALS[i], ...vars(r) }), ...(i === 0 && water ? [`   ${water}`] : [])]));
+      named.forEach((r, i) => push(fill(s.verdict.redRanked, { medal: MEDALS[i], ...vars(r) }), ...(i === 0 && water ? [`   ${water}`] : [])));
       break;
     }
     case 'outOfCoverage': {
@@ -707,62 +707,64 @@ export const expandCompactDate = (compact: string): string | undefined =>
 export const notGoingData = (date: string): string => `nogo:${compactDate(date)}`;
 
 /** Le bouton 🙋 d'un spot pour un jour : seulement pour un spot connu, et si ses données tiennent dans un bouton Telegram. */
-function goingRow(date: string, spotId: string | undefined, ctx: RenderCtx): InlineButton[] | undefined {
-  if (spotId === undefined || !spotById(spotId, ctx)) return undefined;
+function goingButton(date: string, spotId: string, ctx: RenderCtx): InlineButton | undefined {
+  if (!spotById(spotId, ctx)) return undefined;
   const data = `go:${compactDate(date)}:${spotId}`;
   if (new TextEncoder().encode(data).length > CALLBACK_DATA_MAX_BYTES) return undefined;
   const s = STRINGS[ctx.lang];
-  return [{ text: fill(s.buttons.going, { spot: spotShort(spotId, ctx, s) }), callback_data: data }];
+  return { text: fill(s.buttons.going, { spot: spotShort(spotId, ctx, s) }), callback_data: data };
 }
 
 /**
- * Un bouton 🙋 par spot que le message propose — le 🟢, l'aube et le soir d'un 🟡 — ou nomme : le meilleur spot d'un 🔴,
- * pour qui veut y aller quand même, quand le message le cite (`redBestNamed`). Dans l'ordre du message.
+ * 📍 l'itinéraire vers un spot, par l'API d'URL documentée de Google Maps (`/maps/search/?api=1&query=<lat>,<lon>`) :
+ * l'app Google Maps sur iOS et Android, le navigateur sinon ; un bouton `url` de Telegram n'accepte que http(s), pas
+ * `geo:`. Seul sur sa ligne, il dit où il mène ; à côté du 🙋 du même spot, l'emoji suffit.
  */
-function goingRows(report: Report, ctx: RenderCtx, redBestNamed: boolean): InlineButton[][] {
-  const v = report.verdict;
-  const picks = v.kind === 'green' ? [v.spotId] : v.kind === 'yellow' ? [v.dawn?.spotId, v.dusk?.spotId] : v.kind === 'red' && redBestNamed ? [v.bestSpotId] : [];
-  return [...new Set(picks)].map((spotId) => goingRow(report.date, spotId, ctx)).filter((row): row is InlineButton[] => row !== undefined);
+function mapButton(spotId: string, ctx: RenderCtx, alone: boolean): InlineButton | undefined {
+  const spot = spotById(spotId, ctx);
+  if (!spot) return undefined;
+  const s = STRINGS[ctx.lang];
+  return {
+    text: alone ? `📍 ${fill(s.buttons.goTo, { spot: spotShort(spotId, ctx, s) })}` : '📍',
+    url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${spot.lat},${spot.lon}`)}`,
+  };
+}
+
+/** Les deux actions d'un spot sur une ligne : « 🙋 I'm going » et son 📍. Telegram partage une ligne à parts égales. */
+function spotActionRow(date: string, spotId: string, ctx: RenderCtx): InlineButton[] {
+  const going = goingButton(date, spotId, ctx);
+  const map = mapButton(spotId, ctx, going === undefined);
+  return [going, map].filter((b): b is InlineButton => b !== undefined);
+}
+
+/**
+ * Une ligne d'actions par spot que le message nomme (`namedSpots` : le 🟢 et son 🥈, l'aube et le soir d'un 🟡, les
+ * médailles d'un 🔴), dans son ordre, jamais vers un spot à 0★. Un 🔴 dont le message ne cite aucun spot
+ * (`redBestNamed: false`, le matin) n'en a pas.
+ */
+function spotActionRows(report: Report, ctx: RenderCtx, redBestNamed: boolean): InlineButton[][] {
+  if (report.verdict.kind === 'red' && !redBestNamed) return [];
+  return namedSpots(report)
+    .filter((r) => r.maxScore >= 1)
+    .map((r) => spotActionRow(report.date, r.spotId, ctx))
+    .filter((row) => row.length > 0);
 }
 
 /** Rows → `undefined` rather than `{ inline_keyboard: [] }` — Telegram rejects an empty keyboard. */
 const toMarkup = (rows: InlineButton[][]): ReplyMarkup | undefined => (rows.length > 0 ? { inline_keyboard: rows } : undefined);
 
 /**
- * 📍 "go to this spot" map buttons — one row per button (spot names are long). Opens Google's documented
- * URL API (`/maps/search/?api=1&query=<lat>,<lon>`), which opens the Google Maps app on iOS/Android and
- * falls back to the browser; Telegram's `url` button only accepts http(s), so a `geo:` URI is not an option.
+ * 📍 "go to this spot" map buttons with their spot's name — one row per button (spot names are long), see `mapButton`.
  *
  * `opts.spotId` (a per-spot command, e.g. `/long_beach`): exactly that spot's 📍 button, unconditionally —
  * even at 0★, and even absent from `report.spots` entirely (looked up with `spotById`: curated, then imported).
  * Otherwise: one button per spot the message names (`namedSpots` — the 🟢 and its 🥈, a 🟡's dawn and dusk, a 🔴's
- * top three), in the message's order, never towards a spot at 0★. Alone, it keeps its 📍; several get 🥇🥈🥉, or
- * 🌅 and 🌇 for a 🟡 on two spots. At most three. Possibly `[]`.
+ * top three), in the message's order, never towards a spot at 0★ — the `/all` surface, under its spot buttons. At most
+ * three. Possibly `[]`.
  */
 export function goButtons(report: Report, ctx: RenderCtx, opts: { spotId?: string } = {}): InlineButton[][] {
-  const s = STRINGS[ctx.lang];
-  const row = (spotId: string, emoji: string): InlineButton[] | undefined => {
-    const spot = spotById(spotId, ctx);
-    if (!spot) return undefined;
-    const text = `${emoji} ${fill(s.buttons.goTo, { spot: spotShort(spotId, ctx, s) })}`;
-    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${spot.lat},${spot.lon}`)}`;
-    return [{ text, url }];
-  };
-
-  if (opts.spotId !== undefined) {
-    const one = row(opts.spotId, '📍');
-    return one ? [one] : [];
-  }
-
-  // les spots que le message nomme, rien vers un spot à 0★ ; plusieurs : 🌅 et 🌇 pour un 🟡, des médailles sinon
-  const v = report.verdict;
-  const named = namedSpots(report).filter((r) => r.maxScore >= 1);
-  const emoji = (spotId: string, i: number): string => {
-    if (named.length < 2) return '📍';
-    if (v.kind === 'yellow') return spotId === v.dawn?.spotId ? '🌅' : '🌇';
-    return MEDALS[i];
-  };
-  return named.map((r, i) => row(r.spotId, emoji(r.spotId, i))).filter((r): r is InlineButton[] => r !== undefined);
+  const ids = opts.spotId !== undefined ? [opts.spotId] : namedSpots(report).filter((r) => r.maxScore >= 1).map((r) => r.spotId);
+  return ids.map((id) => mapButton(id, ctx, true)).filter((b): b is InlineButton => b !== undefined).map((b) => [b]);
 }
 
 /**
@@ -770,8 +772,8 @@ export function goButtons(report: Report, ctx: RenderCtx, opts: { spotId?: strin
  * `spotById` doit le connaître : un spot importé est ajouté au contexte par l'appelant ou retrouvé par son id.
  */
 export function spotMarkupFor(report: Report, spotId: string, ctx: RenderCtx): ReplyMarkup | undefined {
-  const going = goingRow(report.date, spotId, ctx);
-  return toMarkup([...(going ? [going] : []), ...goButtons(report, ctx, { spotId })]);
+  const row = spotActionRow(report.date, spotId, ctx);
+  return toMarkup(row.length > 0 ? [row] : []);
 }
 
 /**
@@ -821,6 +823,6 @@ export const goButtonsMarkup = (report: Report, ctx: RenderCtx, opts: { spotId?:
  */
 export function detailsMarkupFor(report: Report, ctx: RenderCtx, opts: { redBestNamed?: boolean } = {}): ReplyMarkup | undefined {
   const hasDetails = report.verdict.kind === 'green' || report.verdict.kind === 'yellow' || report.verdict.kind === 'red';
-  const rows = [...goingRows(report, ctx, opts.redBestNamed ?? true), ...goButtons(report, ctx), ...(hasDetails ? [detailsButtonRow(report.date, ctx.lang)] : [])];
+  const rows = [...spotActionRows(report, ctx, opts.redBestNamed ?? true), ...(hasDetails ? [detailsButtonRow(report.date, ctx.lang)] : [])];
   return toMarkup(rows);
 }

@@ -187,8 +187,7 @@ describe('location and /now', () => {
     // go buttons (ordered by peak) before the 📋 row — same verdict rendering path as the evening/morning push.
     expect(sent()[0].reply_markup).toEqual({
       inline_keyboard: [
-        [{ text: "🙋 I'm going: Long Beach", callback_data: 'go:260916:kommetjie-long-beach' }],
-        [{ text: '📍 Go to Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
+        [{ text: "🙋 I'm going: Long Beach", callback_data: 'go:260916:kommetjie-long-beach' }, { text: '📍', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
         [{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }],
       ],
     });
@@ -233,7 +232,10 @@ describe('/now on a 🔴 day', () => {
     await store.putProfiles({ '1': ready() });
     await handleUpdate(msg('/now'), deps);
     expect(sent()[0].text).toContain('🥇 Kommetjie – Long Beach');
-    expect(sent()[0].reply_markup.inline_keyboard[0]).toEqual([{ text: "🙋 I'm going: Long Beach", callback_data: 'go:260916:kommetjie-long-beach' }]);
+    expect(sent()[0].reply_markup.inline_keyboard[0]).toEqual([
+      { text: "🙋 I'm going: Long Beach", callback_data: 'go:260916:kommetjie-long-beach' },
+      { text: '📍', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' },
+    ]);
   });
 });
 
@@ -262,7 +264,7 @@ describe('/now once the light has gone', () => {
     const { deps, store, sent } = setup(evening);
     await store.putProfiles({ '1': ready() });
     await handleUpdate(msg('/long_beach'), deps);
-    expect(sent()[0].reply_markup.inline_keyboard[0]).toEqual([{ text: "🙋 I'm going: Long Beach", callback_data: 'go:260917:kommetjie-long-beach' }]);
+    expect(sent()[0].reply_markup.inline_keyboard[0][0]).toEqual({ text: "🙋 I'm going: Long Beach", callback_data: 'go:260917:kommetjie-long-beach' });
   });
 
   it('says it in Russian for a Russian profile', async () => {
@@ -658,8 +660,7 @@ describe('/all, /<spot> and /about', () => {
     // the per-spot command's 🙋 for that spot and day, then its go button, in English.
     expect(sent()[0].reply_markup).toEqual({
       inline_keyboard: [
-        [{ text: "🙋 I'm going: Long Beach", callback_data: 'go:260916:kommetjie-long-beach' }],
-        [{ text: '📍 Go to Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
+        [{ text: "🙋 I'm going: Long Beach", callback_data: 'go:260916:kommetjie-long-beach' }, { text: '📍', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
       ],
     });
   });
@@ -670,8 +671,7 @@ describe('/all, /<spot> and /about', () => {
     await handleUpdate(msg('/long_beach'), deps);
     expect(sent()[0].reply_markup).toEqual({
       inline_keyboard: [
-        [{ text: '🙋 Я еду: Long Beach', callback_data: 'go:260916:kommetjie-long-beach' }],
-        [{ text: '📍 Маршрут до Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
+        [{ text: '🙋 Я еду: Long Beach', callback_data: 'go:260916:kommetjie-long-beach' }, { text: '📍', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
       ],
     });
   });
@@ -688,16 +688,14 @@ describe('/all, /<spot> and /about', () => {
     expect(sent()[0].text).not.toContain('closed');
     expect(sent()[0].reply_markup).toEqual({
       inline_keyboard: [
-        [{ text: "🙋 I'm going: Outer Kom", callback_data: 'go:260916:outer-kom' }],
-        [{ text: '📍 Go to Outer Kom', url: 'https://www.google.com/maps/search/?api=1&query=-34.142%2C18.319' }],
+        [{ text: "🙋 I'm going: Outer Kom", callback_data: 'go:260916:outer-kom' }, { text: '📍', url: 'https://www.google.com/maps/search/?api=1&query=-34.142%2C18.319' }],
       ],
     });
 
     await handleUpdate(msg('/muizenberg'), deps);
     expect(sent()[1].reply_markup).toEqual({
       inline_keyboard: [
-        [{ text: "🙋 I'm going: Muizenberg", callback_data: 'go:260916:muizenberg' }],
-        [{ text: '📍 Go to Muizenberg', url: 'https://www.google.com/maps/search/?api=1&query=-34.1085%2C18.4715' }],
+        [{ text: "🙋 I'm going: Muizenberg", callback_data: 'go:260916:muizenberg' }, { text: '📍', url: 'https://www.google.com/maps/search/?api=1&query=-34.1085%2C18.4715' }],
       ],
     });
   });

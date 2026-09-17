@@ -34,8 +34,7 @@ describe('formatting', () => {
     // Muizenberg n'a pas de fenêtre dans le scénario golden (2☆ sous le cross-onshore) : pas de bouton
     expect(detailsMarkupFor(goldenReport(), EN)).toEqual({
       inline_keyboard: [
-        [{ text: "🙋 I'm going: Long Beach", callback_data: 'go:260916:kommetjie-long-beach' }],
-        [{ text: '📍 Go to Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
+        [{ text: "🙋 I'm going: Long Beach", callback_data: 'go:260916:kommetjie-long-beach' }, { text: '📍', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
         [{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }],
       ],
     });
@@ -65,13 +64,13 @@ describe('🙋 going buttons', () => {
     expect(goingButtons(goldenReport({ verdict: { kind: 'yellow', dawn: { ...dusk, window: W('07:00', '09:00', 4) }, dusk } }), EN)).toHaveLength(1);
   });
 
-  it('on a 🔴, one for the best spot the message names — none when it names none, or when the message does not show it', () => {
+  it('on a 🔴, one for each spot the message names, 🥇 first — none when it names none, or when the message does not show them', () => {
     const red = goldenReport({ verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } });
-    expect(goingButtons(red, EN)).toEqual([["🙋 I'm going: Long Beach", 'go:260916:kommetjie-long-beach']]);
+    expect(goingButtons(red, EN)).toEqual([["🙋 I'm going: Long Beach", 'go:260916:kommetjie-long-beach'], ["🙋 I'm going: Muizenberg", 'go:260916:muizenberg']]);
     expect(goingButtons(goldenReport({ verdict: { kind: 'red' } }), EN)).toEqual([]);
     expect(goingButtons(goldenReport({ spots: [], verdict: { kind: 'outOfCoverage', nearest: [] } }), EN)).toEqual([]);
-    // le message du matin passé au 🔴 dit « go to work » sans nommer de spot
-    expect(JSON.stringify(detailsMarkupFor(red, EN, { redBestNamed: false }))).not.toContain('"go:');
+    // le message du matin passé au 🔴 dit « go to work » sans nommer de spot : ni 🙋 ni 📍
+    expect(detailsMarkupFor(red, EN, { redBestNamed: false })).toEqual({ inline_keyboard: [[{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }]] });
   });
 
   it('the label follows the language', () => {
@@ -83,12 +82,14 @@ describe('🙋 going buttons', () => {
       const spot = { ...SPOTS.find((x) => x.id === 'muizenberg')!, id, short: 'Far' };
       const ctx: RenderCtx = { lang: 'en', spots: new Map([...spots, [id, spot]]) };
       const report = goldenReport({ verdict: { kind: 'green', spotId: id, window: W('07:00', '12:00', 6), epic: true } });
-      return { going: goingButtons(report, ctx), markup: detailsMarkupFor(report, ctx) };
+      report.spots.push({ ...report.spots[0], spotId: id });
+      return { going: goingButtons(report, ctx).filter(([, data]) => data?.includes('far-')), markup: detailsMarkupFor(report, ctx) };
     };
     // `go:260916:` fait 10 octets : un id de 54 caractères remplit tout juste les 64, un de 55 les dépasse
     expect(buttonsFor(`far-${'x'.repeat(50)}`).going).toHaveLength(1);
     expect(buttonsFor(`far-${'x'.repeat(51)}`).going).toEqual([]);
-    expect(buttonsFor(`far-${'x'.repeat(51)}`).markup).toBeDefined(); // les autres boutons restent
+    // son 📍 reste, avec son nom puisqu'il est seul sur sa ligne
+    expect(JSON.stringify(buttonsFor(`far-${'x'.repeat(51)}`).markup)).toContain('"📍 Go to Far"');
   });
 });
 
@@ -180,9 +181,10 @@ describe('go buttons (📍 "go to this spot" map link)', () => {
     const [name, , lat, lon] = allWorldTuples()[0];
     const id = worldSpotId(name, lat, lon);
     const markup = spotMarkupFor(goldenReport(), id, EN) as { inline_keyboard: { text: string; callback_data?: string; url?: string }[][] };
-    expect(markup.inline_keyboard).toHaveLength(2);
+    // une seule ligne : son 🙋, puis son 📍
+    expect(markup.inline_keyboard).toHaveLength(1);
     expect(markup.inline_keyboard[0][0].callback_data).toBe(`go:260916:${id}`);
-    expect(markup.inline_keyboard[1][0].url).toBe(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lon}`)}`);
+    expect(markup.inline_keyboard[0][1]).toEqual({ text: '📍', url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lon}`)}` });
   });
 
   it('opts.spotId: still the one button for a spot at 0★ or without a window', () => {
@@ -207,32 +209,32 @@ describe('go buttons (📍 "go to this spot" map link)', () => {
 
   const labels = (r: Report) => goButtons(r, EN).map(([b]) => b.text);
 
-  it('no opts: a 🔴 with several spots at a star or more gets 🥇🥈🥉 for the spots its message names, in the same order, three at most', () => {
+  it('no opts (/all): a 📍 for each spot a 🔴 names, in the message\'s order, three at most', () => {
     const r = makeReport({
       verdict: { kind: 'red', bestSpotId: 'glen-beach' },
       spots: [makeSpotDay('kommetjie-long-beach', 13, [1, 1]), makeSpotDay('muizenberg', 0, [0]), makeSpotDay('glen-beach', 18, [3, 3, 3, 3]), makeSpotDay('llandudno', 16, [3, 3]), makeSpotDay('clovelly', 3, [1])],
     });
-    expect(labels(r)).toEqual(['🥇 Go to Glen Beach', '🥈 Go to Llandudno', '🥉 Go to Long Beach']);
+    expect(labels(r)).toEqual(['📍 Go to Glen Beach', '📍 Go to Llandudno', '📍 Go to Long Beach']);
     expect(goButtons(r, EN)[0][0].url).toBe('https://www.google.com/maps/search/?api=1&query=-33.947%2C18.3778');
   });
 
-  it('no opts: a single spot keeps its 📍; a 🟢 with a 🥈 runner-up gets 🥇 and 🥈; a 🟡 on two spots gets 🌅 and 🌇', () => {
+  it('no opts (/all): a 📍 for a 🟢 and its 🥈 runner-up, and for a 🟡\'s dawn and dusk spots', () => {
     expect(labels(goldenReport())).toEqual(['📍 Go to Long Beach']);
     const withRunnerUp = goldenReport();
     const muiz = withRunnerUp.spots.find((x) => x.spotId === 'muizenberg')!;
     muiz.windows = [W('07:00', '09:00', 2)];
     muiz.best = muiz.windows[0];
-    expect(labels(withRunnerUp)).toEqual(['🥇 Go to Long Beach', '🥈 Go to Muizenberg']);
+    expect(labels(withRunnerUp)).toEqual(['📍 Go to Long Beach', '📍 Go to Muizenberg']);
     const yellow = goldenReport({ verdict: { kind: 'yellow', dawn: { spotId: 'muizenberg', window: W('07:00', '09:00', 4) }, dusk: { spotId: 'kommetjie-long-beach', window: W('17:00', '18:00', 4) } } });
-    expect(labels(yellow)).toEqual(['🌅 Go to Muizenberg', '🌇 Go to Long Beach']);
+    expect(labels(yellow)).toEqual(['📍 Go to Muizenberg', '📍 Go to Long Beach']);
   });
 
-  it('no opts: a spot at 0★ never gets a medal, in the message or on a button', () => {
+  it('no opts: a spot at 0★ never gets a medal in the message, nor a button', () => {
     const r = makeReport({
       verdict: { kind: 'red', bestSpotId: 'glen-beach' },
       spots: [makeSpotDay('glen-beach', 18, [3, 3]), makeSpotDay('llandudno', 16, [3]), makeSpotDay('muizenberg', 0, [0, 0])],
     });
-    expect(labels(r)).toEqual(['🥇 Go to Glen Beach', '🥈 Go to Llandudno']);
+    expect(labels(r)).toEqual(['📍 Go to Glen Beach', '📍 Go to Llandudno']);
     expect(renderEvening(r, EN)).not.toContain('🥉');
   });
 
@@ -243,7 +245,7 @@ describe('go buttons (📍 "go to this spot" map link)', () => {
     muiz.best = muiz.windows[0];
     const clovelly = { ...makeSpotDay('clovelly', 3, [0, 2, 2, 2, 2, 2]), windows: [W('07:00', '12:00', 2)], best: W('07:00', '12:00', 2) };
     r.spots.push(clovelly);
-    expect(labels(r)).toEqual(['🥇 Go to Long Beach', '🥈 Go to Clovelly']);
+    expect(labels(r)).toEqual(['📍 Go to Long Beach', '📍 Go to Clovelly']);
     expect(renderEvening(r, EN).split('\n').some((l) => l.startsWith(`🥈 ${spotName('clovelly', EN, STRINGS.en)} ·`))).toBe(true);
   });
 
@@ -371,8 +373,10 @@ describe('renderEvening — other verdicts', () => {
     for (const h of kom.hours) Object.assign(h, { score: 0, factors: { ...h.factors, weather: 0 } });
     kom.maxScore = 0;
     expect(renderEvening(r, EN).split('\n')).toContain(`Best: ${KOM} 0★ (thunderstorm)`);
+    // un spot à 0★ ne vaut ni un 🙋 ni un 📍
+    expect(detailsMarkupFor(r, EN)).toEqual({ inline_keyboard: [[{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }]] });
   });
-  it('🔴 with several spots at a star or more: 🥇🥈🥉 instead of « Best: », one per line in a block of their own, the water under the 🥇', () => {
+  it('🔴 with several spots at a star or more: 🥇🥈🥉 instead of « Best: », each spot in a block of its own, the water under the 🥇', () => {
     const glen = { ...makeSpotDay('glen-beach', 18, [3, 3, 3, 3]), waterTempC: 12 };
     const report = makeReport({
       verdict: { kind: 'red', bestSpotId: 'glen-beach' },
@@ -384,14 +388,15 @@ describe('renderEvening — other verdicts', () => {
       [
         '🔴 <b>GO TO WORK TOMORROW</b> (Wed 16 Sept)',
         'Nothing ≥ 4★ within 20 km.',
-        [
-          `🥇 ${name('glen-beach')} ⭐⭐⭐ (swell 2.0 m)`,
-          '   🌡️ water 12° · 5/4 wetsuit + booties',
-          `🥈 ${name('llandudno')} ⭐⭐⭐ (swell 2.0 m)`,
-          `🥉 ${name('kommetjie-long-beach')} ⭐ (swell 2.0 m)`,
-        ].join('\n'),
+        [`🥇 ${name('glen-beach')} ⭐⭐⭐ (swell 2.0 m)`, '   🌡️ water 12° · 5/4 wetsuit + booties'].join('\n'),
+        `🥈 ${name('llandudno')} ⭐⭐⭐ (swell 2.0 m)`,
+        `🥉 ${name('kommetjie-long-beach')} ⭐ (swell 2.0 m)`,
       ].join('\n\n'),
     );
+    // sous le message : une ligne par spot, son 🙋 et son 📍 côte à côte, dans le même ordre
+    expect((detailsMarkupFor(report, EN) as { inline_keyboard: { text: string }[][] }).inline_keyboard.map((row) => row.map((b) => b.text))).toEqual([
+      ["🙋 I'm going: Glen Beach", '📍'], ["🙋 I'm going: Llandudno", '📍'], ["🙋 I'm going: Long Beach", '📍'], ['📋 All spots'],
+    ]);
     expect(renderEvening(report, RU).split('\n')).toContain(`🥇 ${name('glen-beach')} ⭐⭐⭐ (волна 2.0 м)`);
   });
   it('🌅 dawn block', () => {
