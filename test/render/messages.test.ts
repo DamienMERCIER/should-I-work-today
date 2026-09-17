@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  esc, fmtTime, fmtDate, fmtDay, renderEvening, renderShortVerdict, renderMorning, renderDetails, renderSpotDay, renderDayView, renderWeek,
+  esc, fmtTime, fmtDate, fmtDay, renderAlert, renderEvening, renderShortVerdict, renderMorning, renderDetails, renderSpotDay, renderDayView, renderWeek,
   detailsMarkupFor, goButtons, goButtonsMarkup, openSpotOrder, allSpotOrder, ALL_SPOTS_CAP, spotName, type RenderCtx,
 } from '../../src/render/messages';
 import { STRINGS } from '../../src/render/i18n';
@@ -373,6 +373,31 @@ describe('water temperature and wetsuit', () => {
     );
     const red = withWater(goldenReport({ mode: 'morning', verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } }), 'kommetjie-long-beach', 13);
     expect(renderMorning(red, { send: true, changed: true }, evening, EN)).not.toContain('🌊');
+  });
+});
+
+describe('renderAlert — a big day two or three days out', () => {
+  it('EN: each big day under its own title, the same spot block as the evening, then what to do', () => {
+    expect(renderAlert([goldenReport()], EN)).toBe(
+      [
+        [
+          '🔥 <b>BIG DAY AHEAD</b> (Wed 16 Sept)',
+          `🏄 ${KOM} · 7:00–12:00 · ★★★★★★`,
+          '   3.5 m · SW 13 s · offshore SE 8 kt · incoming tide, high 9:00',
+          '   ☀️ 22° · sunrise 6:44',
+          '<code>6  9  12 15 18</code>',
+          '<code>·▆▆▆▆▅▂······</code>',
+        ].join('\n'),
+        "Plan ahead — I'll confirm the evening before.",
+      ].join('\n\n'),
+    );
+  });
+
+  it('RU, and two big days in one message, in date order', () => {
+    const out = renderAlert([goldenReport(), goldenReport({ date: '2026-09-17' })], RU);
+    const titles = out.split('\n').filter((l) => l.startsWith('🔥'));
+    expect(titles).toEqual([`🔥 <b>БУДЕТ ЭПИЧНО</b> (${fmtDate('2026-09-16', 'ru')})`, `🔥 <b>БУДЕТ ЭПИЧНО</b> (${fmtDate('2026-09-17', 'ru')})`]);
+    expect(out.endsWith('Планируй заранее — накануне вечером подтвержу.')).toBe(true);
   });
 });
 

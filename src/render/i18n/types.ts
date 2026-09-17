@@ -79,6 +79,8 @@ export interface Strings {
       getsDark: string;
     };
   };
+  /** L'alerte de midi, une grosse journée à J+2 ou J+3. title: {date} */
+  alert: { title: string; footer: string };
   /** La semaine à venir (`/week`, envoi du dimanche). best: {day} {spot} {stars} · trend: {day} */
   week: { title: string; best: string; today: string; nothing: string; noData: string; trend: string };
   /** none: {radius} · raw: {swell} {s} {dir} {kt} {windDir} · nearest: {list} · nearestItem: {spot} {km} · farFromCoast: {km} */

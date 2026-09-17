@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { Store } from '../../src/adapters/kv';
 import { Telegram } from '../../src/adapters/telegram';
 import { REGIONS } from '../../src/data/index';
-import { runEvening, runMorning, runWeek, estimateBudget, notifyAdmin, type JobDeps } from '../../src/jobs/runs';
+import { runAlert, runEvening, runMorning, runWeek, estimateBudget, notifyAdmin, type JobDeps } from '../../src/jobs/runs';
 import type { Profile } from '../../src/types';
 import { fakeFetch, jsonResponse } from '../helpers/fakeFetch';
 import { GOLDEN_DAILY, GOLDEN_SPOTS, goldenReport, goldenSwell, goldenWind, weekData } from '../helpers/golden';
@@ -212,6 +212,81 @@ describe('estimateBudget', () => {
     expect(estimateBudget([ready(1), ready(2)], deps)).toBe(5);
     // + 2 appels bruts pour Johannesburg, une seule fois pour deux amis au même endroit, + 3 envois
     expect(estimateBudget([ready(1), ready(5, { location: JOBURG }), ready(6, { location: JOBURG })], deps)).toBe(8);
+  });
+});
+
+describe('runAlert — noon, a big day two or three days out', () => {
+  // lun 21 → dim 27 : 2,3 / 1,2 / 3,5 / 0,2 m, puis on recommence ; vent de SE 8 kt partout
+  const week = () => weekData('2026-09-21', 7, (i) => [2.3, 1.2, 3.5, 0.2][i % 4]);
+
+  it('tells each active friend near a spot about an epic day in two or three days, from one load per region, and only once', async () => {
+    const { deps, kv, sent, seed, omCalls } = setup({ now: '2026-09-21T12:00', data: week() });
+    const inland = { lat: -33.9, lon: 18.87, source: 'custom' as const }; // à 25 km de la côte, aucun spot dans le rayon
+    await seed([ready(1), ready(2, { lang: 'ru' }), ready(3, { active: false }), ready(5, { location: JOBURG }), ready(7, { location: inland })]);
+    expect(await runAlert(deps)).toEqual({ skipped: false, sent: 2, failed: 0, date: '2026-09-21' });
+    // mer 23 (J+2) : 3,5 m, 6★ toute la journée → alerte ; jeu 24 (J+3) : 0,2 m → rien ; hors couverture : ni alerte, ni appel
+    expect(sent().map((m) => m.chat_id)).toEqual([1, 2]);
+    expect(sent()[0].text.startsWith('🔥 <b>BIG DAY AHEAD</b> (Wed 23 Sept)\n🏄 Kommetjie – Long Beach · 7:00–18:00 · ★★★★★★')).toBe(true);
+    expect(sent()[0].text).not.toContain('24 Sept');
+    expect(sent()[1].text).toContain('БУДЕТ ЭПИЧНО');
+    expect(omCalls).toHaveLength(3);
+    // J+3 et sa marée du lendemain matin : cinq jours de prévision, aujourd'hui compris
+    expect(omCalls.every((c) => c.url.includes('forecast_days=5'))).toBe(true);
+    expect(kv.data.get('alerted:2026-09-23:1')?.ttl).toBe(5 * 24 * 3600);
+    expect(kv.data.has('run:2026-09-21:alert')).toBe(true);
+    expect(await runAlert(deps)).toEqual({ skipped: true, sent: 0, failed: 0, date: '2026-09-21' });
+  });
+
+  it('never announces a date twice: the next noon, only a friend who has not heard about it yet does', async () => {
+    const { deps, seed, sent } = setup({ now: '2026-09-20T12:00', data: week() });
+    await seed([ready(1)]);
+    await runAlert(deps); // dim 20 : mer 23 est à J+3
+    expect(sent().map((m) => m.chat_id)).toEqual([1]);
+    await seed([ready(6, { createdAt: '2026-09-21T08:00' })]);
+    deps.now = () => '2026-09-21T12:00'; // lun 21 : mer 23 est à J+2
+    expect(await runAlert(deps)).toMatchObject({ sent: 1 });
+    expect(sent().map((m) => m.chat_id)).toEqual([1, 6]);
+  });
+
+  it('puts two big days in one message, and remembers both', async () => {
+    const { deps, kv, seed, sent } = setup({ now: '2026-09-21T12:00', data: weekData('2026-09-21', 7, () => 3.5) });
+    await seed([ready(1)]);
+    await runAlert(deps);
+    expect(sent()).toHaveLength(1);
+    expect(sent()[0].text.split('\n').filter((l) => l.startsWith('🔥'))).toEqual(['🔥 <b>BIG DAY AHEAD</b> (Wed 23 Sept)', '🔥 <b>BIG DAY AHEAD</b> (Thu 24 Sept)']);
+    expect(kv.data.has('alerted:2026-09-23:1')).toBe(true);
+    expect(kv.data.has('alerted:2026-09-24:1')).toBe(true);
+  });
+
+  it('gives friends who share a place only the dates each has not heard about', async () => {
+    const { deps, kv, seed, sent } = setup({ now: '2026-09-21T12:00', data: weekData('2026-09-21', 7, () => 3.5) });
+    await seed([ready(1), ready(2)]);
+    await kv.put('alerted:2026-09-23:1', '1', { expirationTtl: 60 });
+    await runAlert(deps);
+    const titles = (chatId: number) => sent().find((m) => m.chat_id === chatId)!.text.split('\n').filter((l) => l.startsWith('🔥'));
+    expect(titles(1)).toEqual(['🔥 <b>BIG DAY AHEAD</b> (Thu 24 Sept)']);
+    expect(titles(2)).toEqual(['🔥 <b>BIG DAY AHEAD</b> (Wed 23 Sept)', '🔥 <b>BIG DAY AHEAD</b> (Thu 24 Sept)']);
+  });
+
+  it('stays silent on good days that are not epic', async () => {
+    const { deps, seed, sent } = setup({ now: '2026-09-21T12:00', data: weekData('2026-09-21', 7, () => 2.3) });
+    await seed([ready(1)]);
+    expect(await runAlert(deps)).toEqual({ skipped: false, sent: 0, failed: 0, date: '2026-09-21' });
+    expect(sent()).toEqual([]);
+  });
+
+  it('keeps a failed send unmarked, so the next noon tries again, and turns off a friend who blocked the bot', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const { deps, kv, store, seed } = setup({ now: '2026-09-21T12:00', data: week(), blocked: [2] });
+      await seed([ready(1), ready(2)]);
+      expect(await runAlert(deps)).toMatchObject({ sent: 1, failed: 1 });
+      expect(kv.data.has('alerted:2026-09-23:1')).toBe(true);
+      expect(kv.data.has('alerted:2026-09-23:2')).toBe(false);
+      expect(await store.getProfile(2)).toMatchObject({ active: false, inactiveReason: 'blocked' });
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });
 

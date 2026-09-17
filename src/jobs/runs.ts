@@ -1,10 +1,10 @@
 import { sleep as defaultSleep, type FetchLike } from '../adapters/http';
 import type { RunKind, Store } from '../adapters/kv';
 import type { ReplyMarkup, Telegram } from '../adapters/telegram';
-import { MAX_EXTERNAL_SUBREQUESTS, RADIUS_KM } from '../config';
+import { ALERT_DAYS_AHEAD, MAX_EXTERNAL_SUBREQUESTS, RADIUS_KM } from '../config';
 import { compareReports } from '../engine/delta';
 import { addDays, dateOf } from '../engine/time';
-import { detailsMarkupFor, esc, renderEvening, renderMorning, renderWeek, type RenderCtx } from '../render/messages';
+import { detailsMarkupFor, esc, renderAlert, renderEvening, renderMorning, renderWeek, type RenderCtx } from '../render/messages';
 import type { Lang, Profile, Region, Report, Spot } from '../types';
 import { buildReportList, buildReports, nearbyByPlace, placeKey, WEEK_DAYS, type EvalRequest } from './collect';
 
@@ -79,7 +79,7 @@ function memoized<T>(compute: (key: string) => T): (key: string) => T {
   };
 }
 
-async function runJob(kind: Exclude<RunKind, 'week'>, date: string, deps: JobDeps): Promise<JobResult> {
+async function runJob(kind: 'evening' | 'morning', date: string, deps: JobDeps): Promise<JobResult> {
   const now = deps.now();
   const sleep = deps.sleep ?? defaultSleep;
   if (!(await deps.store.acquireLock(date, kind, now))) return { skipped: true, sent: 0, failed: 0, date };
@@ -181,6 +181,69 @@ async function deactivateBlocked(blocked: number[], deps: JobDeps): Promise<void
       console.error(`désactivation de ${chatId} échouée — ${String(err)}`);
     }
   }
+}
+
+/**
+ * À midi, les grosses journées à venir : pour chaque ami actif proche d'un spot, J+2 et J+3. Un 🟢 epic (≥ 6★ assez
+ * longtemps) qu'on ne lui a pas encore annoncé → un message, toutes ses dates dedans. Une date annoncée ne l'est plus,
+ * même si elle passe de J+3 à J+2 le lendemain ; un envoi raté n'est pas noté, donc retenté le lendemain. Rien
+ * n'est stocké d'autre : le verdict du soir, la veille, confirme ou non. Même partage du travail que les autres
+ * envois : une charge par région, une évaluation par spot et par date, un message par groupe d'amis identique.
+ */
+export async function runAlert(deps: JobDeps): Promise<JobResult> {
+  const now = deps.now();
+  const today = dateOf(now);
+  if (!(await deps.store.acquireLock(today, 'alert', now))) return { skipped: true, sent: 0, failed: 0, date: today };
+
+  const nearbyAt = nearbyByPlace(deps.spots, deps.radiusKm ?? RADIUS_KM);
+  const nearSpots = (p: Profile): boolean => nearbyAt(p.location).length > 0;
+  const profiles = await withinBudget(activeProfiles(await deps.store.getProfiles()).filter(nearSpots), deps, 'alert', today);
+  const dates = ALERT_DAYS_AHEAD.map((n) => addDays(today, n));
+  const alerted = await Promise.all(dates.map((date) => deps.store.alertedChatIds(date)));
+
+  const reqs: EvalRequest[] = profiles.flatMap((profile) => dates.map((date): EvalRequest => ({ profile, date, mode: 'evening' })));
+  // la marée du dernier jour lit jusqu'au lendemain 3 h : aujourd'hui, les jours d'avant, ce jour et le suivant
+  const forecastDays = Math.max(...ALERT_DAYS_AHEAD) + 2;
+  const reports = await buildReportList(reqs, { spots: deps.spots, regions: deps.regions, fetchFn: deps.fetchFn, radiusKm: deps.radiusKm, now }, { forecastDays });
+  const ctxFor = memoized((lang) => renderCtx(lang as Lang, deps));
+  const messages = new Map<string, string>();
+
+  let sent = 0;
+  let failed = 0;
+  const blocked: number[] = [];
+  for (const [i, profile] of profiles.entries()) {
+    const epic = dates.flatMap((date, j) => {
+      const report = reports[i * dates.length + j];
+      const v = report.verdict;
+      return v.kind === 'green' && v.epic && !alerted[j].has(profile.chatId) ? [report] : [];
+    });
+    if (epic.length === 0) continue;
+    const group = `${messageKey(profile)}|${epic.map((r) => r.date).join(',')}`;
+    let text = messages.get(group);
+    if (text === undefined) {
+      text = renderAlert(epic, ctxFor(profile.lang));
+      messages.set(group, text);
+    }
+    const res = await deps.telegram.sendMessage(profile.chatId, text);
+    if (!res.ok) {
+      failed++;
+      if (res.blocked) blocked.push(profile.chatId);
+      console.error(`[alert ${today}] envoi à ${profile.chatId} échoué — ${res.description}`);
+      await notifyAdmin(deps, `alert ${today}: envoi à ${profile.chatId} échoué — ${res.description}`);
+      continue;
+    }
+    sent++;
+    for (const report of epic) {
+      try {
+        await deps.store.markAlerted(report.date, profile.chatId);
+      } catch (err) {
+        // le message est parti : au pire, la même date sera annoncée une seconde fois demain
+        console.error(`alerte du ${report.date} pour ${profile.chatId} non notée — ${String(err)}`);
+      }
+    }
+  }
+  await deactivateBlocked(blocked, deps);
+  return { skipped: false, sent, failed, date: today };
 }
 
 /**

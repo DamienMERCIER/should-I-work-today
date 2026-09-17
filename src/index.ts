@@ -5,7 +5,7 @@ import { handleUpdate, type BotDeps } from './bot/router';
 import { CRON } from './config';
 import { REGIONS, SPOTS } from './data/index';
 import { nowLocal } from './engine/time';
-import { notifyAdmin, runEvening, runMorning, runWeek, type JobDeps, type JobResult } from './jobs/runs';
+import { notifyAdmin, runAlert, runEvening, runMorning, runWeek, type JobDeps, type JobResult } from './jobs/runs';
 import { detectLang, STRINGS } from './render/i18n';
 
 export interface Env {
@@ -65,6 +65,7 @@ export async function runCron(cron: string, deps: AppDeps): Promise<void> {
     if (cron === CRON.evening) result = await runEvening(deps);
     else if (cron === CRON.morning) result = await runMorning(deps);
     else if (cron === CRON.week) result = await runWeek(deps);
+    else if (cron === CRON.alert) result = await runAlert(deps);
     else {
       console.warn(`unknown cron: ${cron}`);
       return;

@@ -229,6 +229,18 @@ describe('Store reports and locks', () => {
     }));
     await expect(store.getReports('2026-09-16')).resolves.toEqual({ '4': good });
   });
+  it('remembers who heard about a big day: one key per friend and date for 5 days, read back by list', async () => {
+    const kv = new MemoryKV(2); // des pages de 2 clés : le curseur sert
+    const store = new Store(kv);
+    for (const chatId of [1, 22, 333]) await store.markAlerted('2026-09-23', chatId);
+    await store.markAlerted('2026-09-24', 4);
+    expect([...(await store.alertedChatIds('2026-09-23'))].sort((a, b) => a - b)).toEqual([1, 22, 333]);
+    expect([...(await store.alertedChatIds('2026-09-24'))]).toEqual([4]);
+    expect(await store.alertedChatIds('2026-09-25')).toEqual(new Set());
+    expect(kv.data.get('alerted:2026-09-23:22')?.ttl).toBe(5 * 24 * 3600);
+    await kv.put('alerted:2026-09-25:oops', '1');
+    expect(await store.alertedChatIds('2026-09-25')).toEqual(new Set());
+  });
   it('acquireLock succeeds once per date and run, with a 6 h TTL', async () => {
     const kv = new MemoryKV();
     const store = new Store(kv);

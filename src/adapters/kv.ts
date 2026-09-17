@@ -1,4 +1,4 @@
-import { LANGS, LOCK_TTL_S, REPORT_TTL_S } from '../config';
+import { ALERTED_TTL_S, LANGS, LOCK_TTL_S, REPORT_TTL_S } from '../config';
 import type { Profile, Report, SpotHour, SpotResult } from '../types';
 import { sleep as defaultSleep } from './http';
 
@@ -104,7 +104,7 @@ export interface KVStore {
   list(options: { prefix: string; cursor?: string }): Promise<KVListResult>;
 }
 
-export type RunKind = 'evening' | 'morning' | 'week';
+export type RunKind = 'evening' | 'morning' | 'week' | 'alert';
 
 /**
  * Un profil par clé : deux amis ne réécrivent jamais la même entrée. Jusqu'au 17/09/2026, tous les profils
@@ -199,6 +199,30 @@ export class Store {
 
   async putReports(date: string, reports: Record<string, Report>): Promise<void> {
     await this.kv.put(`reports:${date}`, JSON.stringify(packReports(reports)), { expirationTtl: REPORT_TTL_S });
+  }
+
+  /**
+   * Les amis déjà prévenus d'une grosse journée à cette date. Une clé par ami (`alerted:<date>:<chatId>`) : deux
+   * écritures ne se marchent jamais dessus, et un `list` relit tout le monde. Ces clés sont écrites la veille au
+   * plus tard, bien plus d'une minute avant d'être relues : le retard de `list` ne les rate pas.
+   */
+  async alertedChatIds(date: string): Promise<Set<number>> {
+    const prefix = `alerted:${date}:`;
+    const ids = new Set<number>();
+    let cursor: string | undefined;
+    do {
+      const page = await this.kv.list({ prefix, cursor });
+      for (const { name } of page.keys) {
+        const chatId = Number(name.slice(prefix.length));
+        if (Number.isInteger(chatId)) ids.add(chatId);
+      }
+      cursor = page.list_complete ? undefined : page.cursor;
+    } while (cursor);
+    return ids;
+  }
+
+  async markAlerted(date: string, chatId: number): Promise<void> {
+    await this.kv.put(`alerted:${date}:${chatId}`, '1', { expirationTtl: ALERTED_TTL_S });
   }
 
   /** true si le verrou vient d'être posé, false s'il existait déjà (cron rejoué, §11). */

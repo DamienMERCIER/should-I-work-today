@@ -7,7 +7,7 @@ workers_dev = true
 enabled = true
 
 [triggers]
-crons = ["0 17 * * *", "0 4 * * *", "5 17 * * SUN"]
+crons = ["0 17 * * *", "0 4 * * *", "5 17 * * SUN", "0 10 * * *"]
 
 [[kv_namespaces]]
 binding = "KV"

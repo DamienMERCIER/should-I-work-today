@@ -90,6 +90,10 @@ export const ru: Strings = {
       getsDark: 'темнеет',
     },
   },
+  alert: {
+    title: '🔥 <b>БУДЕТ ЭПИЧНО</b> ({date})',
+    footer: 'Планируй заранее — накануне вечером подтвержу.',
+  },
   week: {
     title: '📅 <b>НЕДЕЛЯ ВПЕРЕДИ</b>',
     best: '⭐ Лучший день: {day} · {spot} {stars}',

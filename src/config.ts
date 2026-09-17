@@ -33,11 +33,16 @@ export const SCORING = {
 } as const;
 
 /**
- * UTC. evening = 19:00 SAST, morning = 06:00 SAST, week = dimanche 19:05 SAST — après le verdict de 19:00, dans sa propre invocation.
+ * UTC. evening = 19:00 SAST, morning = 06:00 SAST, week = dimanche 19:05 SAST — après le verdict de 19:00, dans sa propre invocation ;
+ * alert = 12:00 SAST, les grosses journées à venir, loin des autres envois.
  * Cloudflare compte les jours de 1 (dimanche) à 7 et refuse le 0 d'Unix au déploiement : `SUN` lève l'ambiguïté. Le handler
  * reçoit la chaîne telle quelle, elle doit rester identique à wrangler.toml.
  */
-export const CRON = { evening: '0 17 * * *', morning: '0 4 * * *', week: '5 17 * * SUN' } as const;
+export const CRON = { evening: '0 17 * * *', morning: '0 4 * * *', week: '5 17 * * SUN', alert: '0 10 * * *' } as const;
+/** Les jours que regarde l'alerte de midi, après aujourd'hui : assez tôt pour libérer sa journée, assez près pour que la prévision tienne. */
+export const ALERT_DAYS_AHEAD: readonly number[] = [2, 3];
+/** Qui a été prévenu de quelle date : gardé au-delà de la date la plus lointaine (J+3), puis oublié. */
+export const ALERTED_TTL_S = 5 * 24 * 3600;
 export const REPORT_TTL_S = 48 * 3600;
 export const LOCK_TTL_S = 6 * 3600;
 /**

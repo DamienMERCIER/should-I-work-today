@@ -318,6 +318,24 @@ export function renderMorning(morning: Report, delta: Delta, evening: Report | u
   return lines.join('\n');
 }
 
+// ---- 🔥 l'alerte de midi ------------------------------------------------------------------------
+
+/**
+ * Les grosses journées à J+2 ou J+3, dans l'ordre des dates : pour chacune son titre et le bloc du spot tel que
+ * le soir le montrera, puis de quoi s'organiser. Le runner ne passe que des 🟢 epic ; un rapport sans créneau
+ * est sauté plutôt que rendu vide.
+ */
+export function renderAlert(reports: Report[], ctx: RenderCtx): string {
+  const s = STRINGS[ctx.lang];
+  const blocks: string[] = [];
+  for (const report of reports) {
+    const pick = primaryPick(report.verdict);
+    if (pick) blocks.push([fill(s.alert.title, dateVars(report, ctx)), ...primaryBlock(pick, report, ctx, s)].join('\n'));
+  }
+  blocks.push(s.alert.footer);
+  return blocks.join('\n\n');
+}
+
 // ---- 📅 la semaine à venir ----------------------------------------------------------------------
 
 /** À partir de combien de jours après aujourd'hui une prévision n'est plus qu'une tendance. */

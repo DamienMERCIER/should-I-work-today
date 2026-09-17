@@ -101,6 +101,13 @@ describe('crons', () => {
     expect(CRON.week).toBe('5 17 * * SUN');
     expect(kv.data.has('run:2026-09-16:week')).toBe(true);
   });
+  it('dispatches the noon SAST cron to the big-day alert', async () => {
+    const { deps, kv } = setup();
+    await deps.store.putProfiles({ '1': { chatId: 1, lang: 'en', workHours: { start: '09:00', end: '18:00' }, location: { lat: -34.1085, lon: 18.4715, source: 'default' }, active: true, createdAt: 'x' } });
+    await runCron(CRON.alert, deps);
+    expect(CRON.alert).toBe('0 10 * * *');
+    expect(kv.data.has('run:2026-09-15:alert')).toBe(true);
+  });
   it("writes weekdays the way Cloudflare's scheduler reads them — 1 = Sunday … 7 = Saturday, or SUN–SAT; a Unix 0 is refused at deploy", () => {
     const day = '([1-7]|SUN|MON|TUE|WED|THU|FRI|SAT)';
     const weekday = new RegExp(`^(\\*|${day}([-,]${day})*)$`, 'i');

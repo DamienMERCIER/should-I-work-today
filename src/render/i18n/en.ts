@@ -90,6 +90,10 @@ export const en: Strings = {
       getsDark: 'gets dark',
     },
   },
+  alert: {
+    title: '🔥 <b>BIG DAY AHEAD</b> ({date})',
+    footer: "Plan ahead — I'll confirm the evening before.",
+  },
   week: {
     title: '📅 <b>THE WEEK AHEAD</b>',
     best: '⭐ Best: {day} · {spot} {stars}',
