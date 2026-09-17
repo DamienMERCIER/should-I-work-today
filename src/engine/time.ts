@@ -2,8 +2,32 @@ import { TZ_OFFSET_MIN } from '../config';
 
 const HOUR_MS = 3_600_000;
 
+/** Les chiffres de `t` entre `from` et `to`, ou -1 s'il y a autre chose qu'un chiffre. */
+function digits(t: string, from: number, to: number): number {
+  let n = 0;
+  for (let i = from; i < to; i++) {
+    const d = t.charCodeAt(i) - 48;
+    if (d < 0 || d > 9) return -1;
+    n = n * 10 + d;
+  }
+  return n;
+}
+
 /** 'YYYY-MM-DDTHH:mm' (heure locale, traitée comme un UTC fictif) → millisecondes. */
 export function toMs(t: string): number {
+  // Le moteur convertit ainsi des milliers d'heures par envoi : recomposer une chaîne pour Date.parse coûtait ~12 %
+  // de l'envoi du dimanche (profil du 17/09/2026). La forme courante est donc lue chiffre par chiffre ; ce qui sort
+  // des bornes où Date.UTC donne le même instant que Date.parse (an < 1000, 24:30…) repasse par Date.parse.
+  if (t.length === 16 && t.charCodeAt(4) === 45 && t.charCodeAt(7) === 45 && t.charCodeAt(10) === 84 && t.charCodeAt(13) === 58) {
+    const year = digits(t, 0, 4);
+    const month = digits(t, 5, 7);
+    const day = digits(t, 8, 10);
+    const hour = digits(t, 11, 13);
+    const minute = digits(t, 14, 16);
+    const inRange = year >= 1000 && month >= 1 && month <= 12 && day >= 1 && day <= 31 &&
+      minute >= 0 && minute <= 59 && hour >= 0 && (hour <= 23 || (hour === 24 && minute === 0));
+    if (inRange) return Date.UTC(year, month - 1, day, hour, minute);
+  }
   const ms = Date.parse(`${t.length === 16 ? `${t}:00` : t}Z`);
   if (Number.isNaN(ms)) throw new Error(`Invalid local time: ${t}`);
   return ms;

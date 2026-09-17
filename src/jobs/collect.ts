@@ -146,7 +146,8 @@ export async function buildReports(reqs: EvalRequest[], deps: CollectDeps): Prom
 export async function buildReportList(reqs: EvalRequest[], deps: CollectDeps, opts: LoadOptions = {}): Promise<Report[]> {
   const radiusKm = deps.radiusKm ?? RADIUS_KM;
   const regionsById = new Map(deps.regions.map((r) => [r.id, r]));
-  const perRequest = reqs.map((req) => ({ req, nearby: nearbySpots(deps.spots, req.profile.location, radiusKm) }));
+  const nearbyAt = nearbyByPlace(deps.spots, radiusKm);
+  const perRequest = reqs.map((req) => ({ req, nearby: nearbyAt(req.profile.location) }));
 
   // 1. spots requis par région
   const needed = new Map<string, Map<string, Spot>>();
@@ -175,13 +176,40 @@ export async function buildReportList(reqs: EvalRequest[], deps: CollectDeps, op
     }),
   );
 
-  // 3. un rapport par requête (les profils hors couverture font leurs appels en parallèle)
+  // 3. un rapport par groupe d'amis identique — même date, même lieu, mêmes horaires : les étoiles, le verdict,
+  // les marées et, hors couverture, les appels bruts ne dépendent que de ça. Chacun reçoit ce corps partagé avec
+  // son propre chat et sa propre position. À 40 amis, le dimanche refaisait sinon 280 verdicts et assemblages.
   const cache: EvalCache = new Map();
+  const bodies = new Map<string, Promise<Report>>();
   return Promise.all(
-    perRequest.map(async ({ req, nearby }) =>
-      (nearby.length === 0 ? outOfCoverage(req, deps, radiusKm) : assembleSafely(req, nearby, regionData, deps, radiusKm, cache)),
-    ),
+    perRequest.map(async ({ req, nearby }) => {
+      const { location, workHours, chatId } = req.profile;
+      const key = `${req.date}|${req.mode}|${req.fromTime ?? ''}|${placeKey(location)}|${workHours.start}-${workHours.end}`;
+      let body = bodies.get(key);
+      if (!body) {
+        body = nearby.length === 0 ? outOfCoverage(req, deps, radiusKm) : Promise.resolve(assembleSafely(req, nearby, regionData, deps, radiusKm, cache));
+        bodies.set(key, body);
+      }
+      return { ...(await body), chatId, location };
+    }),
   );
+}
+
+/** Une position comme clé de regroupement : les amis au même endroit partagent spots proches, rapport et message. */
+export const placeKey = (at: LatLon): string => `${at.lat},${at.lon}`;
+
+/** Les spots proches d'une position, cherchés une fois par position : ~6 000 spots importés à parcourir. */
+export function nearbyByPlace(spots: Spot[], radiusKm: number): (at: LatLon) => Near[] {
+  const byPlace = new Map<string, Near[]>();
+  return (at) => {
+    const key = placeKey(at);
+    let near = byPlace.get(key);
+    if (!near) {
+      near = nearbySpots(spots, at, radiusKm);
+      byPlace.set(key, near);
+    }
+    return near;
+  };
 }
 
 /** Jours de la semaine à venir, pour `/week` comme pour l'envoi du dimanche. */

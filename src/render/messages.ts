@@ -22,15 +22,29 @@ export function fmtTime(t: string): string {
   return `${hour}:${m}`;
 }
 
+/**
+ * Construire un `Intl.DateTimeFormat` coûte cher (~20 µs) : un par langue et par style, gardé pour l'isolate. En
+ * recréer un par date faisait de la rédaction le premier poste de l'envoi du dimanche (7,7 ms pour 40 amis).
+ */
+const dateFormats = new Map<string, Intl.DateTimeFormat>();
+function dateFormat(lang: Lang, style: 'date' | 'day'): Intl.DateTimeFormat {
+  const key = `${lang}|${style}`;
+  let format = dateFormats.get(key);
+  if (!format) {
+    const month = style === 'date' ? { month: 'short' as const } : {};
+    format = new Intl.DateTimeFormat(STRINGS[lang].locale, { weekday: 'short', day: 'numeric', ...month, timeZone: 'UTC' });
+    dateFormats.set(key, format);
+  }
+  return format;
+}
+
 export function fmtDate(date: string, lang: Lang): string {
-  return new Intl.DateTimeFormat(STRINGS[lang].locale, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
-    .format(new Date(toMs(`${date}T00:00`)));
+  return dateFormat(lang, 'date').format(new Date(toMs(`${date}T00:00`)));
 }
 
 /** Jour court pour une ligne de semaine : « Tue 22 », « вт, 22 ». */
 export function fmtDay(date: string, lang: Lang): string {
-  return new Intl.DateTimeFormat(STRINGS[lang].locale, { weekday: 'short', day: 'numeric', timeZone: 'UTC' })
-    .format(new Date(toMs(`${date}T00:00`)));
+  return dateFormat(lang, 'day').format(new Date(toMs(`${date}T00:00`)));
 }
 
 export const fmtWindow = (w: Window): string => `${fmtTime(w.start)}–${fmtTime(w.end)}`;

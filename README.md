@@ -38,6 +38,7 @@ Variables locales dans `.dev.vars` (ignoré par git) : `TELEGRAM_BOT_TOKEN`, `WE
 - Logs : `npx wrangler tail`.
 - Calibrer : lancer `npm run compare:sf` chaque jour pendant quelques semaines ; le CSV met face à face étoiles, hauteurs, vent et état du vent du site et du bot, spot par spot. Les constantes de la note sont dans `src/engine/rating.ts`, les seuils du verdict dans `src/config.ts`, l'orientation de chaque spot (`facing`) dans `src/data/spots.json`.
 - Verrou coincé (run planté après le verrou) : `npx wrangler kv key delete --binding KV "run:<date>:evening"` (ou `morning`) avant de relancer.
-- Limites gratuites : 50 sous-requêtes par run → ~38 utilisateurs (au-delà, les profils les plus récents sont reportés et l'admin est prévenu) ; le CPU (10 ms) est l'autre plafond — vérifier dans `wrangler tail` dès 10 utilisateurs, et pour le cron du dimanche (7 jours évalués d'un coup) dès que des spots du monde s'ajoutent autour de Muizenberg.
+- Limites gratuites : 50 requêtes externes par run (Open-Meteo, Telegram ; KV a sa propre limite de 1 000) → 44 amis sur une zone (au-delà, les profils les plus récents sont reportés et l'admin est prévenu) ; le CPU (10 ms) est l'autre plafond. Mesuré le 17/09/2026 à 40 amis sur deux zones : soir 2,7 ms, matin 2,1 ms, dimanche 5,4 ms — les rapports, verdicts et messages sont calculés une fois par groupe d'amis identique (lieu, horaires, langue). Revérifier dans `wrangler tail` si des spots s'ajoutent autour des amis.
+- Profils : une clé KV par ami (`profile:<chatId>`, copie du profil en métadonnées pour tout lire en un `list`). L'ancienne clé commune `profiles` n'est plus écrite mais reste lue en secours pour les amis qui n'ont rien modifié depuis.
 
 Données : Open-Meteo.com (CC-BY 4.0), usage non commercial.

@@ -234,6 +234,23 @@ describe('buildReportList — several dates per profile (week ahead)', () => {
     expect(kom(whole).hours[0].time).toBe(`${GOLDEN_DATE}T00:00`);
   });
 
+  it('builds one report for friends with the same place and hours — each keeping their own chat and position — and another when the hours differ', async () => {
+    const { fn } = fakeFetch(openMeteoServer(weekData()));
+    const declared = profile({ chatId: 3, location: { lat: -34.1085, lon: 18.4715, source: 'custom' } });
+    const [a, b, custom, early] = await buildReportList([
+      { profile: profile({ chatId: 1 }), date: GOLDEN_DATE, mode: 'evening' },
+      { profile: profile({ chatId: 2 }), date: GOLDEN_DATE, mode: 'evening' },
+      { profile: declared, date: GOLDEN_DATE, mode: 'evening' },
+      { profile: profile({ chatId: 4, workHours: { start: '06:00', end: '15:00' } }), date: GOLDEN_DATE, mode: 'evening' },
+    ], deps(fn));
+    expect([a, b, custom, early].map((r) => r.chatId)).toEqual([1, 2, 3, 4]);
+    expect(b.spots).toBe(a.spots);
+    expect(b.verdict).toBe(a.verdict);
+    expect(custom.spots).toBe(a.spots);
+    expect(custom.location).toBe(declared.location);
+    expect(early.verdict).not.toBe(a.verdict);
+  });
+
   it('buildWeek starts tomorrow when today has no usable data, and still returns seven days', async () => {
     const data = weekData(GOLDEN_DATE, 10);
     // pas de lever/coucher pour aujourd'hui : le rapport du jour est noData, sans spot évalué

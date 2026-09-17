@@ -10,6 +10,18 @@ describe('time helpers (local wall-clock strings)', () => {
   it('rejects garbage', () => {
     expect(() => toMs('yesterday')).toThrow(/Invalid local time/);
   });
+  it('reads every shape the engine uses the way Date.parse always did — the digits are read directly on the hot path', () => {
+    const iso = (t: string): string => new Date(toMs(t)).toISOString();
+    expect(iso('2024-02-29T12:30')).toBe('2024-02-29T12:30:00.000Z');
+    expect(iso('2026-09-31T00:00')).toBe('2026-10-01T00:00:00.000Z'); // un jour de trop déborde, comme avant
+    expect(iso('2026-09-16T24:00')).toBe('2026-09-17T00:00:00.000Z');
+    expect(iso('2026-09-16T07:00:30')).toBe('2026-09-16T07:00:30.000Z');
+    expect(iso('2026-09-16')).toBe('2026-09-16T00:00:00.000Z');
+    expect(toMs('0001-01-01T00:00')).toBe(-62135596800000); // pas l'an 1901 de Date.UTC
+    expect(() => toMs('2026-13-01T00:00')).toThrow(/Invalid local time/);
+    expect(() => toMs('2026-09-16T23:60')).toThrow(/Invalid local time/);
+    expect(() => toMs('2026-09-00T00:00')).toThrow(/Invalid local time/);
+  });
   it('adds hours across midnight', () => {
     expect(addHours('2026-09-16T23:00', 2)).toBe('2026-09-17T01:00');
   });

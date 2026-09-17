@@ -40,7 +40,13 @@ export const SCORING = {
 export const CRON = { evening: '0 17 * * *', morning: '0 4 * * *', week: '5 17 * * SUN' } as const;
 export const REPORT_TTL_S = 48 * 3600;
 export const LOCK_TTL_S = 6 * 3600;
-export const MAX_SUBREQUEST_BUDGET = 45;
+/**
+ * Requêtes externes (fetch : Open-Meteo, Telegram) par invocation : 50 sur le plan gratuit, les lectures et écritures
+ * KV ayant leur propre limite de 1 000. 3 gardées pour les alertes admin d'un envoi qui échoue. Les nouveaux essais
+ * passagers (un par appel Open-Meteo, un par envoi Telegram refusé en 429) entament aussi cette marge : à 40 amis sur
+ * une zone (43 requêtes), il en reste 7.
+ */
+export const MAX_EXTERNAL_SUBREQUESTS = 47;
 
 // Valeurs admises du seul champ fermé du profil : une seule source, lue par le routeur
 // (validation des callbacks) et par le Store (données KV écrites par une version antérieure).

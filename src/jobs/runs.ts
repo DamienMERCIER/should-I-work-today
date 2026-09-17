@@ -1,12 +1,12 @@
 import { sleep as defaultSleep, type FetchLike } from '../adapters/http';
 import type { RunKind, Store } from '../adapters/kv';
 import type { ReplyMarkup, Telegram } from '../adapters/telegram';
-import { MAX_SUBREQUEST_BUDGET, RADIUS_KM } from '../config';
+import { MAX_EXTERNAL_SUBREQUESTS, RADIUS_KM } from '../config';
 import { compareReports } from '../engine/delta';
 import { addDays, dateOf } from '../engine/time';
 import { detailsMarkupFor, esc, renderEvening, renderMorning, renderWeek, type RenderCtx } from '../render/messages';
 import type { Lang, Profile, Region, Report, Spot } from '../types';
-import { buildReportList, buildReports, nearbySpots, WEEK_DAYS, type EvalRequest } from './collect';
+import { buildReportList, buildReports, nearbyByPlace, placeKey, WEEK_DAYS, type EvalRequest } from './collect';
 
 export interface JobDeps {
   store: Store;
@@ -37,20 +37,20 @@ export async function notifyAdmin(deps: Pick<JobDeps, 'telegram' | 'adminChatId'
 }
 
 /**
- * Sous-requêtes prévues : verrou (2) + profils (1) [+ rapports veille (1)] + 3×régions (marine + forecast +
- * période pic) + 2×hors-couverture + 2 écritures + N envois. La semaine n'écrit pas de rapport : l'estimation
- * la surévalue de 2, ce qui ne fait que la rendre prudente.
+ * Requêtes externes prévues, les seules comptées dans les 50 du plan gratuit (KV a sa propre limite) :
+ * 3 par région (marine + forecast + période pic) + 2 par position hors couverture (appels bruts, partagés par
+ * les amis au même endroit, §buildReportList) + 1 envoi par profil.
  */
-export function estimateBudget(profiles: Profile[], deps: JobDeps, kind: RunKind): number {
-  const radiusKm = deps.radiusKm ?? RADIUS_KM;
+export function estimateBudget(profiles: Profile[], deps: JobDeps): number {
+  const nearbyAt = nearbyByPlace(deps.spots, deps.radiusKm ?? RADIUS_KM);
   const regions = new Set<string>();
-  let raw = 0;
+  const farPlaces = new Set<string>();
   for (const p of profiles) {
-    const near = nearbySpots(deps.spots, p.location, radiusKm);
-    if (near.length === 0) raw += 2;
+    const near = nearbyAt(p.location);
+    if (near.length === 0) farPlaces.add(placeKey(p.location));
     for (const n of near) regions.add(n.spot.region);
   }
-  return 3 + (kind === 'morning' ? 1 : 0) + 3 * regions.size + raw + 2 + profiles.length;
+  return 3 * regions.size + 2 * farPlaces.size + profiles.length;
 }
 
 export async function runEvening(deps: JobDeps): Promise<JobResult> {
@@ -63,12 +63,29 @@ export async function runMorning(deps: JobDeps): Promise<JobResult> {
 
 const renderCtx = (lang: Lang, deps: JobDeps): RenderCtx => ({ lang, spots: new Map(deps.spots.map((s) => [s.id, s])) });
 
+/**
+ * Même langue, même position, mêmes horaires : même rapport (§buildReportList), donc même message. Un envoi le
+ * rédige une fois par groupe, pas une fois par ami. Le rendu ne lit rien d'autre du profil : ajouter un texte
+ * personnel à ces messages demanderait d'élargir cette clé.
+ */
+const messageKey = (p: Profile): string => `${p.lang}|${placeKey(p.location)}|${p.workHours.start}-${p.workHours.end}`;
+
+/** Le premier appel calcule, les suivants avec la même clé reprennent le résultat. */
+function memoized<T>(compute: (key: string) => T): (key: string) => T {
+  const done = new Map<string, T>();
+  return (key) => {
+    if (!done.has(key)) done.set(key, compute(key));
+    return done.get(key) as T;
+  };
+}
+
 async function runJob(kind: Exclude<RunKind, 'week'>, date: string, deps: JobDeps): Promise<JobResult> {
   const now = deps.now();
   const sleep = deps.sleep ?? defaultSleep;
   if (!(await deps.store.acquireLock(date, kind, now))) return { skipped: true, sent: 0, failed: 0, date };
 
   const profiles = await withinBudget(activeProfiles(await deps.store.getProfiles()), deps, kind, date);
+  const ctxFor = memoized((lang) => renderCtx(lang as Lang, deps));
 
   const previous = kind === 'morning' ? await deps.store.getReports(date) : {};
   const reqs: EvalRequest[] = profiles.map((profile) => ({ profile, date, mode: kind }));
@@ -77,14 +94,21 @@ async function runJob(kind: Exclude<RunKind, 'week'>, date: string, deps: JobDep
   // 1. décider quoi envoyer et quoi stocker
   const toStore: Record<string, Report> = { ...previous };
   const outbox: { profile: Profile; text: string; markup?: ReplyMarkup }[] = [];
+  const eveningMessages = new Map<string, { text: string; markup?: ReplyMarkup }>();
   for (const profile of profiles) {
     const report = reports.get(profile.chatId);
     if (!report) continue;
     const key = String(profile.chatId);
-    const ctx = renderCtx(profile.lang, deps);
+    const ctx = ctxFor(profile.lang);
     if (kind === 'evening') {
       toStore[key] = report;
-      outbox.push({ profile, text: renderEvening(report, ctx), markup: detailsMarkupFor(report, ctx) });
+      const group = messageKey(profile);
+      let message = eveningMessages.get(group);
+      if (!message) {
+        message = { text: renderEvening(report, ctx), markup: detailsMarkupFor(report, ctx) };
+        eveningMessages.set(group, message);
+      }
+      outbox.push({ profile, ...message });
       continue;
     }
     const evening = previous[key];
@@ -134,7 +158,7 @@ const activeProfiles = (all: Record<string, Profile>): Profile[] =>
 async function withinBudget(profiles: Profile[], deps: JobDeps, kind: RunKind, date: string): Promise<Profile[]> {
   const kept = [...profiles];
   let deferred = 0;
-  while (kept.length > 0 && estimateBudget(kept, deps, kind) > MAX_SUBREQUEST_BUDGET) {
+  while (kept.length > 0 && estimateBudget(kept, deps) > MAX_EXTERNAL_SUBREQUESTS) {
     kept.pop();
     deferred++;
   }
@@ -148,13 +172,15 @@ async function withinBudget(profiles: Profile[], deps: JobDeps, kind: RunKind, d
 
 /** Un utilisateur qui a bloqué le bot ne reçoit plus rien : on le désactive plutôt que d'échouer à chaque envoi. */
 async function deactivateBlocked(blocked: number[], deps: JobDeps): Promise<void> {
-  if (blocked.length === 0) return;
-  const all = await deps.store.getProfiles();
   for (const chatId of blocked) {
-    const p = all[String(chatId)];
-    if (p) p.active = false;
+    try {
+      const p = await deps.store.getProfile(chatId);
+      if (p) await deps.store.putProfiles({ [String(chatId)]: { ...p, active: false } });
+    } catch (err) {
+      // les messages sont partis : un échec ici ne doit pas faire passer tout l'envoi pour raté ; réessayé au prochain envoi
+      console.error(`désactivation de ${chatId} échouée — ${String(err)}`);
+    }
   }
-  await deps.store.putProfiles(all);
 }
 
 /**
@@ -169,9 +195,11 @@ export async function runWeek(deps: JobDeps): Promise<JobResult> {
   const monday = addDays(today, 1);
   if (!(await deps.store.acquireLock(monday, 'week', now))) return { skipped: true, sent: 0, failed: 0, date: monday };
 
-  const radiusKm = deps.radiusKm ?? RADIUS_KM;
-  const nearSpots = (p: Profile): boolean => nearbySpots(deps.spots, p.location, radiusKm).length > 0;
+  const nearbyAt = nearbyByPlace(deps.spots, deps.radiusKm ?? RADIUS_KM);
+  const nearSpots = (p: Profile): boolean => nearbyAt(p.location).length > 0;
   const profiles = await withinBudget(activeProfiles(await deps.store.getProfiles()).filter(nearSpots), deps, 'week', monday);
+  const ctxFor = memoized((lang) => renderCtx(lang as Lang, deps));
+  const weekMessages = new Map<string, string>();
 
   const dates = Array.from({ length: WEEK_DAYS }, (_, i) => addDays(monday, i));
   const reqs: EvalRequest[] = profiles.flatMap((profile) => dates.map((date): EvalRequest => ({ profile, date, mode: 'evening' })));
@@ -181,8 +209,13 @@ export async function runWeek(deps: JobDeps): Promise<JobResult> {
   let failed = 0;
   const blocked: number[] = [];
   for (const [i, profile] of profiles.entries()) {
-    const week = reports.slice(i * WEEK_DAYS, (i + 1) * WEEK_DAYS);
-    const res = await deps.telegram.sendMessage(profile.chatId, renderWeek(week, renderCtx(profile.lang, deps), { today }));
+    const group = messageKey(profile);
+    let text = weekMessages.get(group);
+    if (text === undefined) {
+      text = renderWeek(reports.slice(i * WEEK_DAYS, (i + 1) * WEEK_DAYS), ctxFor(profile.lang), { today });
+      weekMessages.set(group, text);
+    }
+    const res = await deps.telegram.sendMessage(profile.chatId, text);
     if (res.ok) {
       sent++;
     } else {

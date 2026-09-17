@@ -77,9 +77,27 @@ describe('runEvening', () => {
       const result = await runEvening(deps);
       expect(result).toMatchObject({ sent: 1, failed: 1 });
       expect((await store.getProfile(2))?.active).toBe(false);
+      // les deux amis partagent le même rapport calculé : marquer l'envoi de l'un ne marque pas l'autre
+      const stored = await store.getReports('2026-09-16');
+      expect(stored['1'].sentAt).toBe('2026-09-15T19:00');
+      expect(stored['2'].sentAt).toBeUndefined();
       expect(sent().find((m) => m.chat_id === 999)?.text).toContain('bot was blocked');
       expect(errorSpy).toHaveBeenCalledTimes(1);
       expect(String(errorSpy.mock.calls[0][0])).toContain('bot was blocked');
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+  it('a failed write while turning off a blocked profile is logged, not turned into a failed run — the messages have already gone', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const { deps, store, seed } = setup({ now: '2026-09-15T19:00', blocked: [2] });
+      await seed([ready(1), ready(2)]);
+      store.putProfiles = async () => {
+        throw new Error('KV PUT failed: 500 Internal Server Error');
+      };
+      await expect(runEvening(deps)).resolves.toMatchObject({ sent: 1, failed: 1 });
+      expect(errorSpy.mock.calls.some((c) => String(c[0]).includes('KV PUT failed'))).toBe(true);
     } finally {
       errorSpy.mockRestore();
     }
@@ -152,31 +170,48 @@ describe('runMorning', () => {
 });
 
 describe('budget guard', () => {
-  it('defers the newest profiles by createdAt when the budget is exceeded, and notifies the admin', async () => {
+  const friends = (n: number) => Array.from({ length: n }, (_, i) => ready(i + 1, { createdAt: `2026-09-15T19:${String(i).padStart(2, '0')}` }));
+
+  it('sends to 40 friends in one place: only Open-Meteo and Telegram count against the 50 external requests', async () => {
     const { deps, sent, seed } = setup({ now: '2026-09-15T19:00' });
-    // 3 (verrou + profils) + 3 (une région, Muizenberg : marine + forecast + période pic) + 2 (écritures) + N (envois) ; dépasse 45 pour N > 37.
-    const profiles = Array.from({ length: 40 }, (_, i) => ready(i + 1, { createdAt: `2026-09-15T19:${String(i).padStart(2, '0')}` }));
-    await seed(profiles);
+    await seed(friends(40));
     const result = await runEvening(deps);
-    expect(result.sent).toBe(37);
+    expect(result.sent).toBe(40);
+    expect(sent().some((m) => m.chat_id === 999)).toBe(false);
+  });
+
+  it('defers the newest profiles by createdAt when the external budget is exceeded, and notifies the admin', async () => {
+    const { deps, sent, seed } = setup({ now: '2026-09-15T19:00' });
+    // 3 (une région, Muizenberg : marine + forecast + période pic) + N envois ; dépasse 47 (50 moins la marge des alertes) pour N > 44.
+    await seed(friends(48));
+    const result = await runEvening(deps);
+    expect(result.sent).toBe(44);
     expect(result.failed).toBe(0);
-    expect(sent().filter((m) => m.chat_id !== 999)).toHaveLength(37);
-    // les 3 profils les plus récents (createdAt 19:37, 19:38 et 19:39, chatId 38, 39 et 40) sont reportés.
-    expect(sent().some((m) => m.chat_id === 38)).toBe(false);
-    expect(sent().some((m) => m.chat_id === 39)).toBe(false);
-    expect(sent().some((m) => m.chat_id === 40)).toBe(false);
-    const admin = sent().find((m) => m.chat_id === 999);
-    expect(admin?.text).toContain('3 profil(s) reportés');
+    // les 4 profils les plus récents (chatId 45 à 48) sont reportés.
+    for (const chatId of [45, 46, 47, 48]) expect(sent().some((m) => m.chat_id === chatId)).toBe(false);
+    expect(sent().find((m) => m.chat_id === 999)?.text).toContain('4 profil(s) reportés');
+  });
+
+  it('shares messages only between friends with the same language, place and hours — a night worker still gets their own verdict', async () => {
+    // 2,3 m toute la journée : 4★, bon sans être epic — les horaires décident donc du verdict
+    const { deps, sent, seed } = setup({ now: '2026-09-15T19:00', data: weekData('2026-09-16', 2, () => 2.3) });
+    await seed([ready(1), ready(2), ready(3, { workHours: { start: '19:00', end: '23:00' } }), ready(4, { lang: 'ru' })]);
+    await runEvening(deps);
+    const texts = new Map(sent().map((m) => [m.chat_id, m.text]));
+    expect(texts.get(2)).toBe(texts.get(1));
+    expect(texts.get(1)?.startsWith('🟢')).toBe(true);
+    expect(texts.get(3)?.startsWith('🟢')).toBe(false);
+    expect(texts.get(4)).toContain('ЗАВТРА НЕ ИДИ НА РАБОТУ');
   });
 });
 
 describe('estimateBudget', () => {
-  it('counts locks, profiles, regions, raw lookups, report writes and sends', () => {
+  it('counts only external requests — 3 per region, 2 per place out of coverage, 1 send per profile — since KV has a limit of its own', () => {
     const { deps } = setup({ now: '2026-09-15T19:00' });
-    // 3 (verrou + profils) + 3×1 région (marine + forecast + période pic) + 0 brut + 2 écritures + 2 envois = 10
-    expect(estimateBudget([ready(1), ready(2)], deps, 'evening')).toBe(10);
-    // + 1 lecture des rapports de la veille, + 2 appels bruts pour le profil hors couverture
-    expect(estimateBudget([ready(1), ready(5, { location: JOBURG })], deps, 'morning')).toBe(13);
+    // 3×1 région (marine + forecast + période pic) + 2 envois
+    expect(estimateBudget([ready(1), ready(2)], deps)).toBe(5);
+    // + 2 appels bruts pour Johannesburg, une seule fois pour deux amis au même endroit, + 3 envois
+    expect(estimateBudget([ready(1), ready(5, { location: JOBURG }), ready(6, { location: JOBURG })], deps)).toBe(8);
   });
 });
 
@@ -184,6 +219,17 @@ describe('runWeek — Sunday evening, the week ahead', () => {
   const SUNDAY = '2026-09-20T19:05';
   // lun 21 → dim 27 : 2,3 / 1,2 / 3,5 / 0,2 m, puis on recommence ; vent de SE 8 kt partout
   const week = () => weekData('2026-09-21', 7, (i) => [2.3, 1.2, 3.5, 0.2][i % 4]);
+
+  it('friends in the same place but with other work hours each get their own week — shared work never mixes them up', async () => {
+    const { deps, sent, seed } = setup({ now: SUNDAY, data: week() });
+    await seed([ready(1), ready(2), ready(3, { workHours: { start: '19:00', end: '23:00' } }), ready(4, { lang: 'ru' })]);
+    await runWeek(deps);
+    const texts = new Map(sent().map((m) => [m.chat_id, m.text]));
+    expect(texts.get(2)).toBe(texts.get(1));
+    expect(texts.get(1)).toContain('🟢 <b>Mon 21</b>');
+    expect(texts.get(3)).toContain('🌅 <b>Mon 21</b>');
+    expect(texts.get(4)).toContain('НЕДЕЛЯ ВПЕРЕДИ');
+  });
 
   it('sends Monday to Sunday to every active profile near a spot, from one load per region, and only once', async () => {
     const { deps, sent, seed, omCalls } = setup({ now: SUNDAY, data: week() });
