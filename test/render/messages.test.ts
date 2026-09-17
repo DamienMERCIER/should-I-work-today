@@ -627,6 +627,20 @@ describe('renderSpotDay', () => {
     expect(out).toContain('fades from 10:00 — wind builds to 20 kt');
     expect(out).not.toMatch(/swell|tide still|low tide|mid tide|groundswell/);
   });
+  it('says the wind turned onshore, never that it builds, when a lighter onshore breeze ends a clean morning', () => {
+    // 7:00 → 10:00 offshore 8 kt ; dès 11:00 la brise tombe à 5 kt mais passe onshore et coûte plus de la moitié des étoiles
+    const offshore = (h: number) => ({ ...komHour(h, { wind: 1, windKt: 8, tideState: 'mid', trend: 'rising' }), windDirDeg: 120 });
+    const onshore = (h: number) => ({ ...komHour(h, { wind: 0.4, windKt: 5, tideState: 'mid', trend: 'rising' }), windState: 'on' as const, windDirDeg: 300, clean: false });
+    const hours = [7, 8, 9, 10].map(offshore).concat([11, 12, 13, 14, 15, 16, 17].map(onshore));
+    const report = makeReport({ spots: [komResult(hours, W('07:00', '18:00', hours[0].score))] });
+    const out = renderSpotDay(report, 'kommetjie-long-beach', EN);
+    expect(out).toContain('best at 7:00 — offshore wind');
+    expect(out).toContain('fades from 11:00 — wind turns onshore');
+    expect(out).not.toMatch(/wind (builds|drops)/);
+    const ru = renderSpotDay(report, 'kommetjie-long-beach', RU);
+    expect(ru).toContain('лучшее в 7:00 — ветер оффшор');
+    expect(ru).toContain('спадает после 11:00 — ветер меняется на оншор');
+  });
   it('credits the swell, not the wind, when the swell falls away under a steady offshore', () => {
     // 3,0 m → 0,9 m d'ici 10:00 ; le vent passe de 16 à 16,5 kt sans coûter une étoile
     const hours = [

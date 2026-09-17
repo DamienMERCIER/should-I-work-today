@@ -7,7 +7,7 @@ import { addDays, isWeekend, toMs } from '../engine/time';
 import { rawStars, starGlyphs } from '../engine/rating';
 import { compareSpotDays, primaryPick } from '../engine/verdict';
 import { wetsuitFor } from '../engine/water';
-import type { Lang, Report, Spot, SpotHour, SpotPick, SpotResult, Window } from '../types';
+import type { Lang, Report, Spot, SpotHour, SpotPick, SpotResult, Window, WindState } from '../types';
 import { chartHours, hourRuler, sparkline } from './chart';
 import { fill, STRINGS, type Strings } from './i18n';
 
@@ -428,34 +428,42 @@ function windRangeText(plotted: SpotHour[], peak: SpotHour, s: Strings): string 
   return lo === hi ? `${base} ${lo} kt` : `${base} ${lo}→${hi} kt`;
 }
 
-/**
- * Les étoiles ne dépendent que du vent et de la houle, et la houle à la cellule du spot bouge d'heure en
- * heure autant que le vent : les deux se citent. La marée et la période ne pèsent pas sur la note,
- * les nommer mentirait. La lumière, elle, dit quand la session s'arrête.
- */
-type ExplainKey = 'wind' | 'swell' | 'day';
-
 /** Un facteur n'est nommé que s'il pèse au moins une étoile à lui seul — la même règle que la raison d'un 🔴. */
 const MIN_EXPLAINED_STARS = 1;
 
-const explain = (effects: [ExplainKey, number][], h: SpotHour, direction: 'best' | 'fade', s: Strings): string[] =>
+/**
+ * Les étoiles ne dépendent que du vent et de la houle, et la houle à la cellule du spot bouge d'heure en
+ * heure autant que le vent : les deux se citent. La marée et la période ne pèsent pas sur la note,
+ * les nommer mentirait. La lumière, elle, dit quand la session s'arrête. Chaque raison arrive déjà formulée,
+ * avec les étoiles qu'elle pèse : on garde les deux plus lourdes.
+ */
+const explain = (effects: [phrase: string, stars: number][]): string[] =>
   effects
     .filter(([, stars]) => stars >= MIN_EXPLAINED_STARS)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 2)
-    .map(([k]) => phraseFor(k, h, direction, s));
+    .map(([phrase]) => phrase);
 
-function phraseFor(key: ExplainKey, h: SpotHour, direction: 'best' | 'fade', s: Strings): string {
+/** Les six états de vent du plus propre au pire, comme sur surf-forecast. */
+const STATE_RANK: Record<WindState, number> = { glassy: 0, off: 1, 'cross-off': 2, cross: 3, 'cross-on': 4, on: 5 };
+
+/**
+ * Le vent se cite par ce qui a changé. Quand il est moins propre ailleurs dans la journée, c'est son état qui coûte :
+ * une brise onshore plus faible retire quand même des étoiles, et « le vent forcit » ou « le vent tombe » mentiraient.
+ * Sinon, c'est sa force.
+ */
+function windBestPhrase(peak: SpotHour, worst: SpotHour, s: Strings): string {
   const r = s.dayView.reasons;
-  switch (key) {
-    case 'wind':
-      if (h.windState === 'glassy') return stateText(h, s);
-      return fill(direction === 'best' ? r.windDrops : r.windBuilds, { kt: Math.round(h.windKt) });
-    case 'swell':
-      return fill(direction === 'best' ? r.swellPeaks : r.swellDrops, { m: h.heightM.toFixed(1) });
-    case 'day':
-      return r.getsDark;
-  }
+  if (peak.windState === 'glassy') return stateText(peak, s);
+  if (STATE_RANK[worst.windState] > STATE_RANK[peak.windState]) return fill(r.windIs, { state: stateText(peak, s) });
+  return fill(r.windDrops, { kt: Math.round(peak.windKt) });
+}
+
+function windFadePhrase(peak: SpotHour, fade: SpotHour, s: Strings): string {
+  const r = s.dayView.reasons;
+  if (fade.windState === 'glassy') return stateText(fade, s);
+  if (STATE_RANK[fade.windState] > STATE_RANK[peak.windState]) return fill(r.windTurns, { state: stateText(fade, s) });
+  return fill(r.windBuilds, { kt: Math.round(fade.windKt) });
 }
 
 /**
@@ -464,13 +472,13 @@ function phraseFor(key: ExplainKey, h: SpotHour, direction: 'best' | 'fade', s: 
  */
 function bestReasons(peak: SpotHour, plotted: SpotHour[], s: Strings): string[] {
   if (plotted.length === 0) return [];
-  const worstWind = Math.min(...plotted.map((h) => h.factors.wind));
+  const worst = plotted.reduce((w, h) => (h.factors.wind < w.factors.wind ? h : w));
   const worstBase = Math.min(...plotted.map(baseOf));
   const atPeak = rawStars(baseOf(peak), peak.factors.wind);
   return explain([
-    ['wind', atPeak - rawStars(baseOf(peak), worstWind)],
-    ['swell', atPeak - rawStars(worstBase, peak.factors.wind)],
-  ], peak, 'best', s);
+    [windBestPhrase(peak, worst, s), atPeak - rawStars(baseOf(peak), worst.factors.wind)],
+    [fill(s.dayView.reasons.swellPeaks, { m: peak.heightM.toFixed(1) }), atPeak - rawStars(worstBase, peak.factors.wind)],
+  ]);
 }
 
 /** First hour after the peak (anywhere in the spot's day, not just the plotted range — dusk included) below 60 % of it. */
@@ -485,12 +493,13 @@ function fadeHourAfter(hours: SpotHour[], peak: SpotHour): SpotHour | undefined 
  * l'heure de la chute.
  */
 function fadeReasons(peak: SpotHour, fade: SpotHour, s: Strings): string[] {
+  const r = s.dayView.reasons;
   const atPeak = rawStars(baseOf(peak), peak.factors.wind);
   return explain([
-    ['wind', atPeak - rawStars(baseOf(peak), fade.factors.wind)],
-    ['swell', atPeak - rawStars(baseOf(fade), peak.factors.wind)],
-    ['day', peak.factors.day === 1 && fade.factors.day === 0 ? atPeak : 0],
-  ], fade, 'fade', s);
+    [windFadePhrase(peak, fade, s), atPeak - rawStars(baseOf(peak), fade.factors.wind)],
+    [fill(r.swellDrops, { m: fade.heightM.toFixed(1) }), atPeak - rawStars(baseOf(fade), peak.factors.wind)],
+    [r.getsDark, peak.factors.day === 1 && fade.factors.day === 0 ? atPeak : 0],
+  ]);
 }
 
 /** The two explanation lines (§3 day-view.md) — silent (returns []) on a flat day rather than inventing a story. */

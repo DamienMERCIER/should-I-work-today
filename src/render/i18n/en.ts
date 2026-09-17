@@ -89,6 +89,8 @@ export const en: Strings = {
     reasons: {
       windDrops: 'wind drops to {kt} kt',
       windBuilds: 'wind builds to {kt} kt',
+      windIs: '{state} wind',
+      windTurns: 'wind turns {state}',
       swellPeaks: 'swell peaks at {m} m',
       swellDrops: 'swell drops to {m} m',
       getsDark: 'gets dark',

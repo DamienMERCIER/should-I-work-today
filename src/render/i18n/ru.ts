@@ -89,6 +89,8 @@ export const ru: Strings = {
     reasons: {
       windDrops: 'ветер стихает до {kt} kt',
       windBuilds: 'ветер усиливается до {kt} kt',
+      windIs: 'ветер {state}',
+      windTurns: 'ветер меняется на {state}',
       swellPeaks: 'пик волны {m} м',
       swellDrops: 'волна спадает до {m} м',
       getsDark: 'темнеет',

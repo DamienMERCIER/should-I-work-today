@@ -61,7 +61,7 @@ export interface Strings {
    * The 📋 day-view chart (`renderSpotDay` / `renderDayView`), § day-view.md.
    * title: {date} (the default, non-`all` title — `details.title` "All spots" is used when `opts.all`)
    * peak: {stars} {time} · bestAt/fadesFrom: {time} {reasons} · flatSpots/moreSpots: {n} · sun: {sunrise} {sunset}
-   * reasons.windDrops/windBuilds: {kt} · reasons.swellPeaks/swellDrops: {m}
+   * reasons.windDrops/windBuilds: {kt} · reasons.windIs/windTurns: {state} · reasons.swellPeaks/swellDrops: {m}
    */
   dayView: {
     title: string;
@@ -76,6 +76,10 @@ export interface Strings {
     reasons: {
       windDrops: string;
       windBuilds: string;
+      /** le vent du pic quand il est plus propre qu'ailleurs dans la journée : « offshore wind » */
+      windIs: string;
+      /** le vent de la chute quand il est devenu moins propre : « wind turns onshore » */
+      windTurns: string;
       swellPeaks: string;
       swellDrops: string;
       getsDark: string;
