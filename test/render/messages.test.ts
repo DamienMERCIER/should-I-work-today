@@ -205,34 +205,55 @@ describe('go buttons (📍 "go to this spot" map link)', () => {
     ]);
   });
 
-  it('no opts: one button per interesting (windowed) spot, ordered by peak, capped at 5', () => {
+  const labels = (r: Report) => goButtons(r, EN).map(([b]) => b.text);
+
+  it('no opts: a 🔴 with several spots at a star or more gets 🥇🥈🥉 for the spots its message names, in the same order, three at most', () => {
     const r = makeReport({
-      spots: [
-        windowed('outer-kom', 2),
-        windowed('muizenberg', 7),
-        windowed('clovelly', 5),
-        windowed('kalk-bay-reef', 6),
-        windowed('strandfontein', 1),
-        windowed('noordhoek', 4),
-        windowed('kommetjie-long-beach', 8),
-      ],
+      verdict: { kind: 'red', bestSpotId: 'glen-beach' },
+      spots: [makeSpotDay('kommetjie-long-beach', 13, [1, 1]), makeSpotDay('muizenberg', 0, [0]), makeSpotDay('glen-beach', 18, [3, 3, 3, 3]), makeSpotDay('llandudno', 16, [3, 3]), makeSpotDay('clovelly', 3, [1])],
     });
-    expect(goButtons(r, EN)).toEqual([
-      [{ text: '📍 Go to Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
-      [{ text: '📍 Go to Muizenberg', url: 'https://www.google.com/maps/search/?api=1&query=-34.1085%2C18.4715' }],
-      [{ text: '📍 Go to Kalk Bay', url: 'https://www.google.com/maps/search/?api=1&query=-34.129%2C18.451' }],
-      [{ text: '📍 Go to Clovelly', url: 'https://www.google.com/maps/search/?api=1&query=-34.129%2C18.4386' }],
-      [{ text: '📍 Go to The Hoek', url: 'https://www.google.com/maps/search/?api=1&query=-34.1%2C18.352' }],
-    ]);
+    expect(labels(r)).toEqual(['🥇 Go to Glen Beach', '🥈 Go to Llandudno', '🥉 Go to Long Beach']);
+    expect(goButtons(r, EN)[0][0].url).toBe('https://www.google.com/maps/search/?api=1&query=-33.947%2C18.3778');
   });
 
-  it('no opts: empty array when no spot has a window today', () => {
-    const r = goldenReport({ spots: [flatSpot('kommetjie-long-beach', 2), flatSpot('muizenberg', 1)] });
+  it('no opts: a single spot keeps its 📍; a 🟢 with a 🥈 runner-up gets 🥇 and 🥈; a 🟡 on two spots gets 🌅 and 🌇', () => {
+    expect(labels(goldenReport())).toEqual(['📍 Go to Long Beach']);
+    const withRunnerUp = goldenReport();
+    const muiz = withRunnerUp.spots.find((x) => x.spotId === 'muizenberg')!;
+    muiz.windows = [W('07:00', '09:00', 2)];
+    muiz.best = muiz.windows[0];
+    expect(labels(withRunnerUp)).toEqual(['🥇 Go to Long Beach', '🥈 Go to Muizenberg']);
+    const yellow = goldenReport({ verdict: { kind: 'yellow', dawn: { spotId: 'muizenberg', window: W('07:00', '09:00', 4) }, dusk: { spotId: 'kommetjie-long-beach', window: W('17:00', '18:00', 4) } } });
+    expect(labels(yellow)).toEqual(['🌅 Go to Muizenberg', '🌇 Go to Long Beach']);
+  });
+
+  it('no opts: a spot at 0★ never gets a medal, in the message or on a button', () => {
+    const r = makeReport({
+      verdict: { kind: 'red', bestSpotId: 'glen-beach' },
+      spots: [makeSpotDay('glen-beach', 18, [3, 3]), makeSpotDay('llandudno', 16, [3]), makeSpotDay('muizenberg', 0, [0, 0])],
+    });
+    expect(labels(r)).toEqual(['🥇 Go to Glen Beach', '🥈 Go to Llandudno']);
+    expect(renderEvening(r, EN)).not.toContain('🥉');
+  });
+
+  it('no opts: the 🥈 of a 🟢 is picked like the verdict picks — at equal stars, the spot that holds them longer', () => {
+    const r = goldenReport();
+    const muiz = r.spots.find((x) => x.spotId === 'muizenberg')!;
+    muiz.windows = [W('07:00', '10:00', 2)];
+    muiz.best = muiz.windows[0];
+    const clovelly = { ...makeSpotDay('clovelly', 3, [0, 2, 2, 2, 2, 2]), windows: [W('07:00', '12:00', 2)], best: W('07:00', '12:00', 2) };
+    r.spots.push(clovelly);
+    expect(labels(r)).toEqual(['🥇 Go to Long Beach', '🥈 Go to Clovelly']);
+    expect(renderEvening(r, EN).split('\n').some((l) => l.startsWith(`🥈 ${spotName('clovelly', EN, STRINGS.en)} ·`))).toBe(true);
+  });
+
+  it('no opts: no button towards a spot at 0★ — nothing to go to', () => {
+    const r = goldenReport({ spots: [flatSpot('kommetjie-long-beach', 0), flatSpot('muizenberg', 0)], verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } });
     expect(goButtons(r, EN)).toEqual([]);
   });
 
   it('goButtonsMarkup collapses an empty row list to undefined, not an empty inline_keyboard', () => {
-    const r = goldenReport({ spots: [flatSpot('kommetjie-long-beach', 2)] });
+    const r = goldenReport({ spots: [flatSpot('kommetjie-long-beach', 0)], verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } });
     expect(goButtonsMarkup(r, EN)).toBeUndefined();
   });
 
@@ -312,13 +333,13 @@ describe('renderEvening — golden 🟢', () => {
 
 describe('renderEvening — other verdicts', () => {
   it('🔴 names the best spot, its stars and what holds them back — here the cross-onshore wind', () => {
-    const r = goldenReport({ verdict: { kind: 'red', bestSpotId: 'muizenberg' } });
+    const r = goldenReport({ spots: goldenReport().spots.filter((x) => x.spotId === 'muizenberg'), verdict: { kind: 'red', bestSpotId: 'muizenberg' } });
     expect(renderEvening(r, EN)).toBe(
       ['🔴 <b>GO TO WORK TOMORROW</b> (Wed 16 Sept)', ['Nothing ≥ 4★ within 20 km.', `Best: ${MUIZ} ☆☆ (cross-onshore SE 8 kt)`].join('\n')].join('\n\n'),
     );
   });
   it('🔴 names the swell when the wind costs no star — the swell itself is the ceiling', () => {
-    const r = goldenReport({ verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } });
+    const r = goldenReport({ spots: goldenReport().spots.filter((x) => x.spotId === 'kommetjie-long-beach'), verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } });
     const kom = r.spots.find((x) => x.spotId === 'kommetjie-long-beach')!;
     // 0,9 m : note de base 2,33 → 2★ ; un vent à ×0,9 donne 2,1 → toujours 2★, il ne coûte rien
     for (const h of kom.hours) Object.assign(h, { heightM: 0.9, stars: 2, score: h.factors.day ? 2 : 0, factors: { ...h.factors, swell: 0.233, wind: 0.9 } });
@@ -328,7 +349,7 @@ describe('renderEvening — other verdicts', () => {
   it('🔴 names the wind as soon as it costs a star, even when its factor is higher than the swell one', () => {
     // Long Beach le 17/09/2026 : 2,2 m (base 3,7, facteur 0,37) sous un offshore à 41 km/h (×0,54) → 2★.
     // Les deux facteurs ne sont pas sur la même échelle : sans le vent, c'était 4★ et un 🟢.
-    const r = goldenReport({ verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } });
+    const r = goldenReport({ spots: goldenReport().spots.filter((x) => x.spotId === 'kommetjie-long-beach'), verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } });
     const kom = r.spots.find((x) => x.spotId === 'kommetjie-long-beach')!;
     for (const h of kom.hours) Object.assign(h, { heightM: 2.2, windKt: 22, stars: 2, score: h.factors.day ? 2 : 0, factors: { ...h.factors, swell: 0.37, wind: 0.54 } });
     kom.maxScore = 2;
@@ -345,11 +366,33 @@ describe('renderEvening — other verdicts', () => {
     expect(renderEvening(r, EN)).toContain('The good window within 20 km is too short or clashes with work.');
   });
   it('🔴 names the thunderstorm when a storm is what kept every daylight hour at zero', () => {
-    const r = goldenReport({ verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } });
+    const r = goldenReport({ spots: goldenReport().spots.filter((x) => x.spotId === 'kommetjie-long-beach'), verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } });
     const kom = r.spots.find((x) => x.spotId === 'kommetjie-long-beach')!;
     for (const h of kom.hours) Object.assign(h, { score: 0, factors: { ...h.factors, weather: 0 } });
     kom.maxScore = 0;
     expect(renderEvening(r, EN).split('\n')).toContain(`Best: ${KOM} 0★ (thunderstorm)`);
+  });
+  it('🔴 with several spots at a star or more: 🥇🥈🥉 instead of « Best: », one per line in a block of their own, the water under the 🥇', () => {
+    const glen = { ...makeSpotDay('glen-beach', 18, [3, 3, 3, 3]), waterTempC: 12 };
+    const report = makeReport({
+      verdict: { kind: 'red', bestSpotId: 'glen-beach' },
+      spots: [makeSpotDay('kommetjie-long-beach', 13, [1, 1]), makeSpotDay('muizenberg', 0, [0, 0]), glen, makeSpotDay('llandudno', 16, [3, 3]), makeSpotDay('clovelly', 3, [1])],
+    });
+    const name = (id: string) => spotName(id, EN, STRINGS.en);
+    // à étoiles égales, le départage du verdict : Glen Beach tient ses 3★ 4 h, Llandudno 2 h ; Long Beach tient 1★ plus longtemps que Clovelly
+    expect(renderEvening(report, EN)).toBe(
+      [
+        '🔴 <b>GO TO WORK TOMORROW</b> (Wed 16 Sept)',
+        'Nothing ≥ 4★ within 20 km.',
+        [
+          `🥇 ${name('glen-beach')} ⭐⭐⭐ (swell 2.0 m)`,
+          '   🌡️ water 12° · 5/4 wetsuit + booties',
+          `🥈 ${name('llandudno')} ⭐⭐⭐ (swell 2.0 m)`,
+          `🥉 ${name('kommetjie-long-beach')} ⭐ (swell 2.0 m)`,
+        ].join('\n'),
+      ].join('\n\n'),
+    );
+    expect(renderEvening(report, RU).split('\n')).toContain(`🥇 ${name('glen-beach')} ⭐⭐⭐ (волна 2.0 м)`);
   });
   it('🌅 dawn block', () => {
     const r = goldenReport({ verdict: { kind: 'yellow', dawn: { spotId: 'kommetjie-long-beach', window: W('07:00', '09:00', 6) } } });
@@ -413,15 +456,18 @@ describe('water temperature and wetsuit', () => {
     expect(renderEvening(withWater(goldenReport(), 'kommetjie-long-beach', 13), RU).split('\n')).toContain('   🌡️ вода 13° · гидрик 5/4 + боты');
   });
 
-  it('🔴 says the water at the best spot the message names — tonight as in /now', () => {
-    const red = withWater(goldenReport({ verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } }), 'kommetjie-long-beach', 13);
-    for (const report of [red, { ...red, mode: 'now' as const }]) {
+  it('🔴 says the water at the best spot the message names — tonight as in /now, under « Best: » or under the 🥇', () => {
+    const alone = withWater(goldenReport({ spots: goldenReport().spots.filter((x) => x.spotId === 'kommetjie-long-beach'), verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } }), 'kommetjie-long-beach', 13);
+    for (const report of [alone, { ...alone, mode: 'now' as const }]) {
       const lines = renderEvening(report, EN).split('\n');
       expect(lines.at(-2)?.startsWith(`Best: ${KOM} `)).toBe(true);
       expect(lines.at(-1)).toBe('🌡️ water 13° · 5/4 wetsuit + booties');
     }
+    // avec Muizenberg à 2☆ aussi : les médailles, l'eau sous le 🥇
+    const ranked = renderEvening(withWater(goldenReport({ verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } }), 'kommetjie-long-beach', 13), EN).split('\n');
+    expect(ranked[ranked.findIndex((l) => l.startsWith(`🥇 ${KOM} `)) + 1]).toBe('   🌡️ water 13° · 5/4 wetsuit + booties');
     // sans meilleur spot nommé, pas d'eau à donner
-    expect(renderEvening({ ...red, verdict: { kind: 'red' } }, EN)).not.toContain('🌡️');
+    expect(renderEvening({ ...alone, verdict: { kind: 'red' } }, EN)).not.toContain('🌡️');
   });
 
   it('says nothing about the water when the sea gave no temperature', () => {

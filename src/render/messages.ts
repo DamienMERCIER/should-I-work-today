@@ -185,10 +185,42 @@ function primaryBlock(pick: SpotPick, report: Report, ctx: RenderCtx, s: Strings
   return lines;
 }
 
+/** Le 🥈 d'un 🟢 : le meilleur autre spot à créneau, avec le départage du verdict. */
+const runnerUpSpot = (report: Report, excludeId: string): SpotResult | undefined =>
+  report.spots.filter((x) => x.spotId !== excludeId && x.best).sort(compareSpotDays)[0];
+
+const MEDALS = ['🥇', '🥈', '🥉'] as const;
+
+/**
+ * Les spots qu'un verdict nomme, dans l'ordre du message : le 🟢 et son 🥈 ; l'aube et le soir d'un 🟡 ; pour un 🔴, son
+ * meilleur spot puis ceux qui ont au moins une étoile, jusqu'à trois, avec le départage du verdict. Les boutons 📍 en
+ * dérivent : chaque bouton a sa ligne dans le message, et 🥇 est toujours le spot mis en avant.
+ */
+function namedSpots(report: Report): SpotResult[] {
+  const v = report.verdict;
+  const find = (id: string | undefined): SpotResult | undefined => (id === undefined ? undefined : report.spots.find((r) => r.spotId === id));
+  const present = (list: (SpotResult | undefined)[]): SpotResult[] => list.filter((r): r is SpotResult => r !== undefined);
+  switch (v.kind) {
+    case 'green':
+      return present([find(v.spotId), runnerUpSpot(report, v.spotId)]);
+    case 'yellow':
+      return present([...new Set([v.dawn?.spotId, v.dusk?.spotId])].map(find));
+    case 'red': {
+      const best = find(v.bestSpotId);
+      if (!best) return [];
+      const others = report.spots.filter((r) => r.spotId !== best.spotId && r.maxScore >= 1).sort(compareSpotDays);
+      return [best, ...others].slice(0, MEDALS.length);
+    }
+    default:
+      return [];
+  }
+}
+
+/** Les étoiles d'une journée, or ou blanches selon sa meilleure heure. */
+const dayStars = (r: SpotResult): string => starsText(r.maxScore, [...r.hours].sort((a, b) => b.score - a.score)[0]?.clean ?? true);
+
 function runnerUp(report: Report, excludeId: string, ctx: RenderCtx, s: Strings): string[] {
-  const r = report.spots
-    .filter((x) => x.spotId !== excludeId && x.best)
-    .sort((a, b) => (b.best?.peak ?? 0) - (a.best?.peak ?? 0))[0];
+  const r = runnerUpSpot(report, excludeId);
   if (!r?.best) return [];
   return [
     `🥈 ${spotName(r.spotId, ctx, s)} · ${fmtWindow(r.best)} · ${windowStars(r, r.best)}`,
@@ -258,19 +290,23 @@ export function renderEvening(report: Report, ctx: RenderCtx): string {
       break;
     case 'red': {
       push(redTitle(report, ctx, s));
-      const best = v.bestSpotId ? report.spots.find((x) => x.spotId === v.bestSpotId) : undefined;
+      const named = namedSpots(report);
+      const best = named[0];
       // Un rouge a deux causes distinctes : rien d'assez bon, ou bien une fenetre assez bonne mais
       // trop courte (ou tombant en plein travail). Dire « rien ≥ 4★ » puis afficher « ★★★★ »
       // juste en dessous se contredirait a l'ecran.
       const tooShort = (best?.maxScore ?? 0) >= SCORING.good;
-      const top = best && [...best.hours].sort((a, b) => b.score - a.score)[0];
+      const body = fill(tooShort ? s.verdict.redTooShort : s.verdict.redBody, { radius: report.radiusKm, good: SCORING.good });
       // l'eau du meilleur spot aussi : on peut vouloir y aller quand même, et /now doit la dire quel que soit le verdict
       const water = waterLine(best, s);
-      push(
-        fill(tooShort ? s.verdict.redTooShort : s.verdict.redBody, { radius: report.radiusKm, good: SCORING.good }),
-        ...(best ? [fill(s.verdict.redBest, { spot: spotName(best.spotId, ctx, s), stars: starsText(best.maxScore, top?.clean ?? true), reason: lowestFactorReason(best, s) })] : []),
-        ...(water ? [water] : []),
-      );
+      const vars = (r: SpotResult): { spot: string; stars: string; reason: string } => ({ spot: spotName(r.spotId, ctx, s), stars: dayStars(r), reason: lowestFactorReason(r, s) });
+      if (named.length < 2) {
+        push(body, ...(best ? [fill(s.verdict.redBest, vars(best))] : []), ...(water ? [water] : []));
+        break;
+      }
+      // plusieurs spots valent le coup d'œil : 🥇🥈🥉 à la place de « Best: », un par ligne dans leur propre bloc
+      push(body);
+      push(...named.flatMap((r, i) => [fill(s.verdict.redRanked, { medal: MEDALS[i], ...vars(r) }), ...(i === 0 && water ? [`   ${water}`] : [])]));
       break;
     }
     case 'outOfCoverage': {
@@ -697,33 +733,36 @@ const toMarkup = (rows: InlineButton[][]): ReplyMarkup | undefined => (rows.leng
  * URL API (`/maps/search/?api=1&query=<lat>,<lon>`), which opens the Google Maps app on iOS/Android and
  * falls back to the browser; Telegram's `url` button only accepts http(s), so a `geo:` URI is not an option.
  *
- * `opts.spotId` (a per-spot command, e.g. `/long_beach`): exactly that spot's button, unconditionally —
+ * `opts.spotId` (a per-spot command, e.g. `/long_beach`): exactly that spot's 📍 button, unconditionally —
  * even at 0★, and even absent from `report.spots` entirely (looked up with `spotById`: curated, then imported).
- * Otherwise: one button per *interesting* spot — a spot whose day has a window (`SpotResult.best` set,
- * the existing `SCORING.windowMin` threshold via `evaluateSpot`/`findWindows`) — ordered by `best.peak`
- * descending, capped at 5 so the keyboard stays usable. Possibly `[]`.
+ * Otherwise: one button per spot the message names (`namedSpots` — the 🟢 and its 🥈, a 🟡's dawn and dusk, a 🔴's
+ * top three), in the message's order, never towards a spot at 0★. Alone, it keeps its 📍; several get 🥇🥈🥉, or
+ * 🌅 and 🌇 for a 🟡 on two spots. At most three. Possibly `[]`.
  */
 export function goButtons(report: Report, ctx: RenderCtx, opts: { spotId?: string } = {}): InlineButton[][] {
   const s = STRINGS[ctx.lang];
-  const row = (spotId: string): InlineButton[] | undefined => {
+  const row = (spotId: string, emoji: string): InlineButton[] | undefined => {
     const spot = spotById(spotId, ctx);
     if (!spot) return undefined;
-    const text = fill(s.buttons.goTo, { spot: spotShort(spotId, ctx, s) });
+    const text = `${emoji} ${fill(s.buttons.goTo, { spot: spotShort(spotId, ctx, s) })}`;
     const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${spot.lat},${spot.lon}`)}`;
     return [{ text, url }];
   };
 
   if (opts.spotId !== undefined) {
-    const one = row(opts.spotId);
+    const one = row(opts.spotId, '📍');
     return one ? [one] : [];
   }
 
-  return report.spots
-    .filter((r) => r.best)
-    .sort((a, b) => (b.best?.peak ?? 0) - (a.best?.peak ?? 0))
-    .slice(0, 5)
-    .map((r) => row(r.spotId))
-    .filter((r): r is InlineButton[] => r !== undefined);
+  // les spots que le message nomme, rien vers un spot à 0★ ; plusieurs : 🌅 et 🌇 pour un 🟡, des médailles sinon
+  const v = report.verdict;
+  const named = namedSpots(report).filter((r) => r.maxScore >= 1);
+  const emoji = (spotId: string, i: number): string => {
+    if (named.length < 2) return '📍';
+    if (v.kind === 'yellow') return spotId === v.dawn?.spotId ? '🌅' : '🌇';
+    return MEDALS[i];
+  };
+  return named.map((r, i) => row(r.spotId, emoji(r.spotId, i))).filter((r): r is InlineButton[] => r !== undefined);
 }
 
 /**

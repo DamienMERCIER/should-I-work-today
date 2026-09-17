@@ -4,7 +4,7 @@ export const ru: Strings = {
   locale: 'ru-RU',
   cardinal: ['С', 'СВ', 'В', 'ЮВ', 'Ю', 'ЮЗ', 'З', 'СЗ'],
   buttons: {
-    useMyLocation: '📍 Использовать моё местоположение', backHome: '🏠 Вернуться в Muizenberg', now: '🔎 Сейчас', allSpots: '📋 Все споты', goTo: '📍 Маршрут до {spot}',
+    useMyLocation: '📍 Использовать моё местоположение', backHome: '🏠 Вернуться в Muizenberg', now: '🔎 Сейчас', allSpots: '📋 Все споты', goTo: 'Маршрут до {spot}',
     going: '🙋 Я еду: {spot}', notGoing: '✖️ Я больше не еду',
   },
   windStates: { glassy: 'штиль', off: 'оффшор', 'cross-off': 'кросс-оффшор', cross: 'кросс', 'cross-on': 'кросс-оншор', on: 'оншор' },
@@ -72,6 +72,7 @@ export const ru: Strings = {
     redBody: 'Ничего ≥ {good}★ в радиусе {radius} км.',
     redTooShort: 'Хорошее окно в радиусе {radius} км слишком короткое или попадает на работу.',
     redBest: 'Лучшее: {spot} {stars} ({reason})',
+    redRanked: '{medal} {spot} {stars} ({reason})',
   },
   reasons: { size: 'волна {m} м', dark: 'темно', storm: 'гроза' },
   spotLine: { conditions: '{m} м · {dir} {s} с · {wind} · {tide}', sun: '☀️ {temp}° · восход {sunrise}' },

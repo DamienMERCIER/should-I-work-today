@@ -232,7 +232,7 @@ describe('/now on a 🔴 day', () => {
     const { deps, store, sent } = setup({ data: weekData(GOLDEN_DATE, 9, () => 1.2) });
     await store.putProfiles({ '1': ready() });
     await handleUpdate(msg('/now'), deps);
-    expect(sent()[0].text).toContain('Best: Kommetjie – Long Beach');
+    expect(sent()[0].text).toContain('🥇 Kommetjie – Long Beach');
     expect(sent()[0].reply_markup.inline_keyboard[0]).toEqual([{ text: "🙋 I'm going: Long Beach", callback_data: 'go:260916:kommetjie-long-beach' }]);
   });
 });

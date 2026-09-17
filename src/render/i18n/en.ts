@@ -4,7 +4,7 @@ export const en: Strings = {
   locale: 'en-GB',
   cardinal: ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'],
   buttons: {
-    useMyLocation: '📍 Use my location', backHome: '🏠 Back to Muizenberg', now: '🔎 Right now', allSpots: '📋 All spots', goTo: '📍 Go to {spot}',
+    useMyLocation: '📍 Use my location', backHome: '🏠 Back to Muizenberg', now: '🔎 Right now', allSpots: '📋 All spots', goTo: 'Go to {spot}',
     going: "🙋 I'm going: {spot}", notGoing: "✖️ I'm not going any more",
   },
   windStates: { glassy: 'glassy', off: 'offshore', 'cross-off': 'cross-offshore', cross: 'cross-shore', 'cross-on': 'cross-onshore', on: 'onshore' },
@@ -72,6 +72,7 @@ export const en: Strings = {
     redBody: 'Nothing ≥ {good}★ within {radius} km.',
     redTooShort: 'The good window within {radius} km is too short or clashes with work.',
     redBest: 'Best: {spot} {stars} ({reason})',
+    redRanked: '{medal} {spot} {stars} ({reason})',
   },
   reasons: { size: 'swell {m} m', dark: 'dark', storm: 'thunderstorm' },
   spotLine: { conditions: '{m} m · {dir} {s} s · {wind} · {tide}', sun: '☀️ {temp}° · sunrise {sunrise}' },

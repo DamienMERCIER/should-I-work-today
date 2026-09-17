@@ -5,7 +5,7 @@ export interface Strings {
   locale: string;
   /** N, NE, E, SE, S, SW, W, NW */
   cardinal: readonly [string, string, string, string, string, string, string, string];
-  /** goTo: {spot} — the 📍 "go to this spot" map button (`src/render/messages.ts` `goButtons`). */
+  /** goTo: {spot} — the "go to this spot" map button, after its 📍, medal, 🌅 or 🌇 (`src/render/messages.ts` `goButtons`). */
   buttons: { useMyLocation: string; backHome: string; now: string; allSpots: string; goTo: string; going: string; notGoing: string };
   /** les six états de vent de surf-forecast, du plus propre au pire */
   windStates: Record<WindState, string>;
@@ -34,11 +34,11 @@ export interface Strings {
   backHomeDone: string;
   /** en tete d'un rapport « maintenant » bascule sur demain, faute de jour restant aujourd'hui */
   dayIsDone: string;
-  /** titres : {date} ; redBody : {good} {radius} ; redTooShort : {radius} ; redBest : {spot} {stars} {reason} */
+  /** titres : {date} ; redBody : {good} {radius} ; redTooShort : {radius} ; redBest : {spot} {stars} {reason} ; redRanked : {medal} {spot} {stars} {reason} */
   verdict: {
     green: string; greenEpicSuffix: string; greenWeekend: string; greenNow: string;
     dawn: string; dusk: string;
-    red: string; redWeekend: string; redNow: string; redBody: string; redTooShort: string; redBest: string;
+    red: string; redWeekend: string; redNow: string; redBody: string; redTooShort: string; redBest: string; redRanked: string;
   };
   /** raison d'un 🔴 quand ce n'est pas le vent (qui se décrit lui-même) : size: {m} */
   reasons: { size: string; dark: string; storm: string };
