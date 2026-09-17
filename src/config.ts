@@ -32,8 +32,12 @@ export const SCORING = {
   deltaWindowShiftH: 1,
 } as const;
 
-/** UTC. evening = 19:00 SAST, morning = 06:00 SAST, week = dimanche 19:05 SAST — après le verdict de 19:00, dans sa propre invocation. */
-export const CRON = { evening: '0 17 * * *', morning: '0 4 * * *', week: '5 17 * * 0' } as const;
+/**
+ * UTC. evening = 19:00 SAST, morning = 06:00 SAST, week = dimanche 19:05 SAST — après le verdict de 19:00, dans sa propre invocation.
+ * Cloudflare compte les jours de 1 (dimanche) à 7 et refuse le 0 d'Unix au déploiement : `SUN` lève l'ambiguïté. Le handler
+ * reçoit la chaîne telle quelle, elle doit rester identique à wrangler.toml.
+ */
+export const CRON = { evening: '0 17 * * *', morning: '0 4 * * *', week: '5 17 * * SUN' } as const;
 export const REPORT_TTL_S = 48 * 3600;
 export const LOCK_TTL_S = 6 * 3600;
 export const MAX_SUBREQUEST_BUDGET = 45;
