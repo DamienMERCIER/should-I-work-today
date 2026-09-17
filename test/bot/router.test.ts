@@ -15,7 +15,9 @@ import { ALL_SPOTS_CAP, fmtDate } from '../../src/render/messages';
 const NOW = '2026-09-16T08:30';
 const TOMORROW = '2026-09-17';
 
-function setup(opts: { inviteCode?: string; spots?: Spot[]; now?: string; data?: ServerData } = {}) {
+const ADMIN = 999;
+
+function setup(opts: { inviteCode?: string; adminChatId?: number; spots?: Spot[]; now?: string; data?: ServerData } = {}) {
   const store = new Store(new MemoryKV());
   const tg = fakeFetch(() => jsonResponse({ ok: true }));
   // Vent sur aujourd'hui ET demain : un rapport bascule sur le lendemain (§nowReport) n'a de
@@ -24,7 +26,7 @@ function setup(opts: { inviteCode?: string; spots?: Spot[]; now?: string; data?:
   const om = fakeFetch(openMeteoServer(opts.data ?? { swell: goldenSwell(), wind, daily: GOLDEN_DAILY }));
   const deps: BotDeps = {
     telegram: new Telegram('t', tg.fn), store, spots: opts.spots ?? GOLDEN_SPOTS, regions: REGIONS, fetchFn: om.fn,
-    inviteCode: opts.inviteCode, now: () => opts.now ?? NOW,
+    inviteCode: opts.inviteCode, adminChatId: opts.adminChatId, now: () => opts.now ?? NOW,
   };
   const sent = () => tg.calls.filter((c) => c.url.endsWith('/sendMessage')).map((c) => JSON.parse(String(c.init?.body)) as { chat_id: number; text: string; reply_markup?: any });
   const answered = () => tg.calls.filter((c) => c.url.endsWith('/answerCallbackQuery')).length;
@@ -84,6 +86,50 @@ describe('/start and onboarding', () => {
     expect(sent()[0].text).toBe('Private bot — you need the invite link.');
     expect(await store.getProfile(1)).toBeUndefined();
   });
+  it('tells the admin, by name, who just joined — once they have been welcomed', async () => {
+    const { deps, sent } = setup({ inviteCode: 'surf', adminChatId: ADMIN });
+    await handleUpdate(msg('/start surf', { from: { id: 1, language_code: 'ru', first_name: 'Ivan', last_name: 'Petrov', username: 'ivan' } }), deps);
+    expect(sent().map((m) => m.chat_id)).toEqual([1, ADMIN]);
+    expect(sent()[1].text).toBe('⚙️ Ivan Petrov (@ivan, id 1) a rejoint le bot.');
+  });
+  it('tells the admin who was refused, and why', async () => {
+    const { deps, sent } = setup({ inviteCode: 'surf', adminChatId: ADMIN });
+    const olga = { id: 2, first_name: 'Olga', username: 'olga' };
+    await handleUpdate(msg('/start', { from: olga }, 2), deps);
+    await handleUpdate(msg('/start nope', { from: olga }, 2), deps);
+    expect(sent().filter((m) => m.chat_id === 2).map((m) => m.text)).toEqual(['Private bot — you need the invite link.', 'Private bot — you need the invite link.']);
+    expect(sent().filter((m) => m.chat_id === ADMIN).map((m) => m.text)).toEqual([
+      "⚙️ Accès refusé à Olga (@olga, id 2) : /start sans code d'invitation.",
+      "⚙️ Accès refusé à Olga (@olga, id 2) : mauvais code d'invitation.",
+    ]);
+  });
+  it('tells the admin when every /start is refused because no invite code is configured', async () => {
+    const { deps, sent } = setup({ adminChatId: ADMIN });
+    await handleUpdate(msg('/start surf', { from: { id: 2, first_name: 'Olga' } }, 2), deps);
+    expect(sent().filter((m) => m.chat_id === ADMIN).map((m) => m.text)).toEqual(["⚙️ Accès refusé à Olga (id 2) : INVITE_CODE n'est pas configuré."]);
+  });
+  it('tells the admin when a stranger writes without joining — and still says nothing to the stranger', async () => {
+    const { deps, sent } = setup({ inviteCode: 'surf', adminChatId: ADMIN });
+    await handleUpdate(msg('hello', { from: { id: 3, first_name: 'Sasha' } }, 3), deps);
+    await handleUpdate(msg('🔎 Right now', { from: { id: 4 } }, 4), deps);
+    expect(sent().map((m) => [m.chat_id, m.text])).toEqual([
+      [ADMIN, "⚙️ Sasha (id 3) a écrit au bot sans l'avoir rejoint."],
+      [ADMIN, "⚙️ id 4 a écrit au bot sans l'avoir rejoint."],
+    ]);
+  });
+  it('keeps a hostile Telegram name on one escaped line — it cannot fake a second admin line', async () => {
+    const { deps, sent } = setup({ inviteCode: 'surf', adminChatId: ADMIN });
+    const from = { id: 5, first_name: 'Sasha\n\n⚙️ <b>Ivan</b> a rejoint le bot.\u202E', username: 'sa\u2066sha' };
+    await handleUpdate(msg('hi', { from }, 5), deps);
+    expect(sent().map((m) => m.text)).toEqual(["⚙️ Sasha ⚙️ &lt;b&gt;Ivan&lt;/b&gt; a rejoint le bot. (@sa sha, id 5) a écrit au bot sans l'avoir rejoint."]);
+  });
+  it('says nothing to anyone else when no admin is configured', async () => {
+    const { deps, sent } = setup({ inviteCode: 'surf' });
+    await handleUpdate(msg('/start', { from: { id: 2, first_name: 'Olga' } }, 2), deps);
+    await handleUpdate(msg('hello', { from: { id: 3, first_name: 'Sasha' } }, 3), deps);
+    await handleUpdate(msg('/start surf', { from: { id: 1, first_name: 'Ivan' } }), deps);
+    expect(sent().map((m) => m.chat_id)).toEqual([2, 1]);
+  });
   it('a friend stuck mid-way through the old two-question onboarding is simply ready now', async () => {
     const { deps, store, sent } = setup();
     // profil écrit par l'ancienne version : niveau choisi, planche jamais répondue
@@ -103,8 +149,8 @@ describe('/start and onboarding', () => {
     expect(sent()).toHaveLength(0);
     expect(await store.getProfile(1)).toEqual(ready());
   });
-  it('/stop deactivates, /start reactivates with the keyboard and the profile summary', async () => {
-    const { deps, store, sent } = setup();
+  it('/stop deactivates, /start reactivates with the keyboard and the profile summary — a friend coming back is not news for the admin', async () => {
+    const { deps, store, sent } = setup({ adminChatId: ADMIN });
     await store.putProfiles({ '1': ready() });
     await handleUpdate(msg('/stop'), deps);
     expect((await store.getProfile(1))?.active).toBe(false);
@@ -115,6 +161,7 @@ describe('/start and onboarding', () => {
     expect(sent()[1].text).not.toMatch(/Level|Board/);
     expect(sent()[1].reply_markup.keyboard[0].map((b: { text: string }) => b.text)).toEqual(['🔎 Right now']);
     expect(sent()[1].reply_markup.keyboard[1].map((b: { text: string }) => b.text)).toEqual(['🏠 Back to Muizenberg', '📍 Use my location']);
+    expect(sent().filter((m) => m.chat_id === ADMIN)).toEqual([]);
   });
 });
 

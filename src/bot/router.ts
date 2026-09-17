@@ -6,6 +6,7 @@ import { hasDaylightLeft } from '../engine/factors';
 import { haversineKm } from '../engine/geo';
 import { addDays, dateOf, floorHour } from '../engine/time';
 import { buildReport, buildWeek, nearbySpots, type CollectDeps } from '../jobs/collect';
+import { notifyAdmin } from '../jobs/runs';
 import { detectLang, fill, STRINGS, type Strings } from '../render/i18n';
 import { detailsMarkupFor, goButtonsMarkup, renderDetails, renderEvening, renderSpotDay, renderWeek, spotName, type RenderCtx, allSpotOrder } from '../render/messages';
 import type { Lang, Profile, Region, Report, Spot } from '../types';
@@ -20,9 +21,28 @@ export interface BotDeps {
   regions: Region[];
   fetchFn: FetchLike;
   inviteCode?: string;
+  /** prévenu de chaque arrivée, refus et message d'inconnu */
+  adminChatId?: number;
   radiusKm?: number;
   /** heure locale 'YYYY-MM-DDTHH:mm' */
   now: () => string;
+}
+
+/**
+ * Un nom Telegram est libre : retours à la ligne, caractères de contrôle et inversions bidi y
+ * fabriqueraient une fausse ligne « ⚙️ … a rejoint le bot » dans le message à l'admin. Le HTML, lui,
+ * est échappé par `notifyAdmin`.
+ */
+const oneLine = (s = ''): string =>
+  s.replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, ' ').replace(/\s+/g, ' ').trim();
+
+/** « Ivan Petrov (@ivan, id 42) » pour les messages à l'admin : l'id départage deux homonymes et se retrouve dans les logs. */
+function who(msg: TgMessage): string {
+  const name = oneLine(`${msg.from?.first_name ?? ''} ${msg.from?.last_name ?? ''}`);
+  const handle = oneLine(msg.from?.username);
+  const id = `id ${msg.chat.id}`;
+  if (name) return `${name} (${handle ? `@${handle}, ` : ''}${id})`;
+  return handle ? `@${handle} (${id})` : id;
 }
 
 const isButton = (text: string, key: 'backHome' | 'now'): boolean =>
@@ -142,7 +162,8 @@ export async function handleUpdate(update: TgUpdate, deps: BotDeps): Promise<voi
   let profile = await deps.store.getProfile(chatId);
 
   if (text.startsWith('/start')) return handleStart(msg, profile, deps);
-  if (!profile) return; // inconnu sans /start : silence (bot privé)
+  // inconnu sans /start : silence pour lui (bot privé), mais l'admin voit qui frappe à la porte
+  if (!profile) return notifyAdmin(deps, `${who(msg)} a écrit au bot sans l'avoir rejoint.`);
   const s = STRINGS[profile.lang];
   const { telegram, store } = deps;
 
@@ -222,12 +243,15 @@ async function handleStart(msg: TgMessage, profile: Profile | undefined, deps: B
     if (!deps.inviteCode || !safeEqual(code ?? '', deps.inviteCode)) {
       console.warn(`invite refused for chat ${chatId}`);
       await deps.telegram.sendMessage(chatId, STRINGS[lang].privateBot);
+      const why = !deps.inviteCode ? "INVITE_CODE n'est pas configuré" : code ? "mauvais code d'invitation" : "/start sans code d'invitation";
+      await notifyAdmin(deps, `Accès refusé à ${who(msg)} : ${why}.`);
       return;
     }
     // Plus de questions : la note ne dépend ni du niveau ni de la planche, le profil est prêt tout de suite.
     const created = await deps.store.updateProfile(chatId, () => newProfile(chatId, lang, deps.now()));
     const s = STRINGS[created.lang];
     await deps.telegram.sendMessage(chatId, welcomeText(created, s), persistentKeyboard(s));
+    await notifyAdmin(deps, `${who(msg)} a rejoint le bot.`);
     return;
   }
   const s = STRINGS[profile.lang];

@@ -34,7 +34,7 @@ Variables locales dans `.dev.vars` (ignoré par git) : `TELEGRAM_BOT_TOKEN`, `WE
 
 ## Exploitation
 
-- Le push de 19h est le heartbeat ; toute erreur de run arrive sur Telegram à `ADMIN_CHAT_ID`. Le dimanche, un second cron à 19h05 envoie la semaine à venir.
+- Le push de 19h est le heartbeat ; toute erreur de run arrive sur Telegram à `ADMIN_CHAT_ID`. L'admin y est aussi prévenu, avec le nom Telegram et l'id, de chaque ami qui rejoint le bot, de chaque accès refusé (sans code, mauvais code, `INVITE_CODE` absent) et de chaque inconnu qui écrit sans l'avoir rejoint. Le dimanche, un second cron à 19h05 envoie la semaine à venir.
 - Logs : `npx wrangler tail`.
 - Calibrer : lancer `npm run compare:sf` chaque jour pendant quelques semaines ; le CSV met face à face étoiles, hauteurs, vent et état du vent du site et du bot, spot par spot. Les constantes de la note sont dans `src/engine/rating.ts`, les seuils du verdict dans `src/config.ts`, l'orientation de chaque spot (`facing`) dans `src/data/spots.json`.
 - Verrou coincé (run planté après le verrou) : `npx wrangler kv key delete --binding KV "run:<date>:evening"` (ou `morning`) avant de relancer.

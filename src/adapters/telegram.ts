@@ -18,7 +18,7 @@ export type SendResult =
   | { ok: true }
   | { ok: false; blocked: boolean; retryAfter?: number; description: string };
 
-export interface TgUser { id: number; language_code?: string; first_name?: string }
+export interface TgUser { id: number; language_code?: string; first_name?: string; last_name?: string; username?: string }
 export interface TgChat { id: number; type: 'private' | 'group' | 'supergroup' | 'channel' }
 export interface TgMessage {
   message_id: number;
