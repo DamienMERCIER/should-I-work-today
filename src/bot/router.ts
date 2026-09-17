@@ -1,6 +1,6 @@
 import { safeEqual, type FetchLike } from '../adapters/http';
 import type { Store } from '../adapters/kv';
-import type { Telegram, TgCallbackQuery, TgMessage, TgUpdate } from '../adapters/telegram';
+import type { Telegram, TgCallbackQuery, TgMessage, TgUpdate, TgUser } from '../adapters/telegram';
 import { LANGS, DEFAULT_LOCATION, RADIUS_KM } from '../config';
 import { hasDaylightLeft } from '../engine/factors';
 import { haversineKm } from '../engine/geo';
@@ -12,8 +12,10 @@ import { detectLang, fill, STRINGS, type Strings } from '../render/i18n';
 import { detailsMarkupFor, goButtonsMarkup, renderDetails, renderEvening, renderSpotDay, renderWeek, spotById, spotName, type RenderCtx, allSpotOrder } from '../render/messages';
 import type { Lang, Profile, Region, Report, Spot } from '../types';
 import { langKeyboard, persistentKeyboard, profileKeyboard } from './keyboards';
+import { renderFriends, telegramName } from './friends';
 import { newProfile, parseHours, profileSummary, welcomeText } from './profile';
 import { matchSpot, spotSlug, totalSpotCount } from './spotMatch';
+import { oneLine } from './text';
 
 export interface BotDeps {
   telegram: Telegram;
@@ -30,14 +32,6 @@ export interface BotDeps {
   /** heure locale 'YYYY-MM-DDTHH:mm' */
   now: () => string;
 }
-
-/**
- * Un nom Telegram est libre : retours à la ligne, caractères de contrôle et inversions bidi y
- * fabriqueraient une fausse ligne « ⚙️ … a rejoint le bot » dans le message à l'admin. Le HTML, lui,
- * est échappé par `notifyAdmin`.
- */
-const oneLine = (s = ''): string =>
-  s.replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, ' ').replace(/\s+/g, ' ').trim();
 
 /** « Ivan Petrov (@ivan, id 42) » pour les messages à l'admin : l'id départage deux homonymes et se retrouve dans les logs. */
 function who(msg: TgMessage): string {
@@ -166,8 +160,13 @@ export async function handleUpdate(update: TgUpdate, deps: BotDeps): Promise<voi
   let profile = await deps.store.getProfile(chatId);
 
   if (text.startsWith('/start')) return handleStart(msg, profile, deps);
+  if (text.startsWith('/amis') && deps.adminChatId !== undefined && chatId === deps.adminChatId) {
+    if (profile) await refreshName(chatId, profile, msg.from, deps);
+    return handleFriends(chatId, deps);
+  }
   // inconnu sans /start : silence pour lui (bot privé), mais l'admin voit qui frappe à la porte
   if (!profile) return notifyAdmin(deps, `${who(msg)} a écrit au bot sans l'avoir rejoint.`);
+  profile = await refreshName(chatId, profile, msg.from, deps);
   const s = STRINGS[profile.lang];
   const { telegram, store } = deps;
 
@@ -216,7 +215,7 @@ export async function handleUpdate(update: TgUpdate, deps: BotDeps): Promise<voi
     return;
   }
   if (text.startsWith('/stop')) {
-    await store.updateProfile(chatId, (cur) => ({ ...(cur ?? profile!), active: false }));
+    await store.updateProfile(chatId, (cur) => ({ ...(cur ?? profile!), active: false, inactiveReason: 'stopped' }));
     await telegram.sendMessage(chatId, s.stopped);
     return;
   }
@@ -252,15 +251,42 @@ async function handleStart(msg: TgMessage, profile: Profile | undefined, deps: B
       return;
     }
     // Plus de questions : la note ne dépend ni du niveau ni de la planche, le profil est prêt tout de suite.
-    const created = await deps.store.updateProfile(chatId, () => newProfile(chatId, lang, deps.now()));
+    const created = await deps.store.updateProfile(chatId, () => ({ ...newProfile(chatId, lang, deps.now()), ...telegramName(msg.from) }));
     const s = STRINGS[created.lang];
     await deps.telegram.sendMessage(chatId, welcomeText(created, s), persistentKeyboard(s));
     await notifyAdmin(deps, `${who(msg)} a rejoint le bot.`);
     return;
   }
   const s = STRINGS[profile.lang];
-  const p = await deps.store.updateProfile(chatId, (cur) => ({ ...(cur ?? profile), active: true }));
+  const p = await deps.store.updateProfile(chatId, (cur) => {
+    const next = { ...withName(cur ?? profile, msg.from), active: true };
+    delete next.inactiveReason;
+    return next;
+  });
   await deps.telegram.sendMessage(chatId, `${s.reactivated}\n${profileSummary(p, s)}`, persistentKeyboard(s));
+}
+
+/** `/amis`, pour l'admin seulement : qui est inscrit, où, à quelles heures, et qui s'est mis en pause ou a bloqué le bot. */
+async function handleFriends(chatId: number, deps: BotDeps): Promise<void> {
+  const profiles = Object.values(await deps.store.getProfiles()).filter((p): p is Profile => Boolean(p) && typeof p === 'object');
+  for (const text of renderFriends(profiles, deps.spots, deps.radiusKm ?? RADIUS_KM)) await deps.telegram.sendMessage(chatId, text);
+}
+
+/** Le profil avec le nom Telegram d'aujourd'hui. Un expéditeur sans prénom n'est pas un compte Telegram ordinaire : rien ne change. */
+function withName(profile: Profile, from: TgUser | undefined): Profile {
+  if (!from?.first_name) return profile;
+  const { name, username } = telegramName(from);
+  const next = { ...profile, name, username };
+  if (!name) delete next.name;
+  if (!username) delete next.username;
+  return next;
+}
+
+/** Le nom Telegram suit ce que l'ami affiche aujourd'hui, pour `/amis` : une écriture seulement quand il a changé. */
+async function refreshName(chatId: number, profile: Profile, from: TgUser | undefined, deps: BotDeps): Promise<Profile> {
+  const named = withName(profile, from);
+  if (named.name === profile.name && named.username === profile.username) return profile;
+  return deps.store.updateProfile(chatId, (cur) => withName(cur ?? profile, from));
 }
 
 async function handleHours(chatId: number, text: string, profile: Profile, deps: BotDeps): Promise<void> {
@@ -283,8 +309,9 @@ async function handleCallback(cb: TgCallbackQuery, deps: BotDeps): Promise<void>
   if (cb.message && cb.message.chat.type !== 'private') return;
   const chatId = cb.message?.chat.id ?? cb.from.id;
   if (!isChatId(chatId)) return;
-  const profile = await deps.store.getProfile(chatId);
-  if (!profile) return;
+  const stored = await deps.store.getProfile(chatId);
+  if (!stored) return;
+  const profile = await refreshName(chatId, stored, cb.from, deps);
   const s = STRINGS[profile.lang];
   const [kind, value = ''] = (cb.data ?? '').split(':');
   const { telegram, store } = deps;

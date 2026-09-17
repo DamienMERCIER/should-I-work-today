@@ -175,7 +175,7 @@ async function deactivateBlocked(blocked: number[], deps: JobDeps): Promise<void
   for (const chatId of blocked) {
     try {
       const p = await deps.store.getProfile(chatId);
-      if (p) await deps.store.putProfiles({ [String(chatId)]: { ...p, active: false } });
+      if (p) await deps.store.putProfiles({ [String(chatId)]: { ...p, active: false, inactiveReason: 'blocked' } });
     } catch (err) {
       // les messages sont partis : un échec ici ne doit pas faire passer tout l'envoi pour raté ; réessayé au prochain envoi
       console.error(`désactivation de ${chatId} échouée — ${String(err)}`);

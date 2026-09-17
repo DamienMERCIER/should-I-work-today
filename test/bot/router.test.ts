@@ -20,7 +20,8 @@ const TOMORROW = '2026-09-17';
 const ADMIN = 999;
 
 function setup(opts: { inviteCode?: string; adminChatId?: number; spots?: Spot[]; now?: string; data?: ServerData; worldTuples?: SpotTuple[] } = {}) {
-  const store = new Store(new MemoryKV());
+  const kv = new MemoryKV();
+  const store = new Store(kv);
   const tg = fakeFetch(() => jsonResponse({ ok: true }));
   // Vent sur aujourd'hui ET demain : un rapport bascule sur le lendemain (§nowReport) n'a de
   // données que si la série les couvre, sinon il retombe en noData et le test ne prouve rien.
@@ -33,7 +34,7 @@ function setup(opts: { inviteCode?: string; adminChatId?: number; spots?: Spot[]
   };
   const sent = () => tg.calls.filter((c) => c.url.endsWith('/sendMessage')).map((c) => JSON.parse(String(c.init?.body)) as { chat_id: number; text: string; reply_markup?: any });
   const answered = () => tg.calls.filter((c) => c.url.endsWith('/answerCallbackQuery')).length;
-  return { deps, store, sent, answered, omCalls: om.calls };
+  return { deps, store, kv, sent, answered, omCalls: om.calls };
 }
 
 const msg = (text?: string, extra: Partial<TgMessage> = {}, chatId = 1): TgUpdate => ({
@@ -156,9 +157,10 @@ describe('/start and onboarding', () => {
     const { deps, store, sent } = setup({ adminChatId: ADMIN });
     await store.putProfiles({ '1': ready() });
     await handleUpdate(msg('/stop'), deps);
-    expect((await store.getProfile(1))?.active).toBe(false);
+    expect(await store.getProfile(1)).toMatchObject({ active: false, inactiveReason: 'stopped' });
     await handleUpdate(msg('/start'), deps);
     expect((await store.getProfile(1))?.active).toBe(true);
+    expect(await store.getProfile(1)).not.toHaveProperty('inactiveReason');
     expect(sent()[1].text.startsWith('Good to see you again — your profile is still here.')).toBe(true);
     expect(sent()[1].text).toContain('Work: 9:00–18:00');
     expect(sent()[1].text).not.toMatch(/Level|Board/);
@@ -382,6 +384,65 @@ describe('📋 details callback', () => {
     await handleUpdate(cb('rep:2020-01-01'), deps);
     expect(sent()[2].text).toBe('Too old — run /now.');
     expect(answered()).toBe(3);
+  });
+});
+
+describe('/amis — the admin sees who is in', () => {
+  it('lists every friend with the Telegram name they joined with, to the admin', async () => {
+    const { deps, store, sent } = setup({ inviteCode: 'surf', adminChatId: ADMIN });
+    await store.putProfiles({ [String(ADMIN)]: ready({ chatId: ADMIN, createdAt: '2026-09-15T08:00' }) });
+    await handleUpdate(msg('/start surf', { from: { id: 5, first_name: 'Ivan', last_name: 'Petrov', username: 'ivan' } }, 5), deps);
+    expect(await store.getProfile(5)).toMatchObject({ name: 'Ivan Petrov', username: 'ivan' });
+    await handleUpdate(msg('/amis', {}, ADMIN), deps);
+    const list = sent().filter((m) => m.chat_id === ADMIN).map((m) => m.text).find((t) => t.startsWith('👥'));
+    expect(list).toContain('· 2 inscrits · 2 actifs');
+    expect(list).toContain('Ivan Petrov (@ivan) · 🇬🇧 · Muizenberg');
+  });
+
+  it("keeps the admin's own name up to date too", async () => {
+    const { deps, store } = setup({ adminChatId: ADMIN });
+    await store.putProfiles({ [String(ADMIN)]: ready({ chatId: ADMIN, name: 'Old' }) });
+    await handleUpdate(msg('/amis', { from: { id: ADMIN, first_name: 'Damien' } }, ADMIN), deps);
+    expect((await store.getProfile(ADMIN))?.name).toBe('Damien');
+  });
+
+  it('works for the admin even without a profile of their own', async () => {
+    const { deps, store, sent } = setup({ adminChatId: ADMIN });
+    await store.putProfiles({ '1': ready() });
+    await handleUpdate(msg('/amis', {}, ADMIN), deps);
+    expect(sent().map((m) => [m.chat_id, m.text.split('\n')[0]])).toEqual([[ADMIN, '👥 <b>Amis</b> · 1 inscrit · 1 actif']]);
+  });
+
+  it('is just an unknown command for any other friend', async () => {
+    const { deps, store, sent } = setup({ adminChatId: ADMIN });
+    await store.putProfiles({ '1': ready() });
+    await handleUpdate(msg('/amis'), deps);
+    expect(sent().map((m) => m.chat_id)).toEqual([1]);
+    expect(sent()[0].text.startsWith('Commands:')).toBe(true);
+  });
+
+  it('also picks up a new name from a button press, and from a friend coming back with /start', async () => {
+    const { deps, store } = setup();
+    await store.putProfiles({ '1': ready({ name: 'Ivan', active: false, inactiveReason: 'stopped' }) });
+    const press = cb('lang:en');
+    press.callback_query!.from = { id: 1, first_name: 'Vanya' };
+    await handleUpdate(press, deps);
+    expect((await store.getProfile(1))?.name).toBe('Vanya');
+    await handleUpdate(msg('/start', { from: { id: 1, first_name: 'Ivan', username: 'ivan' } }), deps);
+    expect(await store.getProfile(1)).toMatchObject({ active: true, name: 'Ivan', username: 'ivan' });
+  });
+
+  it('keeps each Telegram name up to date — a write only when it changed', async () => {
+    const { deps, store, kv } = setup();
+    await store.putProfiles({ '1': ready({ name: 'Ivan', username: 'ivan' }) });
+    kv.writes.length = 0;
+    await handleUpdate(msg('/profil', { from: { id: 1, first_name: 'Ivan', username: 'ivan' } }), deps);
+    expect(kv.writes).toEqual([]);
+    await handleUpdate(msg('/profil', { from: { id: 1, first_name: 'Ivan', last_name: 'Petrov' } }), deps);
+    expect(kv.writes).toEqual(['profile:1']);
+    const updated = await store.getProfile(1);
+    expect(updated?.name).toBe('Ivan Petrov');
+    expect(updated).not.toHaveProperty('username');
   });
 });
 

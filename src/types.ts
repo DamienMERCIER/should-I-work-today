@@ -25,8 +25,13 @@ export interface Profile {
   workHours: WorkHours;
   location: LatLon & { source: 'default' | 'custom' };
   active: boolean;
+  /** pourquoi `active` est faux : `/stop`, ou le bot bloqué par l'ami (absent avant le 17/09/2026) */
+  inactiveReason?: 'stopped' | 'blocked';
   awaiting?: 'hours';
   createdAt: string;
+  /** nom et pseudo Telegram, sur une ligne, pour la liste `/amis` de l'admin */
+  name?: string;
+  username?: string;
 }
 
 export interface Region { id: string; name: string; tz: 'Africa/Johannesburg'; swellRef: LatLon }

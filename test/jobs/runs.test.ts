@@ -76,7 +76,7 @@ describe('runEvening', () => {
       await seed([ready(1), ready(2)]);
       const result = await runEvening(deps);
       expect(result).toMatchObject({ sent: 1, failed: 1 });
-      expect((await store.getProfile(2))?.active).toBe(false);
+      expect(await store.getProfile(2)).toMatchObject({ active: false, inactiveReason: 'blocked' });
       // les deux amis partagent le même rapport calculé : marquer l'envoi de l'un ne marque pas l'autre
       const stored = await store.getReports('2026-09-16');
       expect(stored['1'].sentAt).toBe('2026-09-15T19:00');
