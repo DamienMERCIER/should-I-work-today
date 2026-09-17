@@ -643,6 +643,15 @@ export const expandCompactDate = (compact: string): string | undefined =>
   /^\d{6}$/.test(compact) ? `20${compact.slice(0, 2)}-${compact.slice(2, 4)}-${compact.slice(4, 6)}` : undefined;
 export const notGoingData = (date: string): string => `nogo:${compactDate(date)}`;
 
+/** Le bouton 🙋 d'un spot pour un jour : seulement pour un spot connu, et si ses données tiennent dans un bouton Telegram. */
+function goingRow(date: string, spotId: string | undefined, ctx: RenderCtx): InlineButton[] | undefined {
+  if (spotId === undefined || !spotById(spotId, ctx)) return undefined;
+  const data = `go:${compactDate(date)}:${spotId}`;
+  if (new TextEncoder().encode(data).length > CALLBACK_DATA_MAX_BYTES) return undefined;
+  const s = STRINGS[ctx.lang];
+  return [{ text: fill(s.buttons.going, { spot: spotShort(spotId, ctx, s) }), callback_data: data }];
+}
+
 /**
  * Un bouton 🙋 par spot que le message propose — le 🟢, l'aube et le soir d'un 🟡 — ou nomme : le meilleur spot d'un 🔴,
  * pour qui veut y aller quand même, quand le message le cite (`redBestNamed`). Dans l'ordre du message.
@@ -650,15 +659,7 @@ export const notGoingData = (date: string): string => `nogo:${compactDate(date)}
 function goingRows(report: Report, ctx: RenderCtx, redBestNamed: boolean): InlineButton[][] {
   const v = report.verdict;
   const picks = v.kind === 'green' ? [v.spotId] : v.kind === 'yellow' ? [v.dawn?.spotId, v.dusk?.spotId] : v.kind === 'red' && redBestNamed ? [v.bestSpotId] : [];
-  const s = STRINGS[ctx.lang];
-  const rows: InlineButton[][] = [];
-  for (const spotId of new Set(picks)) {
-    if (spotId === undefined || !spotById(spotId, ctx)) continue;
-    const data = `go:${compactDate(report.date)}:${spotId}`;
-    if (new TextEncoder().encode(data).length > CALLBACK_DATA_MAX_BYTES) continue;
-    rows.push([{ text: fill(s.buttons.going, { spot: spotShort(spotId, ctx, s) }), callback_data: data }]);
-  }
-  return rows;
+  return [...new Set(picks)].map((spotId) => goingRow(report.date, spotId, ctx)).filter((row): row is InlineButton[] => row !== undefined);
 }
 
 /** Rows → `undefined` rather than `{ inline_keyboard: [] }` — Telegram rejects an empty keyboard. */
@@ -698,7 +699,16 @@ export function goButtons(report: Report, ctx: RenderCtx, opts: { spotId?: strin
     .filter((r): r is InlineButton[] => r !== undefined);
 }
 
-/** `goButtons` wrapped into a `ReplyMarkup` — the `/all` and per-spot surfaces (no 📋 row involved). */
+/**
+ * `/<spot>` : le 🙋 de ce spot pour le jour affiché — quel que soit le verdict, l'ami regarde ce spot-là —, puis son 📍.
+ * `spotById` doit le connaître : un spot importé est ajouté au contexte par l'appelant ou retrouvé par son id.
+ */
+export function spotMarkupFor(report: Report, spotId: string, ctx: RenderCtx): ReplyMarkup | undefined {
+  const going = goingRow(report.date, spotId, ctx);
+  return toMarkup([...(going ? [going] : []), ...goButtons(report, ctx, { spotId })]);
+}
+
+/** `goButtons` wrapped into a `ReplyMarkup` — the `/all` surface (no 📋 row involved). */
 export const goButtonsMarkup = (report: Report, ctx: RenderCtx, opts: { spotId?: string } = {}): ReplyMarkup | undefined =>
   toMarkup(goButtons(report, ctx, opts));
 

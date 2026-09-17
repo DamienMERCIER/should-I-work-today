@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   esc, fmtTime, fmtDate, fmtDay, renderAlert, renderEvening, renderShortVerdict, renderMorning, renderDetails, renderSpotDay, renderDayView, renderWeek,
-  detailsMarkupFor, goButtons, goButtonsMarkup, openSpotOrder, allSpotOrder, ALL_SPOTS_CAP, spotName, type RenderCtx,
+  detailsMarkupFor, goButtons, goButtonsMarkup, openSpotOrder, allSpotOrder, ALL_SPOTS_CAP, spotMarkupFor, spotName, type RenderCtx,
 } from '../../src/render/messages';
 import { STRINGS } from '../../src/render/i18n';
 import { allWorldTuples, worldSpotId } from '../../src/data/world';
@@ -154,6 +154,15 @@ describe('go buttons (📍 "go to this spot" map link)', () => {
     const buttons = goButtons(goldenReport(), EN, { spotId: worldSpotId(name, lat, lon) });
     expect(buttons).toHaveLength(1);
     expect(buttons[0][0].url).toBe(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lon}`)}`);
+  });
+
+  it('spotMarkupFor (/<spot>): an imported spot gets its 🙋 and go buttons too, for the day shown', () => {
+    const [name, , lat, lon] = allWorldTuples()[0];
+    const id = worldSpotId(name, lat, lon);
+    const markup = spotMarkupFor(goldenReport(), id, EN) as { inline_keyboard: { text: string; callback_data?: string; url?: string }[][] };
+    expect(markup.inline_keyboard).toHaveLength(2);
+    expect(markup.inline_keyboard[0][0].callback_data).toBe(`go:260916:${id}`);
+    expect(markup.inline_keyboard[1][0].url).toBe(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lon}`)}`);
   });
 
   it('opts.spotId: still the one button for a spot at 0★ or without a window', () => {

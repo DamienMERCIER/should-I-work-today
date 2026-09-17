@@ -253,6 +253,13 @@ describe('/now once the light has gone', () => {
     expect(sent()[0].reply_markup?.inline_keyboard?.length).toBeGreaterThan(0);
   });
 
+  it('/<spot> after dark shows tomorrow, so its 🙋 is for tomorrow', async () => {
+    const { deps, store, sent } = setup(evening);
+    await store.putProfiles({ '1': ready() });
+    await handleUpdate(msg('/long_beach'), deps);
+    expect(sent()[0].reply_markup.inline_keyboard[0]).toEqual([{ text: "🙋 I'm going: Long Beach", callback_data: 'go:260917:kommetjie-long-beach' }]);
+  });
+
   it('says it in Russian for a Russian profile', async () => {
     const { deps, store, sent } = setup(evening);
     await store.putProfiles({ '1': ready({ lang: 'ru' }) });
@@ -606,22 +613,28 @@ describe('/all, /<spot> and /about', () => {
     expect(sent()).toHaveLength(1);
     expect(sent()[0].text.startsWith('🏄 Kommetjie – Long Beach · 8:00–12:00')).toBe(true);
     expect(omCalls.length).toBeGreaterThan(0);
-    // the per-spot command's go button, in English.
+    // the per-spot command's 🙋 for that spot and day, then its go button, in English.
     expect(sent()[0].reply_markup).toEqual({
-      inline_keyboard: [[{ text: '📍 Go to Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }]],
+      inline_keyboard: [
+        [{ text: "🙋 I'm going: Long Beach", callback_data: 'go:260916:kommetjie-long-beach' }],
+        [{ text: '📍 Go to Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
+      ],
     });
   });
 
-  it('Russian: the per-spot go button uses the localized template', async () => {
+  it('Russian: the per-spot buttons use the localized templates', async () => {
     const { deps, store, sent } = setup();
     await store.putProfiles({ '1': ready({ lang: 'ru' }) });
     await handleUpdate(msg('/long_beach'), deps);
     expect(sent()[0].reply_markup).toEqual({
-      inline_keyboard: [[{ text: '📍 Маршрут до Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }]],
+      inline_keyboard: [
+        [{ text: '🙋 Я еду: Long Beach', callback_data: 'go:260916:kommetjie-long-beach' }],
+        [{ text: '📍 Маршрут до Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
+      ],
     });
   });
 
-  it('a per-spot command always yields exactly one go button, even for a spot at 0★ or without a window today', async () => {
+  it('a per-spot command always offers that spot\'s 🙋 and go buttons, even at 0★ or without a window today', async () => {
     const { deps, store, sent } = setup({ spots: [...GOLDEN_SPOTS, OUTER_KOM] });
     await store.putProfiles({ '1': ready() });
     const nothing: SpotResult = { spotId: 'outer-kom', distanceKm: 14.5, hours: [], windows: [], best: undefined, maxScore: 0 };
@@ -632,12 +645,18 @@ describe('/all, /<spot> and /about', () => {
     expect(sent()[0].text.startsWith('🏄 Kommetjie – Outer Kom')).toBe(true);
     expect(sent()[0].text).not.toContain('closed');
     expect(sent()[0].reply_markup).toEqual({
-      inline_keyboard: [[{ text: '📍 Go to Outer Kom', url: 'https://www.google.com/maps/search/?api=1&query=-34.142%2C18.319' }]],
+      inline_keyboard: [
+        [{ text: "🙋 I'm going: Outer Kom", callback_data: 'go:260916:outer-kom' }],
+        [{ text: '📍 Go to Outer Kom', url: 'https://www.google.com/maps/search/?api=1&query=-34.142%2C18.319' }],
+      ],
     });
 
     await handleUpdate(msg('/muizenberg'), deps);
     expect(sent()[1].reply_markup).toEqual({
-      inline_keyboard: [[{ text: '📍 Go to Muizenberg', url: 'https://www.google.com/maps/search/?api=1&query=-34.1085%2C18.4715' }]],
+      inline_keyboard: [
+        [{ text: "🙋 I'm going: Muizenberg", callback_data: 'go:260916:muizenberg' }],
+        [{ text: '📍 Go to Muizenberg', url: 'https://www.google.com/maps/search/?api=1&query=-34.1085%2C18.4715' }],
+      ],
     });
   });
 

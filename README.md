@@ -4,7 +4,7 @@ Bot Telegram qui dit chaque soir à 19h (SAST) s'il faut aller travailler le len
 
 ## Commandes du bot
 
-`/start <code>` · `📍 Use my location` · `🏠 Back to Muizenberg` · `🔎 Right now` / `/now` · `/week` (la semaine à venir, meilleur jour en tête ; envoyée aussi chaque dimanche à 19h05) · `/all` · `/about` · `/profil` · `/lang` · `/stop` · bouton `📋 All spots` · bouton `🙋 I'm going: <spot>` sous le verdict quand il y a un créneau (🟢, 🌅, 🌇 — soir, matin, `/now`) ou sous le meilleur spot cité par un 🔴 (soir, `/now`) : note où l'ami va ce jour-là et lui montre, à lui seul, qui y va ; `✖️` pour se désister · `/<spot>` (commande par spot dérivée du `short`, ex. `/long_beach` — voir `/about` et `src/bot/spotMatch.ts`) · `/amis` (admin seulement, absente de `/setcommands` : chaque ami avec son nom Telegram, sa langue, son lieu, ses horaires, sa date d'arrivée, et s'il s'est mis en pause ou a bloqué le bot).
+`/start <code>` · `📍 Use my location` · `🏠 Back to Muizenberg` · `🔎 Right now` / `/now` · `/week` (la semaine à venir, meilleur jour en tête ; envoyée aussi chaque dimanche à 19h05) · `/all` · `/about` · `/profil` · `/lang` · `/stop` · bouton `📋 All spots` · bouton `🙋 I'm going: <spot>` sous le verdict quand il y a un créneau (🟢, 🌅, 🌇 — soir, matin, `/now`) ou sous le meilleur spot cité par un 🔴 (soir, `/now`), et sous chaque `/<spot>` pour ce spot : note où l'ami va ce jour-là et lui montre, à lui seul, qui y va ; `✖️` pour se désister · `/<spot>` (commande par spot dérivée du `short`, ex. `/long_beach` — voir `/about` et `src/bot/spotMatch.ts`) · `/amis` (admin seulement, absente de `/setcommands` : chaque ami avec son nom Telegram, sa langue, son lieu, ses horaires, sa date d'arrivée, et s'il s'est mis en pause ou a bloqué le bot).
 
 ## Développement
 

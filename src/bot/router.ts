@@ -10,7 +10,7 @@ import { buildReport, buildWeek, nearbySpots, type CollectDeps } from '../jobs/c
 import { notifyAdmin } from '../jobs/runs';
 import { detectLang, fill, STRINGS, type Strings } from '../render/i18n';
 import {
-  detailsMarkupFor, expandCompactDate, fmtDate, goButtonsMarkup, notGoingData, renderDetails, renderEvening, renderSpotDay, renderWeek, spotById, spotName,
+  detailsMarkupFor, expandCompactDate, fmtDate, goButtonsMarkup, notGoingData, renderDetails, renderEvening, renderSpotDay, renderWeek, spotById, spotMarkupFor, spotName,
   type RenderCtx, allSpotOrder,
 } from '../render/messages';
 import type { Lang, Profile, Region, Report, Spot } from '../types';
@@ -150,7 +150,7 @@ async function handleSpotCommand(chatId: number, query: string, profile: Profile
   const report = await todayReport(chatId, profile, deps);
   // `renderSpotDay` ne porte aucune date : sans ce prefixe, un rapport bascule sur demain passerait
   // pour celui d'aujourd'hui.
-  await deps.telegram.sendMessage(chatId, `${rolloverPrefix(report, deps, s)}${renderSpotDay(report, spot.id, ctx)}`, goButtonsMarkup(report, ctx, { spotId: spot.id }));
+  await deps.telegram.sendMessage(chatId, `${rolloverPrefix(report, deps, s)}${renderSpotDay(report, spot.id, ctx)}`, spotMarkupFor(report, spot.id, ctx));
   return true;
 }
 
