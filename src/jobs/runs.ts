@@ -115,7 +115,8 @@ async function runJob(kind: 'evening' | 'morning', date: string, deps: JobDeps):
     const delta = compareReports(evening, report);
     // un matin sans données garde le rapport du soir (§7.6)
     if (!(report.verdict.kind === 'noData' && evening)) toStore[key] = report;
-    if (delta.send) outbox.push({ profile, text: renderMorning(report, delta, evening, ctx), markup: detailsMarkupFor(report, ctx) });
+    // le matin passé au 🔴 dit « go to work » sans nommer de spot : pas de 🙋 pour un spot absent du message
+    if (delta.send) outbox.push({ profile, text: renderMorning(report, delta, evening, ctx), markup: detailsMarkupFor(report, ctx, { redBestNamed: false }) });
   }
 
   // 2. première écriture : le bouton 📋 fonctionne dès la réception

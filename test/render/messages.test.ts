@@ -65,8 +65,16 @@ describe('🙋 going buttons', () => {
     expect(goingButtons(goldenReport({ verdict: { kind: 'yellow', dawn: { ...dusk, window: W('07:00', '09:00', 4) }, dusk } }), EN)).toHaveLength(1);
   });
 
-  it('none without a window to go to, and the label follows the language', () => {
-    expect(goingButtons(goldenReport({ verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } }), EN)).toEqual([]);
+  it('on a 🔴, one for the best spot the message names — none when it names none, or when the message does not show it', () => {
+    const red = goldenReport({ verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } });
+    expect(goingButtons(red, EN)).toEqual([["🙋 I'm going: Long Beach", 'go:260916:kommetjie-long-beach']]);
+    expect(goingButtons(goldenReport({ verdict: { kind: 'red' } }), EN)).toEqual([]);
+    expect(goingButtons(goldenReport({ spots: [], verdict: { kind: 'outOfCoverage', nearest: [] } }), EN)).toEqual([]);
+    // le message du matin passé au 🔴 dit « go to work » sans nommer de spot
+    expect(JSON.stringify(detailsMarkupFor(red, EN, { redBestNamed: false }))).not.toContain('"go:');
+  });
+
+  it('the label follows the language', () => {
     expect(goingButtons(goldenReport(), RU)).toEqual([['🙋 Я еду: Long Beach', 'go:260916:kommetjie-long-beach']]);
   });
 

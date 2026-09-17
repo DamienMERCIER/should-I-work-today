@@ -117,6 +117,16 @@ describe('runEvening', () => {
 });
 
 describe('runMorning', () => {
+  it('a morning turned 🔴 names no spot, so it offers no 🙋 button — the 📋 row stays', async () => {
+    const { deps, store, sent, seed } = setup({ now: '2026-09-16T06:00', data: weekData('2026-09-16', 9, () => 1.2) });
+    await seed([ready(1)]);
+    await store.putReports('2026-09-16', { '1': goldenReport({ chatId: 1 }) });
+    await runMorning(deps);
+    expect(sent()[0].text.startsWith('⚠️ Change: 🟢 Kommetjie – Long Beach 7:00–12:00 → 🔴 go to work')).toBe(true);
+    expect(JSON.stringify(sent()[0].reply_markup)).not.toContain('"go:');
+    expect(JSON.stringify(sent()[0].reply_markup)).toContain('rep:2026-09-16');
+  });
+
   it('confirms, upgrades, and stays silent on 🔴 → 🔴', async () => {
     const { deps, store, sent, seed } = setup({ now: '2026-09-16T06:00' });
     await seed([ready(1), ready(2), ready(5, { location: JOBURG })]);

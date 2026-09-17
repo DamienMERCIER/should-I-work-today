@@ -643,10 +643,13 @@ export const expandCompactDate = (compact: string): string | undefined =>
   /^\d{6}$/.test(compact) ? `20${compact.slice(0, 2)}-${compact.slice(2, 4)}-${compact.slice(4, 6)}` : undefined;
 export const notGoingData = (date: string): string => `nogo:${compactDate(date)}`;
 
-/** Un bouton 🙋 par spot où le verdict propose d'aller — le 🟢, ou l'aube et le soir d'un 🟡 —, dans l'ordre du message. */
-function goingRows(report: Report, ctx: RenderCtx): InlineButton[][] {
+/**
+ * Un bouton 🙋 par spot que le message propose — le 🟢, l'aube et le soir d'un 🟡 — ou nomme : le meilleur spot d'un 🔴,
+ * pour qui veut y aller quand même, quand le message le cite (`redBestNamed`). Dans l'ordre du message.
+ */
+function goingRows(report: Report, ctx: RenderCtx, redBestNamed: boolean): InlineButton[][] {
   const v = report.verdict;
-  const picks = v.kind === 'green' ? [v.spotId] : v.kind === 'yellow' ? [v.dawn?.spotId, v.dusk?.spotId] : [];
+  const picks = v.kind === 'green' ? [v.spotId] : v.kind === 'yellow' ? [v.dawn?.spotId, v.dusk?.spotId] : v.kind === 'red' && redBestNamed ? [v.bestSpotId] : [];
   const s = STRINGS[ctx.lang];
   const rows: InlineButton[][] = [];
   for (const spotId of new Set(picks)) {
@@ -703,10 +706,11 @@ export const goButtonsMarkup = (report: Report, ctx: RenderCtx, opts: { spotId?:
  * The verdict surface (`/now`, the location reply, and the evening/morning push — same rendering path):
  * the 🙋 going buttons, then go buttons (own rows — spot names are long), then the 📋 row. Pas de verdict (hors-couverture,
  * pas de données) → pas de bouton 📋 : le panneau qu'il ouvrirait serait fabriqué (§9) — and in practice
- * those reports never carry `spots` either, so no go buttons show there anyway.
+ * those reports never carry `spots` either, so no go buttons show there anyway. `redBestNamed: false` pour un message qui
+ * ne cite pas le meilleur spot d'un 🔴 (le matin) : pas de 🙋 vers un spot absent du texte.
  */
-export function detailsMarkupFor(report: Report, ctx: RenderCtx): ReplyMarkup | undefined {
+export function detailsMarkupFor(report: Report, ctx: RenderCtx, opts: { redBestNamed?: boolean } = {}): ReplyMarkup | undefined {
   const hasDetails = report.verdict.kind === 'green' || report.verdict.kind === 'yellow' || report.verdict.kind === 'red';
-  const rows = [...goingRows(report, ctx), ...goButtons(report, ctx), ...(hasDetails ? [detailsButtonRow(report.date, ctx.lang)] : [])];
+  const rows = [...goingRows(report, ctx, opts.redBestNamed ?? true), ...goButtons(report, ctx), ...(hasDetails ? [detailsButtonRow(report.date, ctx.lang)] : [])];
   return toMarkup(rows);
 }

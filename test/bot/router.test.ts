@@ -222,6 +222,16 @@ describe('location and /now', () => {
   });
 });
 
+describe('/now on a 🔴 day', () => {
+  it('offers 🙋 for the best spot the message names', async () => {
+    const { deps, store, sent } = setup({ data: weekData(GOLDEN_DATE, 9, () => 1.2) });
+    await store.putProfiles({ '1': ready() });
+    await handleUpdate(msg('/now'), deps);
+    expect(sent()[0].text).toContain('Best: Kommetjie – Long Beach');
+    expect(sent()[0].reply_markup.inline_keyboard[0]).toEqual([{ text: "🙋 I'm going: Long Beach", callback_data: 'go:260916:kommetjie-long-beach' }]);
+  });
+});
+
 describe('/now once the light has gone', () => {
   // 19:30 : le soleil s'est couché à 18:38, donc plus une seule heure de la journée ne passe le
   // seuil des 45 min de jour. Répondre « pour le reste d'aujourd'hui » ne peut donner que des zéros.
