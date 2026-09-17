@@ -15,18 +15,34 @@ export const en: Strings = {
   tideNext: { high: 'high {time}', low: 'low {time}' },
   onboarding: {
     welcome:
-      'All set. Every evening at 19:00 I tell you whether to work tomorrow.\n' +
-      'Location: {home} · work {start}–{end}.\n' +
-      '📍 send your location if you move\n' +
-      '🔎 conditions right now\n' +
-      '/profile to change your work hours\n' +
+      '🏄 All set! Every evening at 19:00 I tell you whether to work tomorrow or go surf.\n' +
+      '📍 {home} · work {start}–{end} — send your location if you move.\n' +
+      '\n' +
+      '<b>When I write</b>\n' +
+      '🌅 6:00 — I confirm or update a surf day\n' +
+      '🔥 12:00 — a big day coming in 2–3 days\n' +
+      '📅 Sunday 19:05 — the week ahead\n' +
+      '\n' +
+      '<b>How to read it</b>\n' +
+      '⭐ clean waves · ☆ spoilt by onshore wind\n' +
+      '🕐 hours · 🌊 level · ⭐ hours with yellow stars\n' +
+      '🌡️ water temperature and the wetsuit to take\n' +
+      '\n' +
+      '<b>Buttons and commands</b>\n' +
+      "🙋 I'm going — say where you surf, see who else goes\n" +
+      '🔎 /now — the rest of today · /week — the week ahead\n' +
+      "/all — every spot · /long_beach — any spot's day\n" +
+      '/profile — work hours · /lang · /stop\n' +
+      '\n' +
       'Data: Open-Meteo.com (CC-BY 4.0)',
   },
   privateBot: 'Private bot — you need the invite link.',
   help:
     'Commands:\n/now — the rest of the day\n/week — the week ahead, best day first\n/all — every spot\n/about — about this bot\n' +
     '/profile — work hours\n/lang — language\n/stop — no more messages\n📍 the button sends your location\n' +
-    'Each spot has its own command too — e.g. /long_beach shows its day',
+    'Each spot has its own command too — e.g. /long_beach shows its day\n' +
+    "🙋 I'm going, under a forecast — see who else goes\n" +
+    '⭐ clean waves · ☆ spoilt by onshore wind · 🌡️ water and wetsuit',
   profile: {
     summary: 'Profile\nWork: {start}–{end}\nLocation: {location}',
     askHours: 'Send your work hours, e.g. 9-18',
