@@ -5,7 +5,7 @@ export class MemoryKV implements KVStore {
   readonly writes: string[] = [];
   readonly gets: string[] = [];
 
-  /** `pageSize` : clés par page de `list` (1 000 chez Cloudflare), réduit en test pour exercer le curseur. */
+  /** `pageSize`: keys per page of `list` (1 000 at Cloudflare), reduced in tests to exercise the cursor. */
   constructor(private readonly pageSize = 1000) {}
 
   async get(key: string, _type: 'json'): Promise<unknown> {
@@ -15,7 +15,7 @@ export class MemoryKV implements KVStore {
   }
 
   async put(key: string, value: string, options?: { expirationTtl?: number; metadata?: unknown }): Promise<void> {
-    // KV sérialise les métadonnées : une copie, jamais l'objet de l'appelant
+    // KV serializes metadata: a copy, never the caller's own object
     const metadata = options?.metadata === undefined ? undefined : JSON.parse(JSON.stringify(options.metadata));
     this.data.set(key, { value, ttl: options?.expirationTtl, metadata });
     this.writes.push(key);

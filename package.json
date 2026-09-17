@@ -1,8 +1,27 @@
 {
   "name": "should-i-work",
+  "version": "1.0.0",
   "private": true,
+  "description": "Telegram bot that tells a group of friends whether to work tomorrow or go surfing — one Cloudflare Worker, free plan",
+  "license": "MIT",
+  "author": "Damien Mercier",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DamienMERCIER/should-I-work-today.git"
+  },
+  "homepage": "https://github.com/DamienMERCIER/should-I-work-today#readme",
+  "keywords": [
+    "telegram-bot",
+    "cloudflare-workers",
+    "surf",
+    "forecast",
+    "open-meteo",
+    "typescript"
+  ],
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "wrangler dev --test-scheduled",
     "deploy": "wrangler deploy",

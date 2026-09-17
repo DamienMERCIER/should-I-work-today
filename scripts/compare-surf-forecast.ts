@@ -1,24 +1,24 @@
 /**
- * Calibration contre surf-forecast.com, spot par spot, créneau par créneau.
+ * Calibration against surf-forecast.com, spot by spot, time slot by time slot.
  *
- *   npm run compare:sf                                  # tous les spots du Cap qui ont un slug ci-dessous
- *   npm run compare:sf -- --spots muizenberg,outer-kom  # une sélection
- *   npm run compare:sf -- --out data/sf-compare.csv     # fichier d'accumulation (défaut)
- *   npm run compare:sf -- --dump-html tmp/              # sauve chaque page HTML (pour adapter le parseur)
- *   npm run compare:sf -- --from-html tmp/Muizenberg.html --spots muizenberg   # rejoue une page sauvée
+ *   npm run compare:sf                                  # every Cape Town spot that has a slug below
+ *   npm run compare:sf -- --spots muizenberg,outer-kom  # a selection
+ *   npm run compare:sf -- --out data/sf-compare.csv     # accumulation file (default)
+ *   npm run compare:sf -- --dump-html tmp/              # saves each HTML page (to help adjust the parser)
+ *   npm run compare:sf -- --from-html tmp/Muizenberg.html --spots muizenberg   # replays a saved page
  *
- * Pour chaque spot : la table « hourly » du site (3 h par 3 h, ~2 jours : note, hauteur, période,
- * énergie, vent, état du vent) est mise en face de ce que le moteur calcule sur Open-Meteo aux mêmes
- * heures (houle au point régional ET à la cellule du spot, vent au spot, les étoiles que le bot
- * affiche, et à titre de comparaison les étoiles qu'aurait données la houle régionale × exposure).
- * Le moteur est appelé exactement comme `src/jobs/collect.ts` l'appelle. Chaque run AJOUTE ses lignes au
- * CSV : lancé tous les jours pendant quelques semaines, il donne la matière pour recaler `exposure`,
- * les courbes de vent et la note de base, spot par spot et pas seulement sur Muizenberg.
+ * For each spot: the site's "hourly" table (every 3 h, ~2 days: rating, height, period,
+ * energy, wind, wind state) is set side by side with what the engine computes on Open-Meteo at the same
+ * times (swell at the regional point AND at the spot's cell, wind at the spot, the star rating the bot
+ * displays, and for comparison the star rating the regional swell × exposure would have given).
+ * The engine is called exactly the way `src/jobs/collect.ts` calls it. Each run APPENDS its rows to the
+ * CSV: run every day for a few weeks, it provides material to recalibrate `exposure`,
+ * the wind curves and the base rating, spot by spot and not just for Muizenberg.
  *
- * Pages lues : uniquement `/breaks/<slug>/forecasts/latest`, la même famille d'URL que l'importeur
- * (voir la note robots.txt dans scripts/import-spots.ts), avec le même User-Agent honnête.
- * Une page par spot et par run : rien d'agressif. Le parseur HTML a été écrit d'après le rendu texte
- * des pages du 16/09/2026 : au premier run, vérifier avec --dump-html qu'il trouve bien les lignes.
+ * Pages fetched: only `/breaks/<slug>/forecasts/latest`, the same family of URL as the importer
+ * (see the robots.txt note in scripts/import-spots.ts), with the same honest User-Agent.
+ * One page per spot per run: nothing aggressive. The HTML parser was written from the text rendering
+ * of the pages as of 16/09/2026: on the first run, check with --dump-html that it does find the rows.
  */
 import { mkdirSync, readFileSync, writeFileSync, existsSync, appendFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -38,9 +38,9 @@ import { fetchWithRetry } from './lib/httpRetry';
 import { parseForecastTable } from './lib/forecastTable';
 import { createFetch } from './lib/userAgentFetch';
 
-// --- slugs surf-forecast des spots curatés (région Cape Town du site, relevés le 16/09/2026) --------
-// Absents volontairement : strandfontein (pas de break équivalent, « Monwabisi Strand » est ailleurs),
-// kogel-bay et strand (région Overberg du site, à vérifier), et les régions hors Cap.
+// --- surf-forecast slugs for the curated spots (the site's Cape Town region, recorded on 16/09/2026) --------
+// Deliberately absent: strandfontein (no equivalent break, "Monwabisi Strand" is elsewhere),
+// kogel-bay and strand (the site's Overberg region, to verify), and the regions outside Cape Town.
 export const SF_SLUGS: Record<string, string> = {
   muizenberg: 'Muizenberg',
   clovelly: 'Clovelly-1',
@@ -52,7 +52,7 @@ export const SF_SLUGS: Record<string, string> = {
   'crayfish-factory': 'Crayfish-Factory',
   scarborough: 'Scarborough-Beach',
   llandudno: 'Llandudno_1',
-  'glen-beach': 'Bali-Bay', // « Bali Bay (Glen Reef) » sur le site : le récif, pas la plage — à confirmer
+  'glen-beach': 'Bali-Bay', // "Bali Bay (Glen Reef)" on the site: the reef, not the beach — to confirm
   'big-bay': 'Big-Bay',
   derdesteen: 'Derde-Steen',
   'sunset-beach': 'Sunset-Beach_2',
@@ -61,17 +61,17 @@ export const SF_SLUGS: Record<string, string> = {
   witsands: 'Witsands',
 };
 
-// --- parseur de la table « hourly » : scripts/lib/forecastTable.ts (partagé avec l'import des spots) ----
+// --- "hourly" table parser: scripts/lib/forecastTable.ts (shared with the spot importer) ----
 
 export { parseForecastTable, type SfSlot } from './lib/forecastTable';
 
-// --- côté bot : mêmes heures, données Open-Meteo ---------------------------------------------------
+// --- bot side: same hours, Open-Meteo data ---------------------------------------------------
 
 interface BotHour {
   regionH: number; regionDir: number; regionT: number;
   spotH: number; spotDir: number; spotT: number;
   windKt: number; windDir: number; gustKt: number;
-  /** la houle dirigée vers le spot que le moteur a notée — celle du message */
+  /** the swell directed toward the spot that the engine rated — the one in the message */
   botH: number; score: number;
   starsSpot: number; cleanSpot: boolean; stateSpot: WindState;
   starsRegionExposure: number;
@@ -79,13 +79,13 @@ interface BotHour {
 
 async function botHours(spot: Spot, fetchFn: FetchLike): Promise<Map<string, BotHour>> {
   const region = REGIONS.find((r) => r.id === spot.region);
-  if (!region) throw new Error(`région inconnue ${spot.region}`);
+  if (!region) throw new Error(`unknown region ${spot.region}`);
   const [[regional, atSpot], [forecast], peak] = await Promise.all([
     fetchMarine([region.swellRef, spot], fetchFn),
     fetchForecast([spot], fetchFn, { forecastDays: 3 }),
     fetchPeakPeriod([region.swellRef], fetchFn, { retries: 0 }).catch(() => null),
   ]);
-  // mêmes séries que `collect.ts` : période pic régionale fusionnée, repli régional × exposure si la cellule est vide
+  // same series as `collect.ts`: merged regional peak period, regional × exposure fallback if the cell is empty
   const withPeak = (series: SwellHour[]): SwellHour[] => (peak ? mergePeakPeriod(series, peak[0]) : series);
   const regionSwell = withPeak(regional);
   const spotSwell = withPeak(spotSwellSeries(atSpot, regional, spot.exposure));
@@ -146,7 +146,7 @@ async function main(): Promise<void> {
   const wanted = arg('spots')?.split(',').map((s) => s.trim()).filter(Boolean);
   const spots = SPOTS.filter((s) => SF_SLUGS[s.id] && (!wanted || wanted.includes(s.id)));
   if (spots.length === 0) {
-    console.error(`aucun spot à comparer (slugs connus : ${Object.keys(SF_SLUGS).join(', ')})`);
+    console.error(`no spot to compare (known slugs: ${Object.keys(SF_SLUGS).join(', ')})`);
     process.exit(1);
   }
   const fetchFn = createFetch();
@@ -155,7 +155,7 @@ async function main(): Promise<void> {
   const summary: string[] = [];
 
   for (const [index, spot] of spots.entries()) {
-    // une page à la fois, pas de rafale sur le site — y compris quand la page précédente a échoué
+    // one page at a time, no burst of requests to the site — even when the previous page failed
     if (index > 0 && !fromHtml) await new Promise((r) => setTimeout(r, 1500));
     const slug = SF_SLUGS[spot.id];
     let html: string;
@@ -163,12 +163,12 @@ async function main(): Promise<void> {
       html = readFileSync(fromHtml, 'utf8');
     } else {
       const res = await fetchWithRetry(breakUrl(slug), fetchFn);
-      if (!res.ok) { console.error(`${spot.id}: HTTP ${res.status} sur ${breakUrl(slug)}`); continue; }
+      if (!res.ok) { console.error(`${spot.id}: HTTP ${res.status} on ${breakUrl(slug)}`); continue; }
       html = await res.text();
       if (dump) { mkdirSync(dump, { recursive: true }); writeFileSync(join(dump, `${slug}.html`), html); }
     }
     const sf = parseForecastTable(html);
-    if (sf.length === 0) { console.error(`${spot.id}: table introuvable dans la page (${html.length} octets) — utiliser --dump-html et adapter parseForecastTable`); continue; }
+    if (sf.length === 0) { console.error(`${spot.id}: no table found in the page (${html.length} bytes) — use --dump-html and adjust parseForecastTable`); continue; }
     const bot = await botHours(spot, fetchFn);
 
     let n = 0; let absSpot = 0; let absExp = 0; let absH = 0; let absWind = 0; let sameState = 0; let sfSum = 0; let botSum = 0;
@@ -191,11 +191,11 @@ async function main(): Promise<void> {
       if (s.state === b.stateSpot) sameState++;
       sfSum += s.rating; botSum += b.starsSpot;
     }
-    if (n === 0) { summary.push(`${spot.id.padEnd(22)} aucune heure commune (${sf.length} créneaux site, ${bot.size} heures bot)`); continue; }
+    if (n === 0) { summary.push(`${spot.id.padEnd(22)} no shared hour (${sf.length} site slots, ${bot.size} bot hours)`); continue; }
     summary.push(
-      `${spot.id.padEnd(22)} n=${String(n).padStart(2)}  site ${r1(sfSum / n)} vs bot ${r1(botSum / n)} étoiles` +
-      `  MAE étoiles (houle au spot) ${r1(absSpot / n)}  (région×exposure) ${r1(absExp / n)}` +
-      `  |ΔH| ${r1(absH / n)} m  |Δvent| ${r1(absWind / n)} km/h  même état vent ${Math.round((100 * sameState) / n)} %`,
+      `${spot.id.padEnd(22)} n=${String(n).padStart(2)}  site ${r1(sfSum / n)} vs bot ${r1(botSum / n)} stars` +
+      `  MAE stars (swell at the spot) ${r1(absSpot / n)}  (region×exposure) ${r1(absExp / n)}` +
+      `  |ΔH| ${r1(absH / n)} m  |Δwind| ${r1(absWind / n)} km/h  same wind state ${Math.round((100 * sameState) / n)}%`,
     );
   }
 
@@ -204,9 +204,9 @@ async function main(): Promise<void> {
     if (!existsSync(out)) writeFileSync(out, `${HEADER}\n`);
     appendFileSync(out, `${lines.join('\n')}\n`);
   }
-  console.log(`\n# comparaison surf-forecast · ${runAt} · ${lines.length} lignes ajoutées à ${out}\n`);
+  console.log(`\n# surf-forecast comparison · ${runAt} · ${lines.length} lines appended to ${out}\n`);
   console.log(summary.join('\n'));
 }
 
-// Lancé directement (tsx scripts/compare-surf-forecast.ts), pas quand un test importe le parseur.
+// Run directly (tsx scripts/compare-surf-forecast.ts), not when a test imports the parser.
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) await main();

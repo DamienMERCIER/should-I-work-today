@@ -2,7 +2,7 @@ import { TZ_OFFSET_MIN } from '../config';
 
 const HOUR_MS = 3_600_000;
 
-/** Les chiffres de `t` entre `from` et `to`, ou -1 s'il y a autre chose qu'un chiffre. */
+/** The digits of `t` between `from` and `to`, or -1 if there's anything other than a digit. */
 function digits(t: string, from: number, to: number): number {
   let n = 0;
   for (let i = from; i < to; i++) {
@@ -13,11 +13,11 @@ function digits(t: string, from: number, to: number): number {
   return n;
 }
 
-/** 'YYYY-MM-DDTHH:mm' (heure locale, traitée comme un UTC fictif) → millisecondes. */
+/** 'YYYY-MM-DDTHH:mm' (local time, treated as a fake UTC) → milliseconds. */
 export function toMs(t: string): number {
-  // Le moteur convertit ainsi des milliers d'heures par envoi : recomposer une chaîne pour Date.parse coûtait ~12 %
-  // de l'envoi du dimanche (profil du 17/09/2026). La forme courante est donc lue chiffre par chiffre ; ce qui sort
-  // des bornes où Date.UTC donne le même instant que Date.parse (an < 1000, 24:30…) repasse par Date.parse.
+  // The engine converts thousands of hours this way per send: rebuilding a string for Date.parse cost ~12%
+  // of Sunday's send (profiled on 2026-09-17). The common form is therefore read digit by digit; whatever falls
+  // outside the range where Date.UTC gives the same instant as Date.parse (year < 1000, 24:30…) goes through Date.parse instead.
   if (t.length === 16 && t.charCodeAt(4) === 45 && t.charCodeAt(7) === 45 && t.charCodeAt(10) === 84 && t.charCodeAt(13) === 58) {
     const year = digits(t, 0, 4);
     const month = digits(t, 5, 7);
@@ -66,7 +66,7 @@ export function isWeekend(date: string): boolean {
   return day === 0 || day === 6;
 }
 
-/** Instant UTC (ms) → heure locale SAST 'YYYY-MM-DDTHH:mm'. */
+/** UTC instant (ms) → local SAST time 'YYYY-MM-DDTHH:mm'. */
 export function nowLocal(nowMs: number = Date.now()): string {
   return fromMs(nowMs + TZ_OFFSET_MIN * 60_000);
 }

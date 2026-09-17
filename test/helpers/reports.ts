@@ -12,7 +12,7 @@ export function makeHour(time: string, score: number, factors: Partial<HourFacto
   };
 }
 
-/** Un spot et sa journée notée heure par heure depuis 6h, sans fenêtre : de quoi départager des spots à égalité d'étoiles. */
+/** A spot and its day scored hour by hour from 6h, with no window: enough to break ties between spots level on stars. */
 export function makeSpotDay(spotId: string, distanceKm: number, scores: number[], date = DATE): SpotResult {
   const hours = scores.map((score, i) => makeHour(`${date}T${String(6 + i).padStart(2, '0')}:00`, score));
   return { spotId, distanceKm, hours, windows: [], best: undefined, maxScore: Math.max(...scores) };

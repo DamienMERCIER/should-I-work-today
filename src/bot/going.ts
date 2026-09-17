@@ -3,9 +3,9 @@ import { esc, fmtDate, spotName, type RenderCtx } from '../render/messages';
 import type { GoingEntry, Profile } from '../types';
 
 /**
- * Qui va surfer ce jour-là, pour l'ami qui vient d'appuyer sur 🙋 : une ligne par spot, dans l'ordre où chacun a été choisi
- * en premier ; sur chaque ligne l'ami lui-même d'abord (« toi »), puis les autres dans l'ordre de leur appui, par leur nom
- * Telegram, leur @pseudo, ou « un ami » faute de mieux.
+ * Who's surfing that day, for the friend who just tapped 🙋: one line per spot, in the order each one was first
+ * chosen; on each line the friend themselves first ("you"), then the others in the order they tapped, by their
+ * Telegram name, their @handle, or "someone" failing that.
  */
 export function renderGoing(date: string, entries: GoingEntry[], me: number, profiles: Record<string, Profile>, ctx: RenderCtx): string {
   const s = STRINGS[ctx.lang];

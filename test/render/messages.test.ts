@@ -31,7 +31,7 @@ describe('formatting', () => {
     expect(esc('a < b & c > d')).toBe('a &lt; b &amp; c &gt; d');
   });
   it('detailsMarkupFor: the 🙋 going button, go buttons (ordered by peak), then the 📋 row, for a verdict with windows', () => {
-    // Muizenberg n'a pas de fenêtre dans le scénario golden (2☆ sous le cross-onshore) : pas de bouton
+    // Muizenberg has no window in the golden scenario (2☆ under the cross-onshore): no button
     expect(detailsMarkupFor(goldenReport(), EN)).toEqual({
       inline_keyboard: [
         [{ text: "🙋 Long Beach", callback_data: 'go:260916:kommetjie-long-beach' }, { text: '📍', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
@@ -69,7 +69,7 @@ describe('🙋 going buttons', () => {
     expect(goingButtons(red, EN)).toEqual([["🙋 Long Beach", 'go:260916:kommetjie-long-beach'], ["🙋 Muizenberg", 'go:260916:muizenberg']]);
     expect(goingButtons(goldenReport({ verdict: { kind: 'red' } }), EN)).toEqual([]);
     expect(goingButtons(goldenReport({ spots: [], verdict: { kind: 'outOfCoverage', nearest: [] } }), EN)).toEqual([]);
-    // le message du matin passé au 🔴 dit « go to work » sans nommer de spot : ni 🙋 ni 📍
+    // the morning message, once it turns 🔴, says "go to work" without naming a spot: neither 🙋 nor 📍
     expect(detailsMarkupFor(red, EN, { redBestNamed: false })).toEqual({ inline_keyboard: [[{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }]] });
   });
 
@@ -85,10 +85,10 @@ describe('🙋 going buttons', () => {
       report.spots.push({ ...report.spots[0], spotId: id });
       return { going: goingButtons(report, ctx).filter(([, data]) => data?.includes('far-')), markup: detailsMarkupFor(report, ctx) };
     };
-    // `go:260916:` fait 10 octets : un id de 54 caractères remplit tout juste les 64, un de 55 les dépasse
+    // `go:260916:` is 10 bytes: a 54-character id just fills the 64, a 55-character one exceeds it
     expect(buttonsFor(`far-${'x'.repeat(50)}`).going).toHaveLength(1);
     expect(buttonsFor(`far-${'x'.repeat(51)}`).going).toEqual([]);
-    // son 📍 reste, avec son nom puisqu'il est seul sur sa ligne
+    // its 📍 remains, with its name since it's alone on its row
     expect(JSON.stringify(buttonsFor(`far-${'x'.repeat(51)}`).markup)).toContain('"📍 Go to Far"');
   });
 });
@@ -107,7 +107,7 @@ describe('spot buttons of 📋 and /all', () => {
       const report = goldenReport({ spots: [...goldenReport().spots, { spotId: id, distanceKm: 3, hours: [], windows: [], best: undefined, maxScore: 1 }] });
       return spotDayRows(report, ctx, { all: true }).flat().map((b) => b.callback_data);
     };
-    // `spot:` fait 5 octets : un id de 59 caractères remplit tout juste les 64, un de 60 les dépasse
+    // `spot:` is 5 bytes: a 59-character id just fills the 64, a 60-character one exceeds it
     expect(buttonsFor(`far-${'x'.repeat(55)}`)).toContain(`spot:far-${'x'.repeat(55)}`);
     expect(buttonsFor(`far-${'x'.repeat(56)}`)).toEqual(['spot:kommetjie-long-beach', 'spot:muizenberg']);
   });
@@ -115,7 +115,7 @@ describe('spot buttons of 📋 and /all', () => {
 
 describe('spot order on a day without a window to pick', () => {
   const spotDay = makeSpotDay;
-  // Jeudi 17/09 au Cap, /all : The Hoek, plus proche, passait en tête pour 2 heures à 2★ quand Long Beach les tenait 5 heures.
+  // Thursday 17/09 in Cape Town, /all: The Hoek, closer, used to take the lead for 2 hours at 2★ while Long Beach held them for 5 hours.
   const report = makeReport({
     verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' },
     spots: [
@@ -153,11 +153,6 @@ describe('spot names', () => {
 });
 
 describe('go buttons (📍 "go to this spot" map link)', () => {
-  const W6 = (peak: number): Window => ({ start: `${GOLDEN_DATE}T07:00`, end: `${GOLDEN_DATE}T08:00`, peak, mean: peak });
-  const windowed = (spotId: string, peak: number): SpotResult => ({
-    spotId, distanceKm: 1, hours: [], windows: [W6(peak)], best: W6(peak), maxScore: peak,
-  });
-
   it('the url is the documented Google Maps search form, coordinates through encodeURIComponent', () => {
     expect(goButtons(goldenReport(), EN, { spotId: 'kommetjie-long-beach' })).toEqual([
       [{ text: '📍 Go to Long Beach', url: 'https://www.google.com/maps/search/?api=1&query=-34.133%2C18.329' }],
@@ -181,7 +176,7 @@ describe('go buttons (📍 "go to this spot" map link)', () => {
     const [name, , lat, lon] = allWorldTuples()[0];
     const id = worldSpotId(name, lat, lon);
     const markup = spotMarkupFor(goldenReport(), id, EN) as { inline_keyboard: { text: string; callback_data?: string; url?: string }[][] };
-    // une seule ligne : son 🙋, puis son 📍
+    // a single row: its 🙋, then its 📍
     expect(markup.inline_keyboard).toHaveLength(1);
     expect(markup.inline_keyboard[0][0].callback_data).toBe(`go:260916:${id}`);
     expect(markup.inline_keyboard[0][1]).toEqual({ text: '📍', url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lon}`)}` });
@@ -270,13 +265,13 @@ describe('go buttons (📍 "go to this spot" map link)', () => {
 
 describe('renderEvening — golden 🟢', () => {
   it('EN', () => {
-    // 3,5 m de houle : 6★ or tant que l'offshore reste sous 30 km/h, donc epic (6★ sur 5 h) ;
-    // Muizenberg plafonne à 2☆ sous le cross-onshore, sans fenêtre : pas de 🥈.
+    // 3,5 m of swell: 6★ gold as long as the offshore stays under 30 km/h, so epic (6★ for 5 h);
+    // Muizenberg caps at 2☆ under the cross-onshore, with no window: no 🥈.
     expect(renderEvening(goldenReport(), EN)).toBe(
       [
         "🟢 <b>DON'T GO TO WORK TOMORROW</b> (Wed 16 Sept) — it's firing",
-        // un bloc par spot, separe par une ligne vide : ses lignes de conditions puis son graphe du
-        // jour — le verdict dit quand y aller, la courbe montre le reste de la journee sans ouvrir 📋
+        // one block per spot, separated by a blank line: its condition lines then its day chart —
+        // the verdict says when to go, the chart shows the rest of the day without opening 📋
         [
           `🏄 ${KOM} · 7:00–12:00 · ⭐⭐⭐⭐⭐⭐`,
           '   3.5 m · SW 13 s · offshore SE 8 kt · incoming tide, high 9:00',
@@ -292,7 +287,7 @@ describe('renderEvening — golden 🟢', () => {
     const lines = renderEvening(goldenReport(), RU).split('\n');
     expect(lines[0]).toContain('ЗАВТРА НЕ ИДИ НА РАБОТУ');
     expect(lines[0]).toContain('16 сент.');
-    expect(lines[1]).toBe(''); // le titre est un bloc a lui seul
+    expect(lines[1]).toBe(''); // the title is a block all on its own
     expect(lines[2]).toBe(`🏄 ${KOM} · 7:00–12:00 · ⭐⭐⭐⭐⭐⭐`);
     expect(lines[3]).toBe('   3.5 м · ЮЗ 13 с · оффшор ЮВ 8 kt · прилив, полная 9:00');
   });
@@ -309,7 +304,7 @@ describe('renderEvening — golden 🟢', () => {
   });
   it('mentions rain when ≥ 1 mm', () => {
     const r = goldenReport({ weather: { tempMaxC: 17.6, tempMinC: 12, precipMm: 4.6, code: 61 } });
-    // par contenu et non par index : le graphe du spot s'intercale avant cette ligne
+    // by content, not by index: the spot's chart is interleaved before this line
     expect(renderEvening(r, EN).split('\n')).toContain('   ☀️ 18° · sunrise 6:44 · rain 5 mm');
   });
   it('shows a 🥈 runner-up when another spot has a window, in white stars when the wind has an onshore component', () => {
@@ -321,7 +316,7 @@ describe('renderEvening — golden 🟢', () => {
     const i = lines.indexOf(`🥈 ${MUIZ} · 7:00–9:00 · ☆☆`);
     expect(i).toBeGreaterThan(-1);
     expect(lines[i + 1]).toBe('   3.5 m · cross-onshore SE 8 kt');
-    // et son propre graphe juste dessous — c'est le second spot du message
+    // and its own chart right below — this is the message's second spot
     expect(lines[i + 2]).toBe('🕐 <code>6  9  12 15 18</code>');
     expect(lines[i + 3]).toBe('🌊 <code>·▂▂▂·········</code>');
   });
@@ -343,14 +338,14 @@ describe('renderEvening — other verdicts', () => {
   it('🔴 names the swell when the wind costs no star — the swell itself is the ceiling', () => {
     const r = goldenReport({ spots: goldenReport().spots.filter((x) => x.spotId === 'kommetjie-long-beach'), verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } });
     const kom = r.spots.find((x) => x.spotId === 'kommetjie-long-beach')!;
-    // 0,9 m : note de base 2,33 → 2★ ; un vent à ×0,9 donne 2,1 → toujours 2★, il ne coûte rien
+    // 0,9 m: base rating 2,33 → 2★; wind at ×0,9 gives 2,1 → still 2★, it costs nothing
     for (const h of kom.hours) Object.assign(h, { heightM: 0.9, stars: 2, score: h.factors.day ? 2 : 0, factors: { ...h.factors, swell: 0.233, wind: 0.9 } });
     kom.maxScore = 2;
     expect(renderEvening(r, EN).split('\n')).toContain(`Best: ${KOM} ⭐⭐ (swell 0.9 m)`);
   });
   it('🔴 names the wind as soon as it costs a star, even when its factor is higher than the swell one', () => {
-    // Long Beach le 17/09/2026 : 2,2 m (base 3,7, facteur 0,37) sous un offshore à 41 km/h (×0,54) → 2★.
-    // Les deux facteurs ne sont pas sur la même échelle : sans le vent, c'était 4★ et un 🟢.
+    // Long Beach on 17/09/2026: 2,2 m (base 3,7, factor 0,37) under an offshore at 41 km/h (×0,54) → 2★.
+    // The two factors aren't on the same scale: without the wind, it was 4★ and a 🟢.
     const r = goldenReport({ spots: goldenReport().spots.filter((x) => x.spotId === 'kommetjie-long-beach'), verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } });
     const kom = r.spots.find((x) => x.spotId === 'kommetjie-long-beach')!;
     for (const h of kom.hours) Object.assign(h, { heightM: 2.2, windKt: 22, stars: 2, score: h.factors.day ? 2 : 0, factors: { ...h.factors, swell: 0.37, wind: 0.54 } });
@@ -378,7 +373,7 @@ describe('renderEvening — other verdicts', () => {
     for (const h of kom.hours) Object.assign(h, { score: 0, factors: { ...h.factors, weather: 0 } });
     kom.maxScore = 0;
     expect(renderEvening(r, EN).split('\n')).toContain(`Best: ${KOM} 0★ (thunderstorm)`);
-    // un spot à 0★ ne vaut ni un 🙋 ni un 📍
+    // a spot at 0★ earns neither a 🙋 nor a 📍
     expect(detailsMarkupFor(r, EN)).toEqual({ inline_keyboard: [[{ text: '📋 All spots', callback_data: 'rep:2026-09-16' }]] });
   });
   it('🔴 with several spots at a star or more: 🥇🥈🥉 instead of « Best: », each spot in a block of its own, the water under the 🥇', () => {
@@ -388,7 +383,7 @@ describe('renderEvening — other verdicts', () => {
       spots: [makeSpotDay('kommetjie-long-beach', 13, [1, 1]), makeSpotDay('muizenberg', 0, [0, 0]), glen, makeSpotDay('llandudno', 16, [3, 3]), makeSpotDay('clovelly', 3, [1])],
     });
     const name = (id: string) => spotName(id, EN, STRINGS.en);
-    // à étoiles égales, le départage du verdict : Glen Beach tient ses 3★ 4 h, Llandudno 2 h ; Long Beach tient 1★ plus longtemps que Clovelly
+    // on a tie in stars, the verdict's tiebreaker: Glen Beach holds its 3★ for 4 h, Llandudno for 2 h; Long Beach holds 1★ longer than Clovelly
     expect(renderEvening(report, EN)).toBe(
       [
         '🔴 <b>GO TO WORK TOMORROW</b> (Wed 16 Sept)',
@@ -398,7 +393,7 @@ describe('renderEvening — other verdicts', () => {
         `🥉 ${name('kommetjie-long-beach')} ⭐ (swell 2.0 m)`,
       ].join('\n\n'),
     );
-    // sous le message : une ligne par spot, son 🙋 et son 📍 côte à côte, dans le même ordre
+    // below the message: one row per spot, its 🙋 and its 📍 side by side, in the same order
     expect((detailsMarkupFor(report, EN) as { inline_keyboard: { text: string }[][] }).inline_keyboard.map((row) => row.map((b) => b.text))).toEqual([
       ["🙋 Glen Beach", '📍'], ["🙋 Llandudno", '📍'], ["🙋 Long Beach", '📍'], ['📋 All spots'],
     ]);
@@ -412,8 +407,8 @@ describe('renderEvening — other verdicts', () => {
     expect(lines[2]).toBe('   3.5 m · SW 13 s · offshore SE 8 kt · incoming tide, high 9:00');
   });
   it('🌅 a dawn+dusk 🟡 on one spot draws its day chart once, not twice', () => {
-    // Le graphe couvre toute la journée : le redessiner sous « après le travail » répéterait à
-    // l'identique la courbe déjà affichée sous « dawn patrol ».
+    // The chart covers the whole day: redrawing it under "after work" would repeat, identically,
+    // the chart already shown under "dawn patrol".
     const pick = { spotId: 'kommetjie-long-beach', window: W('07:00', '09:00', 6) };
     const r = goldenReport({ verdict: { kind: 'yellow', dawn: pick, dusk: { spotId: 'kommetjie-long-beach', window: W('17:00', '18:00', 4) } } });
     const lines = renderEvening(r, EN).split('\n');
@@ -473,10 +468,10 @@ describe('water temperature and wetsuit', () => {
       expect(lines.at(-2)?.startsWith(`Best: ${KOM} `)).toBe(true);
       expect(lines.at(-1)).toBe('🌡️ water 13° · 5/4 wetsuit + booties');
     }
-    // avec Muizenberg à 2☆ aussi : les médailles, l'eau sous le 🥇
+    // with Muizenberg also at 2☆: the medals, water under the 🥇
     const ranked = renderEvening(withWater(goldenReport({ verdict: { kind: 'red', bestSpotId: 'kommetjie-long-beach' } }), 'kommetjie-long-beach', 13), EN).split('\n');
     expect(ranked[ranked.findIndex((l) => l.startsWith(`🥇 ${KOM} `)) + 1]).toBe('   🌡️ water 13° · 5/4 wetsuit + booties');
-    // sans meilleur spot nommé, pas d'eau à donner
+    // with no best spot named, no water to give
     expect(renderEvening({ ...alone, verdict: { kind: 'red' } }, EN)).not.toContain('🌡️');
   });
 
@@ -679,7 +674,7 @@ describe('⭐ yellow-star hours under the chart', () => {
   it('marks the hours with yellow stars only — an onshore hour at 3☆ or an hour at 0 stays a dot —, column for column under the curve', () => {
     const lines = renderSpotDay(dayOf([hour(7, 6, true), hour(8, 6, true), hour(9, 0, true), hour(10, 3, false), hour(11, 3, false), hour(12, 1, true)]), 'kommetjie-long-beach', EN).split('\n');
     const gold = codeOf(lines.find((l) => l.startsWith('⭐ ')));
-    // 6 h → 18 h : 7 et 8 jaunes, 9 à zéro, 10 et 11 blanches, 12 jaune
+    // 6 h → 18 h: 7 and 8 yellow, 9 at zero, 10 and 11 white, 12 yellow
     expect(gold).toBe('·━━···━······');
     expect(gold?.length).toBe(codeOf(lines.find((l) => l.startsWith('🌊 ')))?.length);
   });
@@ -704,7 +699,7 @@ describe('renderSpotDay', () => {
     expect(out).not.toMatch(/swell|tide still|low tide|mid tide|groundswell/);
   });
   it('says the wind turned onshore, never that it builds, when a lighter onshore breeze ends a clean morning', () => {
-    // 7:00 → 10:00 offshore 8 kt ; dès 11:00 la brise tombe à 5 kt mais passe onshore et coûte plus de la moitié des étoiles
+    // 7:00 → 10:00 offshore 8 kt; from 11:00 the breeze drops to 5 kt but turns onshore and costs more than half the stars
     const offshore = (h: number) => ({ ...komHour(h, { wind: 1, windKt: 8, tideState: 'mid', trend: 'rising' }), windDirDeg: 120 });
     const onshore = (h: number) => ({ ...komHour(h, { wind: 0.4, windKt: 5, tideState: 'mid', trend: 'rising' }), windState: 'on' as const, windDirDeg: 300, clean: false });
     const hours = [7, 8, 9, 10].map(offshore).concat([11, 12, 13, 14, 15, 16, 17].map(onshore));
@@ -718,7 +713,7 @@ describe('renderSpotDay', () => {
     expect(ru).toContain('спадает после 11:00 — ветер меняется на оншор');
   });
   it('credits the swell, not the wind, when the swell falls away under a steady offshore', () => {
-    // 3,0 m → 0,9 m d'ici 10:00 ; le vent passe de 16 à 16,5 kt sans coûter une étoile
+    // 3,0 m → 0,9 m by 10:00; the wind goes from 16 to 16,5 kt without costing a star
     const hours = [
       komHour(7, { wind: 1, windKt: 16, tideState: 'mid', trend: 'rising', heightM: 3.0 }),
       komHour(8, { wind: 1, windKt: 16, tideState: 'mid', trend: 'rising', heightM: 3.0 }),
@@ -753,7 +748,7 @@ describe('renderSpotDay', () => {
     const report = makeReport({ spots: [komResult(hours, undefined)], tides: [{ time: `${GOLDEN_DATE}T09:00`, kind: 'high', heightM: 0.5 }] });
     expect(renderSpotDay(report, 'kommetjie-long-beach', EN)).toBe(
       [
-        `🏄 ${KOM} · ⭐⭐`, // sans fenêtre, l'en-tête chiffre quand même la journée
+        `🏄 ${KOM} · ⭐⭐`, // with no window, the header still gives the day a number
         '',
         '🕐 <code>6  9  12 15 18</code>\n🌊 <code>·▂▂▂▂▂▂▂▂▂▂▂·</code>\n⭐ <code>·━━━━━━━━━━━·</code>',
         '',
@@ -798,7 +793,7 @@ describe('renderSpotDay', () => {
 function flatSpot(id: string, maxScore: number): SpotResult {
   return { spotId: id, distanceKm: 5, hours: [], windows: [], best: undefined, maxScore };
 }
-const DEAD_COLS = '·'.repeat(13); // 13 colonnes depuis que le graphique couvre les heures partiellement éclairées
+const DEAD_COLS = '·'.repeat(13); // 13 columns since the chart covers partially-lit hours too
 /**
  * Same short-label/padding rule as `renderDayView`'s spot rows, re-derived independently for the test:
  * label (≤ 13 chars, own field — no truncation, § defect 2) padEnd(13) + 1 space + sparkline + 2 spaces + stars.
@@ -882,7 +877,7 @@ describe('renderDayView / allSpotOrder — /all cap in a dense cluster (§report
         id, name: `World Spot ${i}`, short: `W${i}`, region: 'cape-peninsula', lat: 0, lon: 0, facing: 0,
         swellWindow: [0, 90], exposure: 0.7, tide: { best: [], forbidden: [] }, levels: {}, character: 'punchy', verified: false,
       });
-      // de 10★ à 1★, jamais croissant : world-0 en tête (spot principal), et le tri stable garde l'ordre d'insertion
+      // from 10★ down to 1★, never increasing: world-0 in front (the primary spot), and the stable sort keeps insertion order
       results.push(flatSpot(id, 10 - Math.floor((10 * i) / n)));
     }
     const report = makeReport({ spots: results, verdict: { kind: 'red' } });
@@ -906,8 +901,8 @@ describe('renderDayView / allSpotOrder — /all cap in a dense cluster (§report
   it('renderDayView({ all: true }) shows at most ALL_SPOTS_CAP rows and a "+N more" tail once a cluster exceeds it, never the flat-spots wording', () => {
     const { report, ctx } = manySpots(80);
     const out = renderDayView(report, ctx, { all: true });
-    // Chaque ligne a son propre <code> : les deux premiers sont la règle et le sparkline du spot
-    // principal, les suivants sont une ligne par autre spot — seuls ceux-là sont plafonnés.
+    // Each row has its own <code>: the first two are the primary spot's ruler and sparkline, the
+    // following ones are one row per other spot — only those are capped.
     const codeLines = [...out.matchAll(/<code>([\s\S]*?)<\/code>/g)].map((m) => m[1]);
     expect(codeLines).toHaveLength(2 + ALL_SPOTS_CAP);
     expect(out).toContain('+49 more spots not shown'); // 80 - 1 primary - 30 shown = 49 hidden
@@ -951,7 +946,7 @@ describe('renderDayView — row width budget (≤ 34 chars, § day-view.md "Widt
 
 describe('renderWeek — the week ahead, best day first', () => {
   const Wd = (date: string, s: string, e: string, peak: number): Window => ({ start: `${date}T${s}`, end: `${date}T${e}`, peak, mean: peak });
-  /** Un spot sur une journée : une heure à `stars` au début de la fenêtre, or ou blanche. */
+  /** A spot for one day: one hour at `stars` at the start of the window, gold or white. */
   const spotOn = (spotId: string, date: string, stars: number, w?: Window, clean = true): SpotResult => ({
     spotId, distanceKm: 5, windows: w ? [w] : [], best: w, maxScore: stars,
     hours: [{ ...makeHour(w?.start ?? `${date}T08:00`, stars), clean }],

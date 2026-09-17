@@ -4,7 +4,7 @@ import { distanceOutsideArc } from './geo';
 
 export interface EffectiveSwell { heightM: number; periodS: number; directionDeg: number }
 
-/** 1 dans la fenêtre, 0.5 à ≤ 20° hors fenêtre, 0 au-delà (§7.1). */
+/** 1 inside the window, 0.5 at ≤ 20° outside the window, 0 beyond that (§7.1). */
 export function componentWeight(directionDeg: number, window: [number, number]): number {
   const outside = distanceOutsideArc(directionDeg, window[0], window[1]);
   if (outside === 0) return 1;
@@ -13,10 +13,10 @@ export function componentWeight(directionDeg: number, window: [number, number]):
 }
 
 /**
- * La houle « dirigée vers le spot » de surf-forecast : les composantes dans la fenêtre du spot comptent
- * pleinement, celles à ≤ 20° hors fenêtre à moitié, les autres pas du tout.
- * periodS : période PIC (Tp) quand le modèle gwam la publie pour cette heure (`hour.peakPeriodS`) ;
- * sinon repli sur la période MOYENNE de la composante dominante.
+ * The "swell directed at the spot" the way surf-forecast defines it: components inside the spot's
+ * window count in full, those at ≤ 20° outside the window count at half, the rest not at all.
+ * periodS: PEAK period (Tp) when the gwam model publishes it for that hour (`hour.peakPeriodS`);
+ * otherwise falls back to the MEAN period of the dominant component.
  */
 export function effectiveSwell(hour: SwellHour, window: [number, number]): EffectiveSwell {
   const parts = [hour.primary, hour.secondary]

@@ -44,7 +44,7 @@ async function processUpdate(update: TgUpdate, deps: AppDeps): Promise<void> {
   }
 }
 
-/** Répond 200 tout de suite et traite l'update en arrière-plan (§11). */
+/** Responds 200 right away and processes the update in the background (§11). */
 export async function handleWebhookRequest(request: Request, env: Env, ctx: ExecutionContext, deps: AppDeps = buildDeps(env)): Promise<Response> {
   if (request.method !== 'POST') return new Response('should-i-work', { status: 200 });
   const header = request.headers.get('X-Telegram-Bot-Api-Secret-Token');

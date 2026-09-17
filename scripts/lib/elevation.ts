@@ -25,14 +25,14 @@ interface ElevationResponse {
   elevation?: number[];
 }
 
-/** Partagé par tous les appels d'une exécution : Open-Meteo compte chaque point, 5 000 par heure et 10 000 par jour. */
+/** Shared across every call of one run: Open-Meteo counts every point, 5,000 per hour and 10,000 per day. */
 export interface ElevationQuota {
   exhausted: boolean;
 }
 
 export interface FetchElevationsOptions extends RetryOptions {
   concurrency?: number;
-  /** passé à `true` au premier 429 : plus aucune demande tant qu'il est partagé (§fetchElevations) */
+  /** set to `true` on the first 429: no more requests for as long as it's shared (§fetchElevations) */
   quota?: ElevationQuota;
 }
 

@@ -13,8 +13,8 @@ export class OpenMeteoError extends Error {
 const MARINE_BASE = 'https://marine-api.open-meteo.com/v1/marine';
 const FORECAST_BASE = 'https://api.open-meteo.com/v1/forecast';
 const TIMEZONE = 'Africa/Johannesburg';
-// `sea_surface_temperature` : la température de l'eau, pour la combinaison. Le 17/09/2026, l'ajouter ne changeait
-// aucune autre colonne sur six points du Cap (houle, marée identiques à la valeur près).
+// `sea_surface_temperature`: water temperature, for wetsuit advice. Adding it on 17/09/2026 changed
+// no other column across six Cape spots (swell, tide identical give or take rounding).
 const MARINE_HOURLY = [
   'swell_wave_height', 'swell_wave_period', 'swell_wave_direction',
   'secondary_swell_wave_height', 'secondary_swell_wave_period', 'secondary_swell_wave_direction',
@@ -34,19 +34,18 @@ export function marineUrl(points: LatLon[], forecastDays = 3): string {
 }
 
 /**
- * `models=gfs_seamless` : les étoiles reproduisent la note de surf-forecast, dont les courbes de vent
- * basculent à des seuils précis (offshore plein jusqu'à 30 km/h, onshore à zéro dès 20 km/h) — un
- * vent sous-estimé de 10 km/h y change des étoiles entières. Le 16/09/2026, sur huit créneaux de
- * Long Beach et de Muizenberg, GFS tombait à 4,1 et 4,8 km/h du vent affiché par le site ; le modèle
- * par défaut à 10,5 et 10,4 km/h, toujours en dessous ; ECMWF et Météo-France bons sur un spot,
- * faux de 17 à 19 km/h sur l'autre. Mesure courte (un jour, deux spots) : `npm run compare:sf`,
- * lancé dans la durée, dit si elle tient. La houle reste sur le modèle par défaut : à 0,2 m du site,
- * et forcer un modèle de vagues fait perdre la colonne de marée.
+ * `models=gfs_seamless`: the stars reproduce surf-forecast's rating, whose wind curves switch at
+ * precise thresholds (full offshore up to 30 km/h, onshore at zero from 20 km/h). A wind speed
+ * underestimated by 10 km/h changes whole stars there. On 16/09/2026, across eight time slots at Long
+ * Beach and Muizenberg, GFS was off from the site's displayed wind by 4.1 and 4.8 km/h; the default
+ * model by 10.5 and 10.4 km/h, always under; ECMWF and Météo-France were good on one spot, off by 17
+ * to 19 km/h on the other. Short measurement (one day, two spots): `npm run compare:sf`, run over time,
+ * will tell if this holds up. Swell stays on the default model: it's within 0.2 m of the site, and
+ * forcing a wave model loses the tide column.
  *
- * `cell_selection=nearest` et non `sea` : forcer une cellule en pleine mer éloignait le point de vent
- * jusqu'à 10 km du spot (Long Beach tombait 8,2 km au nord, vers Hout Bay). La grille de GFS est plus
- * lâche que celle du modèle par défaut : avec `nearest`, 24 cellules pour les 35 spots, à 5,3 km en
- * médiane et 6,9 km au plus.
+ * `cell_selection=nearest`, not `sea`: forcing an open-water cell moved the wind point up to 10 km
+ * away from the spot (Long Beach landed 8.2 km north, toward Hout Bay). GFS's grid is coarser than the
+ * default model's: with `nearest`, 24 cells for the 35 spots, 5.3 km median and 6.9 km max.
  */
 export function forecastUrl(points: LatLon[], forecastDays = 3): string {
   const q = new URLSearchParams({
@@ -58,11 +57,11 @@ export function forecastUrl(points: LatLon[], forecastDays = 3): string {
 }
 
 /**
- * `swell_wave_period` (appel marine principal) est la période MOYENNE ; le modèle par défaut ne publie pas la
- * période PIC (Tp), celle que surf-forecast affiche (« SW 13 s ») et qu'on montre dans les messages. Les
- * étoiles n'en dépendent pas : c'est de l'affichage. `models=gwam` la fournit, mais appliqué à l'appel
- * marine principal il viderait `sea_level_height_msl` et la houle secondaire — d'où un second appel,
- * séparé, ne demandant que cette colonne.
+ * `swell_wave_period` (the main marine call) is the MEAN period; the default model doesn't publish
+ * the PEAK period (Tp), the one surf-forecast displays ("SW 13 s") and that we show in messages. The
+ * stars don't depend on it: it's display-only. `models=gwam` provides it, but applied to the main
+ * marine call it would empty out `sea_level_height_msl` and the secondary swell — hence a second,
+ * separate call that only asks for this column.
  */
 export function peakPeriodUrl(points: LatLon[], forecastDays = 3): string {
   const q = new URLSearchParams({
@@ -74,7 +73,7 @@ export function peakPeriodUrl(points: LatLon[], forecastDays = 3): string {
 
 export interface RetryOptions { retries?: number; delayMs?: number; sleep?: (ms: number) => Promise<void> }
 
-/** 1 retry après 2 s par défaut (§10.1). Un 4xx (hors 429) ne peut pas réussir au second essai : abandon immédiat. */
+/** 1 retry after 2s by default (§10.1). A 4xx (other than 429) can't succeed on a second try: give up immediately. */
 export async function fetchJsonWithRetry(url: string, fetchFn: FetchLike, opts: RetryOptions = {}): Promise<unknown> {
   const retries = opts.retries ?? 1;
   const delayMs = opts.delayMs ?? 2000;
@@ -112,7 +111,7 @@ const column = (block: Record<string, Num[] | string[] | undefined>, key: string
   return typeof v === 'number' || v === null ? v : undefined;
 };
 
-/** Les colonnes que le moteur consomme doivent être des tableaux alignés sur `time` ; sinon, `noData` plutôt qu'une valeur fabriquée. */
+/** Columns the engine consumes must be arrays aligned with `time`; otherwise `noData` rather than a made-up value. */
 function assertColumns(block: Record<string, unknown> | undefined, keys: readonly string[], length: number, kind: 'marine' | 'forecast'): void {
   for (const key of keys) {
     const col = block?.[key];
@@ -130,8 +129,8 @@ const MARINE_REQUIRED_HOURLY = [
   'secondary_swell_wave_height', 'secondary_swell_wave_period', 'secondary_swell_wave_direction',
   'sea_level_height_msl',
 ] as const;
-// `wind_gusts_10m` est encore demandé (le script de comparaison l'enregistre) mais plus exigé : la note
-// ne lit pas la rafale, son absence ne doit pas priver une région de verdict.
+// `wind_gusts_10m` is still requested (the comparison script records it) but no longer required: the
+// rating doesn't read the gust, and its absence shouldn't deprive a region of a verdict.
 const FORECAST_REQUIRED_HOURLY = ['wind_speed_10m', 'wind_direction_10m', 'weather_code'] as const;
 const FORECAST_REQUIRED_DAILY = ['time', 'sunrise', 'sunset'] as const;
 
@@ -140,9 +139,9 @@ export function parseMarine(json: unknown): SwellHour[][] {
     const h = (loc as MarineJson)?.hourly;
     if (!h || !Array.isArray(h.time)) throw new OpenMeteoError('Malformed marine response');
     assertColumns(h, MARINE_REQUIRED_HOURLY, h.time.length, 'marine');
-    // La température de l'eau n'est que de l'affichage : jamais exigée, et une colonne qui ne s'aligne pas sur
-    // `time` est ignorée en entier plutôt que lue au mauvais index. Une heure sans valeur, ou avec une valeur
-    // qu'aucune mer n'a (hors de -5..45 °C, NaN et l'infini compris), la laisse absente, jamais à 0.
+    // Water temperature is display-only: never required, and a column that doesn't line up with `time`
+    // is ignored entirely rather than read at the wrong index. An hour with no value, or with a value no
+    // sea ever has (outside -5..45°C, including NaN and infinity), is left absent, never set to 0.
     const seaTemps = Array.isArray(h.sea_surface_temperature) && h.sea_surface_temperature.length === h.time.length;
     return h.time.map((time, i) => {
       const hour: SwellHour = {
@@ -188,7 +187,7 @@ const PEAK_PERIOD_REQUIRED_HOURLY = ['swell_wave_peak_period'] as const;
 
 export interface PeakPeriodHour { time: string; peakPeriodS: number | null }
 
-/** `null` = le modèle ne publie pas la période pic pour cette heure (jamais fabriqué en 0, §voir moteur). */
+/** `null` = the model doesn't publish the peak period for this hour (never made up as 0, §see engine). */
 export function parsePeakPeriod(json: unknown): PeakPeriodHour[][] {
   return asList(json).map((loc) => {
     const h = (loc as PeakPeriodJson)?.hourly;

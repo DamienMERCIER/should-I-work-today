@@ -24,8 +24,8 @@ export function fmtTime(t: string): string {
 }
 
 /**
- * Construire un `Intl.DateTimeFormat` coûte cher (~20 µs) : un par langue et par style, gardé pour l'isolate. En
- * recréer un par date faisait de la rédaction le premier poste de l'envoi du dimanche (7,7 ms pour 40 amis).
+ * Building an `Intl.DateTimeFormat` is expensive (~20 µs): one per language and per style, cached for the isolate's
+ * lifetime. Recreating one per date made formatting the top cost of the Sunday send (7.7 ms for 40 friends).
  */
 const dateFormats = new Map<string, Intl.DateTimeFormat>();
 function dateFormat(lang: Lang, style: 'date' | 'day'): Intl.DateTimeFormat {
@@ -43,7 +43,7 @@ export function fmtDate(date: string, lang: Lang): string {
   return dateFormat(lang, 'date').format(new Date(toMs(`${date}T00:00`)));
 }
 
-/** Jour court pour une ligne de semaine : « Tue 22 », « вт, 22 ». */
+/** Short day for a week line: "Tue 22", "вт, 22". */
 export function fmtDay(date: string, lang: Lang): string {
   return dateFormat(lang, 'day').format(new Date(toMs(`${date}T00:00`)));
 }
@@ -51,20 +51,20 @@ export function fmtDay(date: string, lang: Lang): string {
 export const fmtWindow = (w: Window): string => `${fmtTime(w.start)}–${fmtTime(w.end)}`;
 
 /**
- * `⭐⭐⭐⭐` quand c'est propre, `☆☆☆` sous l'onshore, comme l'or et le blanc du site. `0★` à zéro :
- * le site n'affiche rien, et un point seul se lirait comme un bug.
+ * `⭐⭐⭐⭐` when it's clean, `☆☆☆` under onshore wind, matching the site's gold and white. `0★` at zero:
+ * the site shows nothing, and a lone dot would read like a bug.
  */
 export const starsText = (stars: number, clean: boolean): string => (stars === 0 ? '0★' : starGlyphs({ stars, clean }));
-/** Forme courte pour les rangées à largeur fixe : `4⭐`, `3☆`, `0★`. */
+/** Short form for fixed-width rows: `4⭐`, `3☆`, `0★`. */
 const starsShort = (stars: number, clean: boolean): string => `${stars}${stars === 0 ? '★' : clean ? '⭐' : '☆'}`;
-/** En dessous, un spot ne mérite pas sa rangée dans la vue 📋 : zéro étoile de toute la journée. */
+/** Below this, a spot doesn't earn its row in the 📋 view: zero stars all day long. */
 const DAY_VIEW_MIN_STARS = 1;
 const cardinal = (deg: number, s: Strings): string => s.cardinal[cardinal8(deg)];
 
 /**
- * Le spot derrière un id de rapport : parmi les spots curatés du contexte, sinon parmi les spots importés.
- * Les rapports ne gardent que des ids ; sans ce repli, un spot importé perdait son nom, son bouton 📍 et sa
- * commande dans `/all`. Toute lecture d'un spot par son id dans un message passe par ici.
+ * The spot behind a report id: among the context's curated spots, otherwise among the imported spots.
+ * Reports only keep ids; without this fallback, an imported spot would lose its name, its 📍 button, and its
+ * command in `/all`. Every lookup of a spot by id in a message goes through here.
  */
 export function spotById(id: string, ctx: RenderCtx): Spot | undefined {
   return ctx.spots.get(id) ?? worldSpotById(id);
@@ -90,7 +90,7 @@ function peakHour(r: SpotResult, w?: Window): SpotHour | undefined {
   return [...hours].sort((a, b) => b.score - a.score)[0];
 }
 
-/** La houle dirigée vers le spot, au 0,1 m comme sur surf-forecast : `2.1` ou `1.8–2.1`. */
+/** The swell heading into the spot, to the nearest 0.1 m like surf-forecast: `2.1` or `1.8–2.1`. */
 function heightRange(hours: SpotHour[]): string {
   const ms = hours.map((h) => Math.round(h.heightM * 10) / 10);
   const min = Math.min(...ms);
@@ -98,13 +98,13 @@ function heightRange(hours: SpotHour[]): string {
   return min === max ? min.toFixed(1) : `${min.toFixed(1)}–${max.toFixed(1)}`;
 }
 
-/** Les étoiles du meilleur créneau d'une fenêtre, dans la couleur de cette heure-là. */
+/** The stars of a window's best slot, in that hour's colour. */
 function windowStars(r: SpotResult | undefined, w: Window): string {
   const h = r ? peakHour(r, w) : undefined;
   return h ? starsText(h.score, h.clean) : `${w.peak}★`;
 }
 
-/** L'état du vent tel que surf-forecast le nomme : glassy, offshore, cross-offshore, cross-shore, cross-onshore, onshore. */
+/** The wind state as surf-forecast names it: glassy, offshore, cross-offshore, cross-shore, cross-onshore, onshore. */
 const stateText = (h: SpotHour, s: Strings): string => s.windStates[h.windState];
 
 function windText(h: SpotHour, s: Strings): string {
@@ -112,7 +112,7 @@ function windText(h: SpotHour, s: Strings): string {
   return `${stateText(h, s)} ${cardinal(h.windDirDeg, s)} ${Math.round(h.windKt)} kt`;
 }
 
-/** Vent à l'heure du pic, « puis <état> » si la fin de fenêtre change d'état. */
+/** Wind at the peak hour, "then <state>" if the state changes by the end of the window. */
 function windSummary(r: SpotResult, w: Window, s: Strings): string {
   const hours = hoursIn(r, w);
   const peak = peakHour(r, w);
@@ -142,22 +142,22 @@ function sunLine(report: Report, s: Strings): string {
   return report.weather.precipMm >= 1 ? `${base} · ${fill(s.rain, { mm: Math.round(report.weather.precipMm) })}` : base;
 }
 
-/** 🌡️ l'eau du jour au spot et la combinaison qui va avec ; rien quand la mer n'a pas donné de température. */
+/** 🌡️ the day's water temperature at the spot and the wetsuit that goes with it; nothing when the sea gave no reading. */
 function waterLine(r: SpotResult | undefined, s: Strings): string | undefined {
   if (r?.waterTempC === undefined) return undefined;
   return fill(s.water, { temp: r.waterTempC, suit: s.suits[wetsuitFor(r.waterTempC)] });
 }
 
 /**
- * Les deux lignes de graphe d'un spot : règle des heures, puis une note par heure. Une seule
- * définition pour le verdict et pour la vue 📋 — les deux doivent tracer exactement la même journée.
- * `<code>` ligne à ligne plutôt qu'un bloc `<pre>` : sur téléphone, Telegram enferme un `<pre>` dans
- * un conteneur défilant avec bouton copier qui rognait la dernière colonne de la règle.
- * Sans indentation, comme le titre du spot : les 3 espaces des lignes de conditions sont en police
- * proportionnelle et n'alignent rien ici, et chaque caractère gagné éloigne le rognage sur mobile.
- * Chaque ligne dit ce qu'elle trace — 🕐 les heures, 🌊 le niveau de chaque heure, ⭐ les heures à étoiles jaunes (`━`,
- * au moins une étoile et pas d'onshore) —, emoji hors du `<code>` : des emojis de même largeur devant chaque ligne gardent
- * la règle alignée sur la courbe. Pas de ligne ⭐ un jour sans étoile jaune : une ligne de points n'apprendrait rien.
+ * A spot's two chart lines: an hour ruler, then a score per hour. One single definition for both the verdict
+ * and the 📋 view — both must plot exactly the same day.
+ * `<code>` line by line rather than one `<pre>` block: on phone, Telegram wraps a `<pre>` in a scrolling
+ * container with a copy button that clipped the ruler's last column.
+ * No indentation, like the spot's title: the 3 spaces on the conditions lines are in a proportional font
+ * and don't align anything here, and every character saved pushes the clipping further away on mobile.
+ * Each line says what it plots — 🕐 the hours, 🌊 each hour's level, ⭐ the hours with yellow stars (`━`, at
+ * least one star and no onshore wind) —, emoji outside the `<code>`: same-width emoji in front of each line
+ * keep the ruler aligned with the curve. No ⭐ line on a day with no yellow star: a line of dots would teach nothing.
  */
 function spotChart(report: Report, spotId: string): string[] {
   const r = report.spots.find((x) => x.spotId === spotId);
@@ -170,8 +170,8 @@ function spotChart(report: Report, spotId: string): string[] {
 }
 
 /**
- * `sameSpotAbove` pour le second créneau d'un 🟡 sur le même spot : le graphe et l'eau valent pour toute la
- * journée, donc les redonner sous « après le travail » répéterait les lignes du dessus à l'identique.
+ * `sameSpotAbove` for a 🟡's second window on the same spot: the chart and the water line hold for the whole
+ * day, so repeating them under "after work" would just duplicate the lines above verbatim.
  */
 function primaryBlock(pick: SpotPick, report: Report, ctx: RenderCtx, s: Strings, opts: { sameSpotAbove?: boolean } = {}): string[] {
   const r = report.spots.find((x) => x.spotId === pick.spotId);
@@ -185,16 +185,16 @@ function primaryBlock(pick: SpotPick, report: Report, ctx: RenderCtx, s: Strings
   return lines;
 }
 
-/** Le 🥈 d'un 🟢 : le meilleur autre spot à créneau, avec le départage du verdict. */
+/** The 🥈 of a 🟢: the best other spot with a window, using the verdict's tie-break rule. */
 const runnerUpSpot = (report: Report, excludeId: string): SpotResult | undefined =>
   report.spots.filter((x) => x.spotId !== excludeId && x.best).sort(compareSpotDays)[0];
 
 const MEDALS = ['🥇', '🥈', '🥉'] as const;
 
 /**
- * Les spots qu'un verdict nomme, dans l'ordre du message : le 🟢 et son 🥈 ; l'aube et le soir d'un 🟡 ; pour un 🔴, son
- * meilleur spot puis ceux qui ont au moins une étoile, jusqu'à trois, avec le départage du verdict. Les lignes 🙋 + 📍
- * sous le message en dérivent : chaque ligne a son spot dans le texte, dans le même ordre, 🥇 d'abord.
+ * The spots a verdict names, in the message's order: the 🟢 and its 🥈; a 🟡's dawn and dusk; for a 🔴, its
+ * best spot then the others with at least one star, up to three, using the verdict's tie-break rule. The 🙋 + 📍
+ * rows under the message derive from this: each row has its spot named in the text, in the same order, 🥇 first.
  */
 function namedSpots(report: Report): SpotResult[] {
   const v = report.verdict;
@@ -216,7 +216,7 @@ function namedSpots(report: Report): SpotResult[] {
   }
 }
 
-/** Les étoiles d'une journée, or ou blanches selon sa meilleure heure. */
+/** A day's stars, gold or white depending on its best hour. */
 const dayStars = (r: SpotResult): string => starsText(r.maxScore, [...r.hours].sort((a, b) => b.score - a.score)[0]?.clean ?? true);
 
 function runnerUp(report: Report, excludeId: string, ctx: RenderCtx, s: Strings): string[] {
@@ -243,19 +243,19 @@ function redTitle(report: Report, ctx: RenderCtx, s: Strings): string {
   return isWeekend(report.date) ? fill(s.verdict.redWeekend, dateVars(report, ctx)) : fill(s.verdict.red, dateVars(report, ctx));
 }
 
-/** La note de base surf-forecast d'une heure, 0..10 : ce que la houle seule permettrait. */
+/** An hour's base surf-forecast score, 0..10: what the swell alone would allow. */
 const baseOf = (h: SpotHour): number => h.factors.swell * 10;
 
-/** Ce que le vent retire à la houle de cette heure, en étoiles avant arrondi. */
+/** What the wind takes away from that hour's swell, in stars before rounding. */
 const windCost = (h: SpotHour): number => rawStars(baseOf(h), 1) - rawStars(baseOf(h), h.factors.wind);
 
 /**
- * Pourquoi un 🔴 : à la meilleure heure surfable du spot, ce qui retient les étoiles. Le vent s'il en
- * coûte au moins une, la houle sinon — c'est alors elle qui plafonne. Comparer les deux facteurs
- * entre eux ne marchait pas : `swell` est une note de base ramenée sur 0..1, pas une pénalité, et
- * 2,2 m (0,37) passait pour pire qu'un offshore à 41 km/h (×0,54) qui coûtait deux étoiles.
- * L'orage est nommé quand il est la seule chose qui ait tenu les heures de jour à zéro, la nuit quand
- * il n'y a aucune heure de jour.
+ * Why a 🔴: at the spot's best surfable hour, what's holding the stars back. Wind if it costs at least
+ * one star, swell otherwise — in that case swell is the ceiling. Comparing the two factors directly
+ * didn't work: `swell` is a base score scaled to 0..1, not a penalty, and 2.2 m (0.37) came out looking
+ * worse than a 41 km/h offshore wind (×0.54) that actually cost two stars.
+ * The storm is named when it's the only thing holding the daylight hours at zero; night is named when
+ * there are no daylight hours at all.
  */
 function lowestFactorReason(r: SpotResult, s: Strings): string {
   const daylit = r.hours.filter((x) => x.factors.day === 1);
@@ -267,9 +267,9 @@ function lowestFactorReason(r: SpotResult, s: Strings): string {
 }
 
 /**
- * Un message de verdict est une suite de blocs separes par une ligne vide : le titre, puis un bloc
- * par spot (ses lignes de conditions et son graphe). Tout colle sinon, et on ne voit plus quelle
- * courbe appartient a quel spot.
+ * A verdict message is a series of blocks separated by a blank line: the title, then one block per
+ * spot (its conditions lines and its chart). Otherwise everything runs together, and you can no longer
+ * tell which chart belongs to which spot.
  */
 export function renderEvening(report: Report, ctx: RenderCtx): string {
   const s = STRINGS[ctx.lang];
@@ -292,21 +292,21 @@ export function renderEvening(report: Report, ctx: RenderCtx): string {
       push(redTitle(report, ctx, s));
       const named = namedSpots(report);
       const best = named[0];
-      // Un rouge a deux causes distinctes : rien d'assez bon, ou bien une fenetre assez bonne mais
-      // trop courte (ou tombant en plein travail). Dire « rien ≥ 4★ » puis afficher « ★★★★ »
-      // juste en dessous se contredirait a l'ecran.
-      // le seuil de l'ami, celui qui a rendu ce jour rouge, et pas le barème commun
+      // A red has two distinct causes: nothing good enough, or a window that's good enough but
+      // too short (or landing right in work hours). Saying "nothing ≥ 4★" and then showing "★★★★"
+      // right underneath would contradict itself on screen.
+      // the friend's own threshold, the one that made this day red, not the shared scale
       const good = report.minStars ?? SCORING.good;
       const tooShort = (best?.maxScore ?? 0) >= good;
       const body = fill(tooShort ? s.verdict.redTooShort : s.verdict.redBody, { radius: report.radiusKm, good });
-      // l'eau du meilleur spot aussi : on peut vouloir y aller quand même, et /now doit la dire quel que soit le verdict
+      // the best spot's water line too: you might want to go anyway, and /now must state it regardless of the verdict
       const water = waterLine(best, s);
       const vars = (r: SpotResult): { spot: string; stars: string; reason: string } => ({ spot: spotName(r.spotId, ctx, s), stars: dayStars(r), reason: lowestFactorReason(r, s) });
       if (named.length < 2) {
         push(body, ...(best ? [fill(s.verdict.redBest, vars(best))] : []), ...(water ? [water] : []));
         break;
       }
-      // plusieurs spots valent le coup d'œil : 🥇🥈🥉 à la place de « Best: », chacun dans son bloc pour aérer
+      // several spots are worth a look: 🥇🥈🥉 instead of "Best:", each in its own block to give it room
       push(body);
       named.forEach((r, i) => push(fill(s.verdict.redRanked, { medal: MEDALS[i], ...vars(r) }), ...(i === 0 && water ? [`   ${water}`] : [])));
       break;
@@ -355,7 +355,7 @@ export function renderMorning(morning: Report, delta: Delta, evening: Report | u
   if (morning.verdict.kind === 'noData') return fill(s.morning.noDataKeep, { verdict: renderShortVerdict(evening, ctx) });
   const pick = primaryPick(morning.verdict);
   const r = pick ? morning.spots.find((x) => x.spotId === pick.spotId) : undefined;
-  // le matin, juste avant d'y aller : quelle combinaison prendre
+  // in the morning, right before heading out: which wetsuit to take
   const water = waterLine(r, s);
   if (!delta.changed) return [fill(s.morning.confirmed, { verdict: renderShortVerdict(morning, ctx) }), ...(water ? [water] : [])].join('\n');
   const lines = [fill(s.morning.changed, { from: renderShortVerdict(evening, ctx), to: renderShortVerdict(morning, ctx) })];
@@ -365,12 +365,12 @@ export function renderMorning(morning: Report, delta: Delta, evening: Report | u
   return lines.join('\n');
 }
 
-// ---- 🔥 l'alerte de midi ------------------------------------------------------------------------
+// ---- 🔥 the midday alert ------------------------------------------------------------------------
 
 /**
- * Les grosses journées à J+2 ou J+3, dans l'ordre des dates : pour chacune son titre et le bloc du spot tel que
- * le soir le montrera, puis de quoi s'organiser. Le runner ne passe que des 🟢 epic ; un rapport sans créneau
- * est sauté plutôt que rendu vide.
+ * Big days at D+2 or D+3, in date order: for each one, its title and the spot block exactly as the evening
+ * send would show it, plus enough to plan around. The runner only passes epic 🟢 days; a report with no window
+ * is skipped rather than rendered empty.
  */
 export function renderAlert(reports: Report[], ctx: RenderCtx): string {
   const s = STRINGS[ctx.lang];
@@ -383,14 +383,14 @@ export function renderAlert(reports: Report[], ctx: RenderCtx): string {
   return blocks.join('\n\n');
 }
 
-// ---- 📅 la semaine à venir ----------------------------------------------------------------------
+// ---- 📅 the week ahead --------------------------------------------------------------------------
 
-/** À partir de combien de jours après aujourd'hui une prévision n'est plus qu'une tendance. */
+/** From how many days after today a forecast becomes just a trend. */
 export const WEEK_TREND_FROM_DAYS = 4;
 
 export interface WeekOptions { today: string }
 
-/** Ce qu'un jour a de mieux : le créneau du verdict s'il y en a un, sinon le spot le mieux noté. */
+/** The best a day has to offer: the verdict's window if there is one, otherwise the top-rated spot. */
 interface DayBest { spotId: string; stars: number; clean: boolean; window?: Window; emoji: string }
 
 function dayBest(report: Report): DayBest | undefined {
@@ -404,17 +404,17 @@ function dayBest(report: Report): DayBest | undefined {
     return { spotId: pick.spotId, stars: pick.window.peak, clean: peak?.clean ?? true, window: pick.window, emoji };
   }
   if (v.kind !== 'red') return undefined;
-  // le verdict a déjà choisi le meilleur spot : une seule règle de départage, pas deux qui divergent
+  // the verdict already picked the best spot: one single tie-break rule, not two that could disagree
   const top = v.bestSpotId ? report.spots.find((x) => x.spotId === v.bestSpotId) : undefined;
   if (!top || top.maxScore === 0) return undefined;
   return { spotId: top.spotId, stars: top.maxScore, clean: peakHour(top)?.clean ?? true, emoji: '🔴' };
 }
 
 /**
- * La semaine en une ligne par jour, le meilleur jour en tête. Chaque jour porte le verdict que le soir
- * donnerait (heures de travail, règle du week-end), avec le libellé court du spot pour tenir sur une
- * ligne de téléphone ; le meilleur jour, lui, nomme le spot en entier. Au-delà de quelques jours ce
- * n'est qu'une tendance : une ligne de pied le dit plutôt que de laisser croire à la même précision.
+ * The week as one line per day, best day first. Each day carries the verdict the evening send would
+ * give (work hours, weekend rule), with the spot's short label so it fits on a phone line; the best
+ * day, though, names the spot in full. Beyond a few days it's only a trend: a footer line says so
+ * rather than letting it look just as precise.
  */
 export function renderWeek(reports: Report[], ctx: RenderCtx, opts: WeekOptions): string {
   const s = STRINGS[ctx.lang];
@@ -431,7 +431,7 @@ export function renderWeek(reports: Report[], ctx: RenderCtx, opts: WeekOptions)
   });
 
   const blocks = [s.week.title];
-  // le plus d'étoiles, le plus tôt à égalité : un tri stable garde l'ordre des jours
+  // most stars wins, earliest breaks a tie: a stable sort keeps the days in order
   const top = reports
     .map((report) => ({ report, best: dayBest(report) }))
     .filter((x): x is { report: Report; best: DayBest } => x.best !== undefined)
@@ -466,14 +466,14 @@ function windRangeText(plotted: SpotHour[], peak: SpotHour, s: Strings): string 
   return lo === hi ? `${base} ${lo} kt` : `${base} ${lo}→${hi} kt`;
 }
 
-/** Un facteur n'est nommé que s'il pèse au moins une étoile à lui seul — la même règle que la raison d'un 🔴. */
+/** A factor is only named if it costs at least one star on its own — the same rule as a 🔴's reason. */
 const MIN_EXPLAINED_STARS = 1;
 
 /**
- * Les étoiles ne dépendent que du vent et de la houle, et la houle à la cellule du spot bouge d'heure en
- * heure autant que le vent : les deux se citent. La marée et la période ne pèsent pas sur la note,
- * les nommer mentirait. La lumière, elle, dit quand la session s'arrête. Chaque raison arrive déjà formulée,
- * avec les étoiles qu'elle pèse : on garde les deux plus lourdes.
+ * Stars depend only on wind and swell, and swell at the spot's grid cell moves hour to hour just as much
+ * as wind does: both get cited. Tide and period don't affect the score, so naming them would be misleading.
+ * Light, on the other hand, says when the session ends. Each reason arrives already worded, with the
+ * stars it costs: we keep the two heaviest.
  */
 const explain = (effects: [phrase: string, stars: number][]): string[] =>
   effects
@@ -482,13 +482,13 @@ const explain = (effects: [phrase: string, stars: number][]): string[] =>
     .slice(0, 2)
     .map(([phrase]) => phrase);
 
-/** Les six états de vent du plus propre au pire, comme sur surf-forecast. */
+/** The six wind states from cleanest to worst, as on surf-forecast. */
 const STATE_RANK: Record<WindState, number> = { glassy: 0, off: 1, 'cross-off': 2, cross: 3, 'cross-on': 4, on: 5 };
 
 /**
- * Le vent se cite par ce qui a changé. Quand il est moins propre ailleurs dans la journée, c'est son état qui coûte :
- * une brise onshore plus faible retire quand même des étoiles, et « le vent forcit » ou « le vent tombe » mentiraient.
- * Sinon, c'est sa force.
+ * Wind is cited by what changed. When it's less clean elsewhere in the day, its state is what costs stars:
+ * a weaker onshore breeze still takes stars away, and "wind picks up" or "wind drops" would be misleading.
+ * Otherwise, it's cited by its strength.
  */
 function windBestPhrase(peak: SpotHour, worst: SpotHour, s: Strings): string {
   const r = s.dayView.reasons;
@@ -505,8 +505,8 @@ function windFadePhrase(peak: SpotHour, fade: SpotHour, s: Strings): string {
 }
 
 /**
- * Pourquoi le pic est le meilleur moment : combien d'étoiles il perdrait si ce seul facteur tombait à sa
- * valeur la moins favorable de la journée tracée, l'autre restant celui du pic.
+ * Why the peak is the best moment: how many stars it would lose if this one factor alone dropped to its
+ * least favourable value across the plotted day, with the other factor held at the peak's own value.
  */
 function bestReasons(peak: SpotHour, plotted: SpotHour[], s: Strings): string[] {
   if (plotted.length === 0) return [];
@@ -526,9 +526,9 @@ function fadeHourAfter(hours: SpotHour[], peak: SpotHour): SpotHour | undefined 
 }
 
 /**
- * Ce qui fait retomber la note entre le pic et l'heure où elle s'effondre : le seul vent de cette heure
- * appliqué au pic, la seule houle de cette heure, ou la nuit qui ramène tout à zéro. Formulé depuis
- * l'heure de la chute.
+ * What brings the score down between the peak and the hour where it collapses: that hour's wind alone
+ * applied to the peak, that hour's swell alone, or night dropping everything to zero. Worded from the
+ * fade hour's point of view.
  */
 function fadeReasons(peak: SpotHour, fade: SpotHour, s: Strings): string[] {
   const r = s.dayView.reasons;
@@ -565,7 +565,7 @@ export function renderSpotDay(report: Report, spotId: string, ctx: RenderCtx): s
   const chart = spotChart(report, spotId).join('\n');
   const aligned = r ? alignedHours(r, report.date, chartHours(report)) : [];
   const peak = r ? (r.best ? peakHour(r, r.best) : peakHour(r)) : undefined;
-  // avec une fenêtre, le créneau ; sans fenêtre, les étoiles du jour — sinon l'en-tête ne chiffrait rien
+  // with a window, the time slot; without one, the day's stars — otherwise the headline would show no number
   const headline = r?.best ? fmtWindow(r.best) : peak ? starsText(peak.score, peak.clean) : '';
   const title = `🏄 ${name}${headline ? ` · ${headline}` : ''}`;
 
@@ -605,9 +605,9 @@ function spotRow(r: SpotResult, hours: number[], date: string, ctx: RenderCtx, s
  * and a sun line. No Open-Meteo attribution — that now lives in the welcome message.
  */
 /**
- * Spot du verdict d'abord, puis les autres spots du meilleur au moins bon. C'est l'ordre
- * des lignes de `renderDayView` ; le routeur s'en sert pour que la liste de commandes de `/all`
- * suive exactement les lignes affichées au-dessus (une seule définition, pas deux qui dérivent).
+ * The verdict's spot first, then the other spots from best to worst. This is the order of
+ * `renderDayView`'s rows; the router uses it so that `/all`'s command list follows exactly
+ * the rows shown above (one single definition, not two that could drift apart).
  */
 export function openSpotOrder(report: Report): string[] {
   const pick = primaryPick(report.verdict);
@@ -645,10 +645,10 @@ export function allSpotOrder(report: Report): string[] {
 }
 
 /**
- * Les spots d'une vue 📋 — ou de `/all` avec `all` —, dans l'ordre de leurs lignes : le spot du verdict, puis les
- * rangées (au moins une étoile dans la journée ; pour `/all`, toutes jusqu'à `ALL_SPOTS_CAP`). Les rangées de
- * `renderDayView` et les boutons de spots qui les suivent (`spotDayRows`) en dérivent tous les deux : une seule
- * définition, jamais deux listes qui divergent.
+ * The spots of a 📋 view — or of `/all` with `all` —, in row order: the verdict's spot, then the rows (at
+ * least one star during the day; for `/all`, all of them up to `ALL_SPOTS_CAP`). Both `renderDayView`'s rows
+ * and the spot buttons that follow them (`spotDayRows`) derive from this: one single definition, never two
+ * lists that can drift apart.
  */
 export function dayViewSpotOrder(report: Report, opts: { all?: boolean } = {}): string[] {
   if (opts.all) return allSpotOrder(report);
@@ -697,18 +697,18 @@ export function renderDetails(report: Report, ctx: RenderCtx, opts: { all?: bool
 const detailsButtonRow = (date: string, lang: Lang): InlineButton[] => [{ text: STRINGS[lang].buttons.allSpots, callback_data: `rep:${date}` }];
 
 /**
- * Boutons 🙋 : `go:<aammjj>:<spot>` et `nogo:<aammjj>`. La date perd siècle et tirets pour que les ids importés les plus
- * longs tiennent dans les 64 octets qu'un bouton Telegram accepte — un seul bouton trop long et Telegram refuse le
- * message entier, donc l'envoi du soir à tout un groupe.
+ * 🙋 buttons: `go:<yymmdd>:<spot>` and `nogo:<yymmdd>`. The date drops the century and the dashes so the
+ * longest imported ids still fit in the 64 bytes a Telegram button accepts — one button too long and Telegram
+ * rejects the whole message, which means the whole evening send to a group.
  */
 const CALLBACK_DATA_MAX_BYTES = 64;
 const compactDate = (date: string): string => date.slice(2).replace(/-/g, '');
-/** `aammjj` → `AAAA-MM-JJ`, ou `undefined` pour tout ce qui n'en a pas la forme. */
+/** `yymmdd` → `YYYY-MM-DD`, or `undefined` for anything that isn't shaped like it. */
 export const expandCompactDate = (compact: string): string | undefined =>
   /^\d{6}$/.test(compact) ? `20${compact.slice(0, 2)}-${compact.slice(2, 4)}-${compact.slice(4, 6)}` : undefined;
 export const notGoingData = (date: string): string => `nogo:${compactDate(date)}`;
 
-/** Le bouton 🙋 d'un spot pour un jour : seulement pour un spot connu, et si ses données tiennent dans un bouton Telegram. */
+/** A spot's 🙋 button for a given day: only for a known spot, and only if its data fits in a Telegram button. */
 function goingButton(date: string, spotId: string, ctx: RenderCtx): InlineButton | undefined {
   if (!spotById(spotId, ctx)) return undefined;
   const data = `go:${compactDate(date)}:${spotId}`;
@@ -718,9 +718,9 @@ function goingButton(date: string, spotId: string, ctx: RenderCtx): InlineButton
 }
 
 /**
- * 📍 l'itinéraire vers un spot, par l'API d'URL documentée de Google Maps (`/maps/search/?api=1&query=<lat>,<lon>`) :
- * l'app Google Maps sur iOS et Android, le navigateur sinon ; un bouton `url` de Telegram n'accepte que http(s), pas
- * `geo:`. Seul sur sa ligne, il dit où il mène ; à côté du 🙋 du même spot, l'emoji suffit.
+ * 📍 directions to a spot, via Google Maps's documented URL API (`/maps/search/?api=1&query=<lat>,<lon>`):
+ * the Google Maps app on iOS and Android, the browser otherwise; a Telegram `url` button only accepts http(s),
+ * not `geo:`. Alone on its own row, it spells out where it leads; next to the same spot's 🙋, the emoji is enough.
  */
 function mapButton(spotId: string, ctx: RenderCtx, alone: boolean): InlineButton | undefined {
   const spot = spotById(spotId, ctx);
@@ -732,7 +732,7 @@ function mapButton(spotId: string, ctx: RenderCtx, alone: boolean): InlineButton
   };
 }
 
-/** Les deux actions d'un spot sur une ligne : « 🙋 I'm going » et son 📍. Telegram partage une ligne à parts égales. */
+/** A spot's two actions on one row: "🙋 I'm going" and its 📍. Telegram splits a row evenly between them. */
 function spotActionRow(date: string, spotId: string, ctx: RenderCtx): InlineButton[] {
   const going = goingButton(date, spotId, ctx);
   const map = mapButton(spotId, ctx, going === undefined);
@@ -740,9 +740,9 @@ function spotActionRow(date: string, spotId: string, ctx: RenderCtx): InlineButt
 }
 
 /**
- * Une ligne d'actions par spot que le message nomme (`namedSpots` : le 🟢 et son 🥈, l'aube et le soir d'un 🟡, les
- * médailles d'un 🔴), dans son ordre, jamais vers un spot à 0★. Un 🔴 dont le message ne cite aucun spot
- * (`redBestNamed: false`, le matin) n'en a pas.
+ * One action row per spot the message names (`namedSpots`: the 🟢 and its 🥈, a 🟡's dawn and dusk, a 🔴's
+ * medals), in its order, never towards a spot at 0★. A 🔴 whose message names no spot (`redBestNamed: false`,
+ * in the morning) gets none.
  */
 function spotActionRows(report: Report, ctx: RenderCtx, redBestNamed: boolean): InlineButton[][] {
   if (report.verdict.kind === 'red' && !redBestNamed) return [];
@@ -770,8 +770,8 @@ export function goButtons(report: Report, ctx: RenderCtx, opts: { spotId?: strin
 }
 
 /**
- * `/<spot>` : le 🙋 de ce spot pour le jour affiché — quel que soit le verdict, l'ami regarde ce spot-là —, puis son 📍.
- * `spotById` doit le connaître : un spot importé est ajouté au contexte par l'appelant ou retrouvé par son id.
+ * `/<spot>`: that spot's 🙋 for the day shown — whatever the verdict, the friend is looking at that spot —, then its 📍.
+ * `spotById` must know it: an imported spot is either added to the context by the caller or found again by its id.
  */
 export function spotMarkupFor(report: Report, spotId: string, ctx: RenderCtx): ReplyMarkup | undefined {
   const row = spotActionRow(report.date, spotId, ctx);
@@ -779,9 +779,9 @@ export function spotMarkupFor(report: Report, spotId: string, ctx: RenderCtx): R
 }
 
 /**
- * 📋 et `/all` : un bouton par spot montré, dans l'ordre des rangées (`dayViewSpotOrder`), deux par ligne, qui ouvre sa
- * journée comme sa commande. Le libellé porte les étoiles du jour quand il y en a. Un spot dont les données dépasseraient
- * les 64 octets d'un bouton Telegram reste sans bouton plutôt que de faire refuser le message entier.
+ * 📋 and `/all`: one button per spot shown, in row order (`dayViewSpotOrder`), two per row, that opens its day
+ * just like its command does. The label carries the day's stars when there are any. A spot whose data would
+ * exceed a Telegram button's 64 bytes gets no button rather than getting the whole message rejected.
  */
 export function spotDayRows(report: Report, ctx: RenderCtx, opts: { all?: boolean } = {}): InlineButton[][] {
   const byId = new Map(report.spots.map((r) => [r.spotId, r]));
@@ -800,9 +800,10 @@ export function spotDayRows(report: Report, ctx: RenderCtx, opts: { all?: boolea
 }
 
 /**
- * La fin de la vue 📋 — ou de `/all` avec `all` — : Telegram ne rend pas cliquable une commande dans un `<code>`, donc les
- * rangées de spots ne s'ouvrent pas d'un appui ; un bouton par spot le fait, annoncé par une ligne. `/all` garde ensuite
- * ses 📍 vers les spots à créneau. Sans spot, ni ligne ni bouton de spot.
+ * The end of the 📋 view — or of `/all` with `all` —: Telegram doesn't make a command inside a `<code>` block
+ * tappable, so the spot rows don't open with a single tap; a button per spot does, announced by one line.
+ * `/all` then keeps its 📍 buttons towards the spots with a window. With no spot, there's neither the line nor
+ * any spot button.
  */
 export function withSpotButtons(body: string, report: Report, ctx: RenderCtx, opts: { all?: boolean } = {}): { text: string; markup: ReplyMarkup | undefined } {
   const rows = spotDayRows(report, ctx, opts);
@@ -818,10 +819,10 @@ export const goButtonsMarkup = (report: Report, ctx: RenderCtx, opts: { spotId?:
 
 /**
  * The verdict surface (`/now`, the location reply, and the evening/morning push — same rendering path):
- * the 🙋 going buttons, then go buttons (own rows — spot names are long), then the 📋 row. Pas de verdict (hors-couverture,
- * pas de données) → pas de bouton 📋 : le panneau qu'il ouvrirait serait fabriqué (§9) — and in practice
- * those reports never carry `spots` either, so no go buttons show there anyway. `redBestNamed: false` pour un message qui
- * ne cite pas le meilleur spot d'un 🔴 (le matin) : pas de 🙋 vers un spot absent du texte.
+ * the 🙋 going buttons, then go buttons (own rows — spot names are long), then the 📋 row. No verdict
+ * (out of coverage, no data) → no 📋 button: the panel it would open would be fabricated (§9) — and in
+ * practice those reports never carry `spots` either, so no go buttons show there anyway. `redBestNamed: false`
+ * is for a message that doesn't name a 🔴's best spot (the morning one): no 🙋 towards a spot missing from the text.
  */
 export function detailsMarkupFor(report: Report, ctx: RenderCtx, opts: { redBestNamed?: boolean } = {}): ReplyMarkup | undefined {
   const hasDetails = report.verdict.kind === 'green' || report.verdict.kind === 'yellow' || report.verdict.kind === 'red';

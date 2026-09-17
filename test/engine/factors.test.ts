@@ -23,7 +23,7 @@ describe('hasDaylightLeft', () => {
   it('follows a winter day, where the last usable hour comes earlier', () => {
     const [rise, set] = ['2026-06-21T07:50', '2026-06-21T17:45'];
     expect(hasDaylightLeft('2026-06-21T16:00', rise, set)).toBe(true);
-    expect(hasDaylightLeft('2026-06-21T17:00', rise, set)).toBe(true); // exactement 45 min de jour : le seuil est `>=`
+    expect(hasDaylightLeft('2026-06-21T17:00', rise, set)).toBe(true); // exactly 45 min of daylight: the threshold is `>=`
     expect(hasDaylightLeft('2026-06-21T18:00', rise, set)).toBe(false);
   });
 });

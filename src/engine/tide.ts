@@ -8,7 +8,7 @@ export interface TideInfo {
 
 const HOUR_MS = 3_600_000;
 
-/** Fenêtre d'analyse J−3 h .. J+24 h+3 h. */
+/** Analysis window: day D−3h .. day D+24h+3h. */
 export function tideWindow(date: string): { from: string; to: string } {
   return { from: atTime(addDays(date, -1), '21:00'), to: atTime(addDays(date, 1), '03:00') };
 }
@@ -40,7 +40,7 @@ export function computeTide(series: SwellHour[], date: string): TideInfo {
   const max = Math.max(...ys);
   const range = max - min;
 
-  // Série plate ou quasi plate (capteur mort, marée nulle) : neutre plutôt que 'low' partout, et pas d'événements.
+  // Flat or nearly flat series (dead sensor, no tide): neutral rather than 'low' everywhere, and no events.
   if (range < 0.05) {
     pts.forEach((p, i) => states.set(p.time, { state: 'mid', trend: trendAt(i) }));
     return { states, events };
@@ -61,7 +61,7 @@ export function computeTide(series: SwellHour[], date: string): TideInfo {
     const isHigh = y1 > y0 && y1 >= y2;
     const isLow = y1 < y0 && y1 <= y2;
     if (!isHigh && !isLow) continue;
-    // sommet de la parabole passant par (−1, y0), (0, y1), (1, y2)
+    // vertex of the parabola through (−1, y0), (0, y1), (1, y2)
     const denom = y0 - 2 * y1 + y2;
     const offsetH = denom === 0 ? 0 : Math.max(-0.5, Math.min(0.5, (0.5 * (y0 - y2)) / denom));
     const heightM = y1 - 0.25 * (y0 - y2) * offsetH;

@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { energyKJ, rateLikeSurfForecast, starBase, starGlyphs, windStarFactor, windState, type WindState } from '../../src/engine/rating';
 
 /**
- * 78 lignes relevées sur surf-forecast.com le 16/09/2026 (tables « hourly » et « 16 day ») :
- * [spot, hauteur m, période s, énergie kJ, vent km/h, état du vent, note affichée].
- * Muizenberg, Long Beach (Kommetjie) et le wavefinder Cape Town pour le bas de l'échelle et les
- * vents forts ; Papatowai (NZ) et Cathedral Rock (AU) pour les notes 4..9.
+ * 78 rows recorded from surf-forecast.com on 2026-09-16 (the "hourly" and "16 day" tables):
+ * [spot, height m, period s, energy kJ, wind km/h, wind state, displayed rating].
+ * Muizenberg, Long Beach (Kommetjie) and the Cape Town wavefinder for the low end of the scale and
+ * strong winds; Papatowai (NZ) and Cathedral Rock (AU) for ratings 4..9.
  */
 const ROWS: ReadonlyArray<readonly [string, number, number, number, number, WindState, number]> = [
   ['papatowai', 2.5, 14, 2191, 10, 'cross-off', 4],
@@ -90,8 +90,8 @@ const ROWS: ReadonlyArray<readonly [string, number, number, number, number, Wind
 
 const KMH = 1.852;
 
-describe('rating: reproduction des notes surf-forecast', () => {
-  it('reste à ±1 étoile sur au moins 95 % des lignes et tombe juste sur au moins 65 %', () => {
+describe('rating: reproducing surf-forecast\'s own ratings', () => {
+  it('stays within ±1 star on at least 95% of the rows and lands exactly on at least 65%', () => {
     let exact = 0;
     let within1 = 0;
     for (const [, h, , , kmh, state, obs] of ROWS) {
@@ -105,7 +105,7 @@ describe('rating: reproduction des notes surf-forecast', () => {
     expect(exact / ROWS.length).toBeGreaterThanOrEqual(0.65);
   });
 
-  it('énergie ≈ 2·H²·T² comme la colonne kJ du site (±25 % : hauteurs et périodes arrondies)', () => {
+  it('energy ≈ 2·H²·T², like the site\'s kJ column (±25%: heights and periods are rounded)', () => {
     let ok = 0;
     for (const [, h, t, e] of ROWS) {
       if (Math.abs(energyKJ(h, t) - e) / e <= 0.25) ok++;
@@ -113,53 +113,53 @@ describe('rating: reproduction des notes surf-forecast', () => {
     expect(ok / ROWS.length).toBeGreaterThanOrEqual(0.85);
   });
 
-  it('onshore et cross-onshore tombent à 0 dès 20 km/h, quelle que soit la houle (Cathedral Rock 4,5 m 18 s → 0)', () => {
+  it('onshore and cross-onshore drop to 0 from 20 km/h on, whatever the swell (Cathedral Rock 4.5 m 18 s → 0)', () => {
     expect(windStarFactor('on', 20 / KMH)).toBe(0);
     expect(windStarFactor('cross-on', 20 / KMH)).toBe(0);
     expect(rateLikeSurfForecast({ heightM: 4.5, periodS: 18, windKt: 20 / KMH, windFromDeg: 0, facingDeg: 0 }).stars).toBe(0);
   });
 
-  it('offshore ne coûte rien jusqu’à 30 km/h', () => {
+  it('offshore costs nothing up to 30 km/h', () => {
     expect(windStarFactor('off', 30 / KMH)).toBe(1);
     expect(windStarFactor('off', 10 / KMH)).toBe(1);
   });
 });
 
 describe('windState', () => {
-  const facing = 300; // Long Beach : offshore = 120 (ESE)
-  it('découpe en secteurs de 45° autour de la direction offshore', () => {
+  const facing = 300; // Long Beach: offshore = 120 (ESE)
+  it('cuts 45° sectors around the offshore direction', () => {
     expect(windState(120, facing, 10)).toBe('off');
-    expect(windState(135, facing, 10)).toBe('off'); // SE, 15° de l’offshore
+    expect(windState(135, facing, 10)).toBe('off'); // SE, 15° off the offshore direction
     expect(windState(165, facing, 10)).toBe('cross-off'); // 45°
     expect(windState(210, facing, 10)).toBe('cross'); // 90°
     expect(windState(255, facing, 10)).toBe('cross-on'); // 135°
-    expect(windState(300, facing, 10)).toBe('on'); // plein onshore
+    expect(windState(300, facing, 10)).toBe('on'); // fully onshore
   });
-  it('glassy sous 5 km/h quel que soit l’angle', () => {
+  it('glassy under 5 km/h whatever the angle', () => {
     expect(windState(300, facing, 2)).toBe('glassy');
     expect(windState(300, facing, 3)).toBe('on');
   });
 });
 
 describe('rateLikeSurfForecast', () => {
-  it('Muizenberg 16/09 5h : 2,1 m 14 s, 25 km/h SSE cross-on → 0 étoile, blanche', () => {
+  it('Muizenberg 16/09 5am: 2.1 m 14 s, 25 km/h SSE cross-on → 0 stars, white', () => {
     const r = rateLikeSurfForecast({ heightM: 2.1, periodS: 14, windKt: 25 / KMH, windFromDeg: 157, facingDeg: 150 });
     expect(r.stars).toBe(0);
     expect(r.clean).toBe(false);
   });
-  it('Papatowai 18/09 15h : 4,5 m 15 s, 20 km/h offshore → 8 étoiles, or', () => {
+  it('Papatowai 18/09 3pm: 4.5 m 15 s, 20 km/h offshore → 8 stars, gold', () => {
     const r = rateLikeSurfForecast({ heightM: 4.5, periodS: 15, windKt: 20 / KMH, windFromDeg: 270, facingDeg: 90 });
     expect(r.stars).toBe(8);
     expect(r.clean).toBe(true);
     expect(r.state).toBe('off');
   });
-  it('plat = 0 étoile', () => {
+  it('flat = 0 stars', () => {
     expect(rateLikeSurfForecast({ heightM: 0.2, periodS: 12, windKt: 0, windFromDeg: 0, facingDeg: 0 }).stars).toBe(0);
   });
 });
 
 describe('starGlyphs', () => {
-  it('pleines quand c’est propre, creuses sous l’onshore, un point à 0', () => {
+  it('full when it is clean, hollow under onshore wind, a dot at 0', () => {
     expect(starGlyphs({ stars: 4, clean: true })).toBe('⭐⭐⭐⭐');
     expect(starGlyphs({ stars: 3, clean: false })).toBe('☆☆☆');
     expect(starGlyphs({ stars: 0, clean: true })).toBe('·');

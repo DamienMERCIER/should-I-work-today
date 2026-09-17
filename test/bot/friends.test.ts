@@ -38,23 +38,23 @@ describe('renderFriends', () => {
       }),
     ];
     expect(renderFriends(profiles, SPOTS, 20)).toEqual([[
-      '👥 <b>Amis</b> · 3 inscrits · 1 actif · 1 en pause · 1 a bloqué le bot',
+      '👥 <b>Friends</b> · 3 signed up · 1 active · 1 paused · 1 blocked the bot',
       '',
-      '1. Ivan Petrov (@ivan) · 🇬🇧 · Muizenberg · 9:00–18:00 · depuis le 16/09',
-      '2. Olga (@olga) · 🇷🇺 · Muizenberg · 9:00–18:00 · depuis le 17/09 · ⏸️ en pause',
-      '3. id 3 · 🇬🇧 · près de Long Beach · 7:30–16:30 · depuis le 17/09 · 🚫 a bloqué le bot',
+      '1. Ivan Petrov (@ivan) · 🇬🇧 · Muizenberg · 9:00–18:00 · since 16/09',
+      '2. Olga (@olga) · 🇷🇺 · Muizenberg · 9:00–18:00 · since 17/09 · ⏸️ paused',
+      '3. id 3 · 🇬🇧 · near Long Beach · 7:30–16:30 · since 17/09 · 🚫 blocked the bot',
     ].join('\n')]);
   });
 
   it('counts a friend switched off before the reason was kept as paused', () => {
     const [text] = renderFriends([friend(1, { active: false }), friend(2, { active: false }), friend(3)], SPOTS, 20);
-    expect(text.split('\n')[0]).toBe('👥 <b>Amis</b> · 3 inscrits · 1 actif · 2 en pause');
-    expect(text).toContain('1. id 1 · 🇬🇧 · Muizenberg · 9:00–18:00 · depuis le 16/09 · ⏸️ en pause');
+    expect(text.split('\n')[0]).toBe('👥 <b>Friends</b> · 3 signed up · 1 active · 2 paused');
+    expect(text).toContain('1. id 1 · 🇬🇧 · Muizenberg · 9:00–18:00 · since 16/09 · ⏸️ paused');
   });
 
   it('says out of coverage for a position with no spot within the radius, and escapes names for Telegram HTML', () => {
     const [text] = renderFriends([friend(1, { name: '<b>Bob</b> & co', location: { lat: -26.2, lon: 28.04, source: 'custom' } })], SPOTS, 20);
-    expect(text).toContain('1. &lt;b&gt;Bob&lt;/b&gt; &amp; co (id 1) · 🇬🇧 · hors couverture · 9:00–18:00');
+    expect(text).toContain('1. &lt;b&gt;Bob&lt;/b&gt; &amp; co (id 1) · 🇬🇧 · out of range · 9:00–18:00');
   });
 
   it('adds the id to a name without a username — two friends can pick the same name', () => {
@@ -64,7 +64,7 @@ describe('renderFriends', () => {
   });
 
   it('still heads the list when nobody is in', () => {
-    expect(renderFriends([], SPOTS, 20)).toEqual(['👥 <b>Amis</b> · 0 inscrit · 0 actif']);
+    expect(renderFriends([], SPOTS, 20)).toEqual(['👥 <b>Friends</b> · 0 signed up · 0 active']);
   });
 
   it('splits a long list into messages under 4,000 characters, lines in order, the counts only once', () => {

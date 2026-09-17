@@ -17,7 +17,7 @@ export interface FetchBreaksOptions extends RetryOptions {
 
 export interface BreakResult extends ParsedBreak {
   slug: string;
-  /** l'orientation que le site donne au spot, lue dans le tableau de vent de la même page ; `null` si le vent ne tranche pas */
+  /** the facing the site gives the spot, read from the wind table on that same page; `null` if the wind doesn't decide it */
   windFacing: WindFacing | null;
 }
 

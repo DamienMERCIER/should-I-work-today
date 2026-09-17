@@ -68,7 +68,7 @@ describe('validateSpots', () => {
     expect(bad({ verified: 'yes' })).toEqual(['spots[0].verified: expected boolean']);
   });
   it('accepts a 13-character short label whether the spot is verified or not', () => {
-    // la limite de 11 n'existait que pour laisser place au préfixe ≈, qui ne s'affiche plus
+    // the 11-character limit only existed to leave room for the ≈ prefix, which is no longer shown
     expect(bad({ short: 'Thirteen char', verified: false })).toEqual([]);
     expect(bad({ short: 'Thirteen char', verified: true })).toEqual([]);
     expect(bad({ short: 'Fourteen chars', verified: false })).toEqual(['spots[0].short: expected ≤ 13 characters']);

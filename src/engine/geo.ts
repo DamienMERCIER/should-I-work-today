@@ -12,10 +12,10 @@ export function haversineKm(a: LatLon, b: LatLon): number {
 }
 
 /**
- * Point d'arrivée à `distanceKm` de `(lat, lon)` le long du grand cercle de cap `bearingDeg`
- * (0 = N, 90 = E). Inverse géodésique de `haversineKm` (formule sphérique standard). Utilisé par
- * l'import monde (`scripts/import-spots.ts`, `src/data/world.ts`) pour l'anneau d'élévation et pour
- * placer le `swellRef` d'une région synthétique au large (§`world-import.md`).
+ * Destination point at `distanceKm` from `(lat, lon)` along the great circle on bearing `bearingDeg`
+ * (0 = N, 90 = E). Geodesic inverse of `haversineKm` (standard spherical formula). Used by the world
+ * import (`scripts/import-spots.ts`, `src/data/world.ts`) for the elevation ring and to place the
+ * `swellRef` of a synthetic offshore region (§`world-import.md`).
  */
 export function destinationPoint(lat: number, lon: number, bearingDeg: number, distanceKm: number): LatLon {
   const delta = distanceKm / EARTH_RADIUS_KM;
@@ -31,13 +31,13 @@ export function norm360(deg: number): number {
   return ((deg % 360) + 360) % 360;
 }
 
-/** Plus petit angle entre deux directions, 0..180. */
+/** Smallest angle between two directions, 0..180. */
 export function angularDistance(a: number, b: number): number {
   const d = Math.abs(norm360(a) - norm360(b));
   return d > 180 ? 360 - d : d;
 }
 
-/** x est-il dans l'arc [from → to] parcouru dans le sens horaire ? */
+/** Is x within the arc [from → to] traveled clockwise? */
 export function inArc(x: number, from: number, to: number): boolean {
   const v = norm360(x);
   const f = norm360(from);

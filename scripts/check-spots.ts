@@ -55,5 +55,5 @@ if (errors.length > 0) {
   console.error(errors.join('\n'));
   process.exit(1);
 }
-console.log(`spots.json OK — ${curatedSpots.length} spots, ${regionsJson.length} régions`);
+console.log(`spots.json OK — ${curatedSpots.length} spots, ${regionsJson.length} regions`);
 console.log(`spots-world.json OK — ${worldSpots.length} world spots, ${syntheticRegions.size} synthetic region(s) beyond the curated ${curatedRegions.length}`);

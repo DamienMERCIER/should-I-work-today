@@ -41,7 +41,7 @@ describe('hourRuler', () => {
   ])('aligns every label it writes on its own hour column, and never exceeds the sparkline (%s)', (_n, len) => {
     const hours = Array.from({ length: len }, (_, i) => 6 + i);
     const ruler = hourRuler(hours);
-    expect(ruler.length).toBeLessThanOrEqual(hours.length + 2); // un repère à 2 chiffres sur la dernière colonne dépasse
+    expect(ruler.length).toBeLessThanOrEqual(hours.length + 2); // a 2-digit marker on the last column overflows
     for (const m of ruler.matchAll(/\d+/g)) {
       expect(hours[m.index!]).toBe(Number(m[0]));
     }
@@ -82,12 +82,12 @@ describe('chartHours', () => {
     hours.forEach((h) => expect(h).toBeLessThanOrEqual(20));
   });
   it.each([7, 8, 9, 10, 11, 12, 13, 14])('never overhangs its sparkline by more than a closing label (%i h)', (n) => {
-    // un label à deux chiffres sur le dernier index labellisé débordait la grille
+    // a two-digit label on the last labeled index used to overflow the grid
     const hours = Array.from({ length: n }, (_, i) => 6 + i);
     expect(hourRuler(hours).length).toBeLessThanOrEqual(hours.length + 2);
   });
   it('always writes the closing label, even when it overhangs the last column', () => {
-    // 10 h (hiver au Cap : 8h→17h) : "17" tombe à l'index 9, il déborderait la grille
+    // 10 h (winter in Cape Town: 8h→17h): "17" lands at index 9, it would overflow the grid
     expect(hourRuler([8, 9, 10, 11, 12, 13, 14, 15, 16, 17])).toBe('8  11 14 17');
     expect(hourRuler([6, 7, 8, 9, 10, 11, 12])).toBe('6  9  12');
   });

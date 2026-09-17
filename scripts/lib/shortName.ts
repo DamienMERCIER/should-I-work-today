@@ -17,15 +17,15 @@ export function shortSlug(short: string): string {
 
 const stripDiacritics = (s: string): string => s.normalize('NFKD').replace(/[̀-ͯ]/g, '');
 /**
- * Coupe en préférant une frontière de mot : « Aberwystwyth Beach » donne « Aberwystwyth », pas
- * « Aberwystwyt ». On ne recule jusqu'au séparateur que s'il reste au moins 4 caractères, sinon
- * un nom dont le premier mot est très court deviendrait illisible.
+ * Cuts preferring a word boundary: "Aberwystwyth Beach" gives "Aberwystwyth", not
+ * "Aberwystwyt". We only back up to the separator when at least 4 characters remain, otherwise
+ * a name whose first word is very short would become unreadable.
  */
 const truncate = (s: string, maxLen: number): string => {
   const hard = s.slice(0, Math.max(0, maxLen)).trimEnd();
   if (hard.length === s.trimEnd().length) return hard;
   const cut = Math.max(hard.lastIndexOf(' '), hard.lastIndexOf('-'), hard.lastIndexOf('\u2013'), hard.lastIndexOf('/'));
-  // on retire aussi le séparateur resté en queue : « Kommetjie – » plutôt que « Kommetjie »
+  // also strips the separator left trailing: "Kommetjie –" rather than "Kommetjie"
   return (cut >= 4 ? hard.slice(0, cut) : hard).replace(/[\s\-\u2013/]+$/, '');
 };
 

@@ -55,12 +55,12 @@ describe('urls', () => {
     const u = forecastUrl([MUIZ], 2);
     expect(u.startsWith('https://api.open-meteo.com/v1/forecast?')).toBe(true);
     expect(u).toContain('wind_speed_unit=kn');
-    // `nearest` et pas `sea` : une cellule forcée en pleine mer lisait le vent jusqu'à 10 km du
-    // spot, et sous-estimait surtout les rafales (45 contre 58 km/h à Kommetjie).
+    // `nearest`, not `sea`: a cell forced out at open sea read the wind from up to 10 km away from the
+    // spot, and above all badly underestimated gusts (45 vs 58 km/h at Kommetjie).
     expect(u).toContain('cell_selection=nearest');
     expect(u).not.toContain('cell_selection=sea');
-    // GFS, le modèle dont surf-forecast tire son vent : le 16/09/2026 il tombait à 4-5 km/h du site sur
-    // Long Beach et Muizenberg, quand le modèle par défaut sous-estimait de 10 km/h sur les deux.
+    // GFS, the model surf-forecast draws its wind from: on 2026-09-16 it was off by only 4-5 km/h from
+    // the site at Long Beach and Muizenberg, while the default model underestimated by 10 km/h on both.
     expect(u).toContain('models=gfs_seamless');
     expect(u).toContain('daily=sunrise%2Csunset%2Ctemperature_2m_max%2Ctemperature_2m_min%2Cprecipitation_sum');
     expect(u).toContain('forecast_days=2');

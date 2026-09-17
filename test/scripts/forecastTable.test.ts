@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { parseForecastTable } from '../../scripts/lib/forecastTable';
 
-// L'import lit ~8 000 pages tierces sans surveillance : une page malformée ou piégée ne doit ni faire
-// exploser la mémoire ni glisser autre chose qu'un état de vent connu.
+// The import reads ~8 000 third-party pages unsupervised: a malformed or booby-trapped page must
+// neither blow up memory nor slip through anything other than a known wind state.
 const table = (dayCell: string, states: string[]): string => `
 <p>Issued: <b>1 am 16 Sep 2026</b></p><table>
 <tr><th></th>${dayCell}</tr>

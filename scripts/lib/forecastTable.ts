@@ -1,14 +1,14 @@
 /**
- * La table « hourly » de `/breaks/<slug>/forecasts/latest` sur surf-forecast.com : note, houle, énergie,
- * vent et état du vent, créneau par créneau. Lue par le script de comparaison (`npm run compare:sf`) et
- * par l'import des spots du monde, qui en déduit l'orientation de chaque spot (§windFacing.ts).
+ * The "hourly" table from `/breaks/<slug>/forecasts/latest` on surf-forecast.com: rating, swell, energy,
+ * wind and wind state, time slot by time slot. Read by the comparison script (`npm run compare:sf`) and
+ * by the world spot import, which derives each spot's facing from it (§windFacing.ts).
  */
 import type { WindState } from '../../src/engine/rating';
 
 export interface SfSlot {
-  /** 'YYYY-MM-DDTHH:00', heure locale du spot */
+  /** 'YYYY-MM-DDTHH:00', the spot's local time */
   time: string;
-  /** null quand le site affiche « ! » (très gros / dangereux) */
+  /** null when the site shows "!" (very big / dangerous) */
   rating: number | null;
   heightM: number;
   dir: string;
@@ -51,7 +51,7 @@ const STATE_MAP: Record<string, WindState> = {
   'off-shore': 'off', 'on-shore': 'on', 'cross-shore': 'cross', 'cross-offshore': 'cross-off', 'cross-onshore': 'cross-on',
 };
 
-/** Date d'émission « Issued: 7 am 16 Sep 2026 » → { day, month (0..11), year }. */
+/** Issue date "Issued: 7 am 16 Sep 2026" → { day, month (0..11), year }. */
 function issuedDate(html: string): { day: number; month: number; year: number } | null {
   const m = /Issued:[\s\S]{0,80}?(\d{1,2})\s*(?:am|pm)\s+(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})/i.exec(html);
   if (!m) return null;
@@ -67,7 +67,7 @@ export function parseForecastTable(html: string, fallbackNow = new Date()): SfSl
   const timeRow = rows.find((r) => r.filter((c) => /^\d{1,2}\s*(am|pm)$/i.test(c.text)).length >= 2);
   if (!dayRow || !timeRow) return [];
 
-  // colonnes horaires
+  // hour columns
   const times = timeRow.filter((c) => /^\d{1,2}\s*(am|pm)$/i.test(c.text)).map((c) => {
     const m = /^(\d{1,2})\s*(am|pm)$/i.exec(c.text)!;
     let h = Number(m[1]) % 12;
@@ -75,7 +75,7 @@ export function parseForecastTable(html: string, fallbackNow = new Date()): SfSl
     return h;
   });
 
-  // colonnes → jour du mois, en déroulant les colspan de la ligne des jours
+  // columns → day of month, by unrolling the colspans of the day row
   const issued = issuedDate(html);
   let month = issued?.month ?? fallbackNow.getMonth();
   let year = issued?.year ?? fallbackNow.getFullYear();
@@ -90,7 +90,7 @@ export function parseForecastTable(html: string, fallbackNow = new Date()): SfSl
       if (month > 11) { month = 0; year += 1; }
     }
     prevDay = day;
-    // borné par les colonnes horaires : un colspan de plusieurs millions (page malformée ou piégée) ne se déroule pas
+    // bounded by the hour columns: a colspan of several million (a malformed or booby-trapped page) doesn't get unrolled
     for (let i = 0; i < c.colspan && dates.length < times.length; i++) dates.push(`${year}-${pad2(month + 1)}-${pad2(day)}`);
   }
   const n = Math.min(times.length, dates.length);
@@ -113,7 +113,7 @@ export function parseForecastTable(html: string, fallbackNow = new Date()): SfSl
     const w = /^(\d+(?:\.\d+)?)\s+([NESW]{1,3})\s+(\d+)/i.exec(wave[i]);
     const v = /^(\d+)\s+([NESW]{1,3})/i.exec(wind[i]);
     const stateKey = state[i].toLowerCase().replace(/\s+/g, '-');
-    // `Object.hasOwn` : « constructor » ou « __proto__ » ne sont pas des états de vent, même s'ils existent sur tout objet
+    // `Object.hasOwn`: "constructor" or "__proto__" are not wind states, even though they exist on every object
     const st = Object.hasOwn(STATE_MAP, stateKey) ? STATE_MAP[stateKey] : undefined;
     if (!w || !v || !st) continue;
     const r = rating[i].trim();

@@ -10,6 +10,9 @@ coverage/
 .superpowers/import-spots-progress.json
 *.progress.json
 
-# npm run compare:sf — le CSV s'accumule jour après jour en local, les pages sauvées servent au débogage du parseur
+# npm run compare:sf — the CSV piles up locally day after day, and the saved pages serve to debug the parser
 data/sf-compare.csv
 tmp/
+
+# your own Cloudflare config: same as wrangler.toml, with your KV namespace id
+wrangler.local.toml

@@ -11,8 +11,8 @@ export const GOLDEN_SPOTS: Spot[] = [KOMMETJIE_LONG_BEACH, MUIZENBERG];
 
 export function goldenSwell(): SwellHour[] {
   const tide = cosineTide(GOLDEN_DATE);
-  // 3,5 m : note de base surf-forecast 5,92 → 6★ par vent propre, exactement le seuil `epic`.
-  // periodS 10.2 = période moyenne (swell_wave_period) ; peakPeriodS 13 = période pic (appel gwam séparé).
+  // 3,5 m: surf-forecast base rating 5,92 → 6★ in clean wind, exactly the `epic` threshold.
+  // periodS 10.2 = mean period (swell_wave_period); peakPeriodS 13 = peak period (separate gwam call).
   return swellSeries('2026-09-15T00:00', '2026-09-17T23:00', (time) => ({
     primary: { heightM: 3.5, periodS: 10.2, directionDeg: 225 }, secondary: NO_SWELL, seaLevelM: tide(time),
     peakPeriodS: 13,
@@ -34,8 +34,8 @@ export function goldenWind(date = GOLDEN_DATE): WindHour[] {
 }
 
 /**
- * 🟢 epic : Kommetjie Long Beach 07:00→12:00, 6★ or (le SE y est offshore) ; Muizenberg à 2☆ blanches de
- * 07:00 à 09:00 (le même SE y est cross-onshore), sans fenêtre, donc pas de 🥈.
+ * 🟢 epic: Kommetjie Long Beach 07:00→12:00, 6★ gold (the SE is offshore there); Muizenberg at 2☆ white
+ * from 07:00 to 09:00 (the same SE is cross-onshore there), no window, so no 🥈.
  */
 export function goldenReport(overrides: Partial<Report> = {}): Report {
   const swell = goldenSwell();
@@ -58,10 +58,10 @@ export function goldenReport(overrides: Partial<Report> = {}): Report {
 }
 
 /**
- * Plusieurs jours de données pour la vue semaine : houle 225° d'une hauteur par jour (`heightByDay(i)`,
- * i = 0 le jour `start`), vent de SE régulier à 8 kt — offshore propre à Kommetjie, cross-onshore à
- * Muizenberg. Le verdict d'un jour ne dépend donc que de sa hauteur : 3,5 m → 6★, 2,3 m → 4★,
- * 1,2 m → 3★, 0,2 m → 0★ à Kommetjie. Couvre la veille de `start` (marée J−3 h) et `days` jours.
+ * Several days of data for the week view: 225° swell with one height per day (`heightByDay(i)`,
+ * i = 0 being `start`'s day), a steady SE wind at 8 kt — clean offshore at Kommetjie, cross-onshore at
+ * Muizenberg. A day's verdict therefore only depends on its height: 3,5 m → 6★, 2,3 m → 4★,
+ * 1,2 m → 3★, 0,2 m → 0★ at Kommetjie. Covers the day before `start` (tide J−3 h) and `days` days.
  */
 export function weekData(start = GOLDEN_DATE, days = 9, heightByDay: (i: number) => number = () => 3.5): { swell: SwellHour[]; wind: WindHour[]; daily: DailySun[] } {
   const from = `${addDays(start, -1)}T00:00`;

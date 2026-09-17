@@ -33,7 +33,7 @@ function setup(opts: { now: string; blocked?: number[]; failMarine?: boolean; pr
   return { deps, store, kv, sent, seed, omCalls: om.calls };
 }
 
-// 4 : un ami resté entre les deux questions de l'ancien onboarding — il reçoit désormais le verdict
+// 4: a friend stuck between the two questions of the old onboarding — they now get the verdict
 const LEGACY_MID_ONBOARDING = { ...ready(4), level: 'beginner', onboarding: 'board' } as unknown as Profile;
 const ALL = [ready(1), ready(2, { lang: 'ru' }), ready(3, { active: false }), LEGACY_MID_ONBOARDING, ready(5, { location: JOBURG })];
 
@@ -43,7 +43,7 @@ describe('runEvening', () => {
     await seed(ALL);
     const result = await runEvening(deps);
     expect(result).toEqual({ skipped: false, sent: 4, failed: 0, date: '2026-09-16' });
-    expect(omCalls).toHaveLength(3); // une région (marine + forecast + période pic), le profil de Johannesburg est loin de tout
+    expect(omCalls).toHaveLength(3); // one region (marine + forecast + peak period), the Johannesburg profile is far from everything
     expect(sent().map((m) => m.chat_id)).toEqual([1, 2, 4, 5]);
     expect(sent()[0].text.startsWith("🟢 <b>DON'T GO TO WORK TOMORROW</b> (Wed 16 Sept)")).toBe(true);
     expect(sent()[1].text).toContain('ЗАВТРА НЕ ИДИ НА РАБОТУ');
@@ -77,7 +77,7 @@ describe('runEvening', () => {
       const result = await runEvening(deps);
       expect(result).toMatchObject({ sent: 1, failed: 1 });
       expect(await store.getProfile(2)).toMatchObject({ active: false, inactiveReason: 'blocked' });
-      // les deux amis partagent le même rapport calculé : marquer l'envoi de l'un ne marque pas l'autre
+      // both friends share the same computed report: marking one's send doesn't mark the other's
       const stored = await store.getReports('2026-09-16');
       expect(stored['1'].sentAt).toBe('2026-09-15T19:00');
       expect(stored['2'].sentAt).toBeUndefined();
@@ -159,7 +159,7 @@ describe('runMorning', () => {
     expect(sent().map((m) => m.chat_id)).toEqual([1]);
     expect(sent()[0].text).toBe("⚠️ No data this morning — last night's verdict stands: 🟢 Kommetjie – Long Beach 7:00–12:00");
     expect((await store.getReports('2026-09-16'))['1'].mode).toBe('evening');
-    // un envoi a eu lieu (chat 1) : le run fait bien ses deux écritures (première + sentAt).
+    // a send happened (chat 1): the run does perform both its writes (first + sentAt).
     expect(kv.writes.filter((k) => k === 'reports:2026-09-16').length - writesBeforeRun).toBe(2);
   });
   it('treats a missing evening report as 🔴', async () => {
@@ -171,7 +171,7 @@ describe('runMorning', () => {
   it('writes reports only once when nothing is sent (silent run: Johannesburg is out of coverage evening and morning)', async () => {
     const { deps, kv, sent, seed } = setup({ now: '2026-09-16T06:00' });
     await seed([ready(5, { location: JOBURG })]);
-    // pas de rapport de la veille stocké : équivalent à un 🔴 pour compareReports, tout comme le hors-couverture du matin.
+    // no evening report stored: equivalent to a 🔴 for compareReports, just like the morning's out-of-coverage.
     const result = await runMorning(deps);
     expect(result.sent).toBe(0);
     expect(sent()).toHaveLength(0);
@@ -192,18 +192,18 @@ describe('budget guard', () => {
 
   it('defers the newest profiles by createdAt when the external budget is exceeded, and notifies the admin', async () => {
     const { deps, sent, seed } = setup({ now: '2026-09-15T19:00' });
-    // 3 (une région, Muizenberg : marine + forecast + période pic) + N envois ; dépasse 47 (50 moins la marge des alertes) pour N > 44.
+    // 3 (one region, Muizenberg: marine + forecast + peak period) + N sends; exceeds 47 (50 minus the alert margin) for N > 44.
     await seed(friends(48));
     const result = await runEvening(deps);
     expect(result.sent).toBe(44);
     expect(result.failed).toBe(0);
-    // les 4 profils les plus récents (chatId 45 à 48) sont reportés.
+    // the 4 most recent profiles (chatId 45 to 48) are deferred.
     for (const chatId of [45, 46, 47, 48]) expect(sent().some((m) => m.chat_id === chatId)).toBe(false);
-    expect(sent().find((m) => m.chat_id === 999)?.text).toContain('4 profil(s) reportés');
+    expect(sent().find((m) => m.chat_id === 999)?.text).toContain('4 profile(s) deferred');
   });
 
   it('shares messages only between friends with the same language, place, hours and bar — a night worker or a picky friend still gets their own verdict', async () => {
-    // 2,3 m toute la journée : 4★, bon sans être epic — les horaires et le seuil décident donc du verdict
+    // 2,3 m all day: 4★, good without being epic — so work hours and the threshold are what decide the verdict
     const { deps, sent, seed } = setup({ now: '2026-09-15T19:00', data: weekData('2026-09-16', 2, () => 2.3) });
     await seed([ready(1), ready(2), ready(3, { workHours: { start: '19:00', end: '23:00' } }), ready(4, { lang: 'ru' }), ready(5, { minStars: 6 })]);
     await runEvening(deps);
@@ -212,7 +212,7 @@ describe('budget guard', () => {
     expect(texts.get(1)?.startsWith('🟢')).toBe(true);
     expect(texts.get(3)?.startsWith('🟢')).toBe(false);
     expect(texts.get(4)).toContain('ЗАВТРА НЕ ИДИ НА РАБОТУ');
-    // même lieu, mêmes horaires, mais il ne se lève que pour 6★ : son verdict et son message sont les siens
+    // same place, same hours, but they only get up for 6★: their verdict and message are their own
     expect(texts.get(5)?.startsWith('🔴')).toBe(true);
     expect(texts.get(5)).toContain('Nothing ≥ 6★ within 20 km.');
   });
@@ -221,29 +221,29 @@ describe('budget guard', () => {
 describe('estimateBudget', () => {
   it('counts only external requests — 3 per region, 2 per place out of coverage, 1 send per profile — since KV has a limit of its own', () => {
     const { deps } = setup({ now: '2026-09-15T19:00' });
-    // 3×1 région (marine + forecast + période pic) + 2 envois
+    // 3×1 region (marine + forecast + peak period) + 2 sends
     expect(estimateBudget([ready(1), ready(2)], deps)).toBe(5);
-    // + 2 appels bruts pour Johannesburg, une seule fois pour deux amis au même endroit, + 3 envois
+    // + 2 raw calls for Johannesburg, only once for two friends at the same place, + 3 sends
     expect(estimateBudget([ready(1), ready(5, { location: JOBURG }), ready(6, { location: JOBURG })], deps)).toBe(8);
   });
 });
 
 describe('runAlert — noon, a big day two or three days out', () => {
-  // lun 21 → dim 27 : 2,3 / 1,2 / 3,5 / 0,2 m, puis on recommence ; vent de SE 8 kt partout
+  // Mon 21 → Sun 27: 2,3 / 1,2 / 3,5 / 0,2 m, then it repeats; SE wind at 8 kt everywhere
   const week = () => weekData('2026-09-21', 7, (i) => [2.3, 1.2, 3.5, 0.2][i % 4]);
 
   it('tells each active friend near a spot about an epic day in two or three days, from one load per region, and only once', async () => {
     const { deps, kv, sent, seed, omCalls } = setup({ now: '2026-09-21T12:00', data: week() });
-    const inland = { lat: -33.9, lon: 18.87, source: 'custom' as const }; // à 25 km de la côte, aucun spot dans le rayon
+    const inland = { lat: -33.9, lon: 18.87, source: 'custom' as const }; // 25 km from the coast, no spot within the radius
     await seed([ready(1), ready(2, { lang: 'ru' }), ready(3, { active: false }), ready(5, { location: JOBURG }), ready(7, { location: inland })]);
     expect(await runAlert(deps)).toEqual({ skipped: false, sent: 2, failed: 0, date: '2026-09-21' });
-    // mer 23 (J+2) : 3,5 m, 6★ toute la journée → alerte ; jeu 24 (J+3) : 0,2 m → rien ; hors couverture : ni alerte, ni appel
+    // Wed 23 (J+2): 3,5 m, 6★ all day → alert; Thu 24 (J+3): 0,2 m → nothing; out of coverage: neither alert nor call
     expect(sent().map((m) => m.chat_id)).toEqual([1, 2]);
     expect(sent()[0].text.startsWith('🔥 <b>BIG DAY AHEAD</b> (Wed 23 Sept)\n🏄 Kommetjie – Long Beach · 7:00–18:00 · ⭐⭐⭐⭐⭐⭐')).toBe(true);
     expect(sent()[0].text).not.toContain('24 Sept');
     expect(sent()[1].text).toContain('БУДЕТ ЭПИЧНО');
     expect(omCalls).toHaveLength(3);
-    // J+3 et sa marée du lendemain matin : cinq jours de prévision, aujourd'hui compris
+    // J+3 and its tide the following morning: five days of forecast, today included
     expect(omCalls.every((c) => c.url.includes('forecast_days=5'))).toBe(true);
     expect(kv.data.get('alerted:2026-09-23:1')?.ttl).toBe(5 * 24 * 3600);
     expect(kv.data.has('run:2026-09-21:alert')).toBe(true);
@@ -253,10 +253,10 @@ describe('runAlert — noon, a big day two or three days out', () => {
   it('never announces a date twice: the next noon, only a friend who has not heard about it yet does', async () => {
     const { deps, seed, sent } = setup({ now: '2026-09-20T12:00', data: week() });
     await seed([ready(1)]);
-    await runAlert(deps); // dim 20 : mer 23 est à J+3
+    await runAlert(deps); // Sun 20: Wed 23 is J+3
     expect(sent().map((m) => m.chat_id)).toEqual([1]);
     await seed([ready(6, { createdAt: '2026-09-21T08:00' })]);
-    deps.now = () => '2026-09-21T12:00'; // lun 21 : mer 23 est à J+2
+    deps.now = () => '2026-09-21T12:00'; // Mon 21: Wed 23 is J+2
     expect(await runAlert(deps)).toMatchObject({ sent: 1 });
     expect(sent().map((m) => m.chat_id)).toEqual([1, 6]);
   });
@@ -305,7 +305,7 @@ describe('runAlert — noon, a big day two or three days out', () => {
 
 describe('runWeek — Sunday evening, the week ahead', () => {
   const SUNDAY = '2026-09-20T19:05';
-  // lun 21 → dim 27 : 2,3 / 1,2 / 3,5 / 0,2 m, puis on recommence ; vent de SE 8 kt partout
+  // Mon 21 → Sun 27: 2,3 / 1,2 / 3,5 / 0,2 m, then it repeats; SE wind at 8 kt everywhere
   const week = () => weekData('2026-09-21', 7, (i) => [2.3, 1.2, 3.5, 0.2][i % 4]);
 
   it('friends in the same place but with other work hours each get their own week — shared work never mixes them up', async () => {
@@ -324,7 +324,7 @@ describe('runWeek — Sunday evening, the week ahead', () => {
     await seed([ready(1), ready(2, { lang: 'ru' }), ready(3, { active: false }), ready(5, { location: JOBURG })]);
     const result = await runWeek(deps);
     expect(result).toEqual({ skipped: false, sent: 2, failed: 0, date: '2026-09-21' });
-    // Johannesburg est loin de tout spot : pas de semaine vide pour lui
+    // Johannesburg is far from every spot: no empty week sent for them
     expect(sent().map((m) => m.chat_id)).toEqual([1, 2]);
     const text = sent()[0].text;
     expect(text.startsWith('📅 <b>THE WEEK AHEAD</b>')).toBe(true);
@@ -334,7 +334,7 @@ describe('runWeek — Sunday evening, the week ahead', () => {
     expect(text).toContain('From Thu 24 on, a trend only: check again closer to the day.');
     expect(text).not.toContain('Today');
     expect(sent()[1].text.startsWith('📅 <b>НЕДЕЛЯ ВПЕРЕДИ</b>')).toBe(true);
-    // chaque profil reçoit sa propre tranche de sept rapports, lundi → dimanche, dans sa langue
+    // each profile gets its own slice of seven reports, Monday → Sunday, in its own language
     const dayLines = (t: string): string[] => t.split('\n').filter((l) => /^(🟢|🌅|🌇|🔴|⚠️) <b>/.test(l));
     for (const [i, lang] of [[0, 'en'], [1, 'ru']] as const) {
       const lines = dayLines(sent()[i].text);

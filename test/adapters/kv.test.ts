@@ -33,7 +33,7 @@ describe('Store profiles', () => {
   it('two friends joining in the same instant both keep their profile — each has an entry of their own', async () => {
     const kv = new MemoryKV();
     const store = new Store(kv);
-    // Les deux lectures passent avant les deux écritures : avec une seule entrée pour tous, la seconde effaçait la première.
+    // Both reads happen before either write: with a single shared entry, the second write would have erased the first.
     await Promise.all([store.updateProfile(1, () => profile(1)), store.updateProfile(2, () => profile(2))]);
     expect(await store.getProfiles()).toEqual({ '1': profile(1), '2': profile(2) });
   });
@@ -131,7 +131,7 @@ describe('Store profiles', () => {
   it('coerces a language that no longer exists to English instead of crashing the renderer', async () => {
     const kv = new MemoryKV();
     const store = new Store(kv);
-    // profil écrit par une version antérieure (locale FR retirée le 2026-09-16)
+    // profile written by an earlier version (the FR locale was removed on 2026-09-16)
     await kv.put('profiles', JSON.stringify({ '7': { ...profile(7), lang: 'fr' } }));
     expect(await store.getProfile(7)).toEqual({ ...profile(7), lang: 'en' });
     expect((await store.getProfiles())['7'].lang).toBe('en');
@@ -145,7 +145,7 @@ describe('Store profiles', () => {
   it('drops the level, board and onboarding step an older version stored — nothing reads them any more', async () => {
     const kv = new MemoryKV();
     const store = new Store(kv);
-    // un ami resté au milieu de l'ancien onboarding (niveau choisi, planche pas encore)
+    // a friend stuck midway through the old onboarding (level chosen, board not yet answered)
     await kv.put('profiles', JSON.stringify({ '9': { ...profile(9), level: 'advanced', board: 'fish', onboarding: 'board' } }));
     expect(await store.getProfile(9)).toEqual(profile(9));
   });
@@ -161,7 +161,7 @@ describe('Store going', () => {
   const byChat = (entries: { chatId: number }[]) => [...entries].sort((a, b) => a.chatId - b.chatId);
 
   it('keeps who is going where: one key per friend and date for 3 days, the spot in metadata, read back by list, removed on cancel', async () => {
-    const kv = new MemoryKV(2); // des pages de 2 clés : le curseur sert
+    const kv = new MemoryKV(2); // 2-key pages: this exercises the cursor
     const store = new Store(kv);
     await store.setGoing('2026-09-18', 1, 'kommetjie-long-beach', '2026-09-17T19:05');
     await store.setGoing('2026-09-18', 22, 'muizenberg', '2026-09-17T19:07');
@@ -229,7 +229,7 @@ describe('Store going', () => {
 
 describe('Store reports and locks', () => {
   const W = { start: '2026-09-16T07:00', end: '2026-09-16T09:00', peak: 3, mean: 3 };
-  // Comme l'évaluation mémorisée : un seul objet par spot-journée, copié par ami avec sa propre distance.
+  // Mirrors the cached evaluation: a single object per spot-day, copied per friend with their own distance.
   const dayOf = (spotId: string, score: number): SpotResult => ({ spotId, distanceKm: 0, hours: [makeHour('2026-09-16T07:00', score), makeHour('2026-09-16T08:00', score)], windows: [W], best: W, maxScore: score });
   const forFriend = (chatId: number, days: SpotResult[], distanceKm: number): Report =>
     makeReport({ chatId, spots: days.map((d) => ({ ...d, distanceKm })) });
@@ -277,7 +277,7 @@ describe('Store reports and locks', () => {
   it('ignores a report stored by the pre-star version, so every reader recomputes instead of rendering NaN and undefined', async () => {
     const kv = new MemoryKV();
     const store = new Store(kv);
-    // SpotHour d'avant le 16/09/2026 : faceFt, windRelation, facteurs perso, score sur 10, pas d'étoiles
+    // SpotHour shape from before 2026-09-16: faceFt, windRelation, per-friend factors, score out of 10, no stars
     const oldHour = { time: '2026-09-16T07:00', faceFt: 5, periodS: 13, swellDirDeg: 225, windKt: 8, windDirDeg: 120, gustKt: 20,
       windRelation: 'offshore', tide: { state: 'high', trend: 'rising' }, factors: { size: 1, period: 1, wind: 1, tide: 1, day: 1, weather: 1 }, score: 10 };
     const old = { ...makeReport({ chatId: 1 }), spots: [{ spotId: 'kommetjie-long-beach', distanceKm: 13.4, open: true, hours: [oldHour], windows: [], maxScore: 10 }] };
@@ -300,7 +300,7 @@ describe('Store reports and locks', () => {
     await expect(store.getReports('2026-09-16')).resolves.toEqual({ '4': good });
   });
   it('remembers who heard about a big day: one key per friend and date for 5 days, read back by list', async () => {
-    const kv = new MemoryKV(2); // des pages de 2 clés : le curseur sert
+    const kv = new MemoryKV(2); // 2-key pages: this exercises the cursor
     const store = new Store(kv);
     for (const chatId of [1, 22, 333]) await store.markAlerted('2026-09-23', chatId);
     await store.markAlerted('2026-09-24', 4);

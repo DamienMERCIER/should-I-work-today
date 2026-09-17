@@ -3,19 +3,19 @@ import type { GoingEntry, Profile, Report, SpotHour, SpotResult } from '../types
 import { sleep as defaultSleep } from './http';
 
 /**
- * Champs qu'une version antérieure écrivait et que plus rien ne lit : niveau, planche et étape de
- * l'ancien onboarding en deux questions (retirés le 2026-09-16, la note étant désormais celle de
- * surf-forecast). Les garder ferait traîner un ami resté entre les deux questions hors des envois
- * du soir, qui écartaient les profils en cours d'onboarding.
+ * Fields an earlier version wrote that nothing reads anymore: level, board, and the step of the old
+ * two-question onboarding (removed on 2026-09-16, now that the rating is surf-forecast's). Keeping them
+ * would leave a friend stuck between the two questions stranded outside the evening sends, which used
+ * to filter out profiles still mid-onboarding.
  */
 const LEGACY_KEYS = ['level', 'board', 'onboarding'] as const;
 
 /**
- * Les champs fermés du profil viennent de KV, pas du code : une langue retirée (le français,
- * le 2026-09-16) ou abîmée indexerait `STRINGS` sur `undefined`, ce que `fill` transforme en
- * exception — donc un rendu impossible plutôt qu'une simple dégradation.
- * Une entrée qui n'est pas un objet passe telle quelle : les consommateurs la gèrent déjà,
- * et la faire échouer ici priverait tous les autres profils de leur run.
+ * The profile's closed fields come from KV, not from code: a removed language (French,
+ * on 2026-09-16) or a corrupted one would index `STRINGS` with `undefined`, which `fill` turns into
+ * an exception — so a rendering failure rather than a simple degradation.
+ * An entry that isn't an object passes through as-is: consumers already handle that case,
+ * and failing here would deprive every other profile of its run.
  */
 function withSupportedFields(p: Profile): Profile {
   if (!p || typeof p !== 'object') return p;
@@ -28,9 +28,9 @@ function withSupportedFields(p: Profile): Profile {
 }
 
 /**
- * Tous les rapports d'un jour partagent une seule clé KV : ce test ne doit jamais lever, sinon un seul
- * enregistrement abîmé (écriture partielle, schéma futur) ferait échouer la lecture pour tout le monde.
- * Chaque niveau est donc vérifié avant d'être lu, et un rapport douteux est simplement écarté.
+ * All of a day's reports share a single KV key: this check must never throw, or one corrupted
+ * record (partial write, future schema) would fail the read for everyone.
+ * Each level is therefore checked before being read, and a suspect report is simply discarded.
  */
 const hasCurrentShape = (r: Report): boolean =>
   Boolean(r) && Array.isArray(r.spots) &&
@@ -43,11 +43,12 @@ export interface KVListResult {
 }
 
 /**
- * Les rapports d'un jour stockent chaque spot-journée une seule fois. Tous les amis d'un envoi partagent la même
- * évaluation d'un spot (§buildReportList) et ne diffèrent que par la distance : à 40 amis, le format d'avant
- * (un rapport complet par ami) pesait 2,7 Mo, sérialisés deux fois le soir et relus le matin (17/09/2026).
- * Le tableau `hours` sert d'identité : les copies `{ ...evaluated, distanceKm }` le partagent, et deux journées
- * différentes du même spot — le matin garde le rapport du soir d'un ami sans données — restent séparées.
+ * A day's reports store each spot-day only once. All friends in one send share the same evaluation
+ * of a spot (§buildReportList) and differ only by distance: at 40 friends, the old format (one full
+ * report per friend) weighed 2.7 MB, serialized twice in the evening and read back again in the morning
+ * (17/09/2026).
+ * The `hours` array acts as identity: the `{ ...evaluated, distanceKm }` copies share it, and two
+ * different days for the same spot — e.g. the morning keeping an evening report for a friend with no data — stay separate.
  */
 type StoredSpotDay = Omit<SpotResult, 'spotId' | 'distanceKm'>;
 interface StoredSpotRef { spotId: string; distanceKm: number; day: number }
@@ -79,7 +80,7 @@ const isPacked = (stored: unknown): stored is StoredReports =>
   typeof stored === 'object' && stored !== null && (stored as StoredReports).v === 2 &&
   Array.isArray((stored as StoredReports).days) && typeof (stored as StoredReports).reports === 'object';
 
-/** Un rapport qui pointe vers une journée absente garde un spot `null`, que `hasCurrentShape` écarte ensuite. */
+/** A report that points to a missing day keeps a `null` spot, which `hasCurrentShape` then discards. */
 function unpackReports(stored: unknown): Record<string, Report> {
   if (!isPacked(stored)) return (stored as Record<string, Report> | null) ?? {};
   const out: Record<string, Report> = {};
@@ -97,7 +98,7 @@ function unpackReports(stored: unknown): Record<string, Report> {
   return out;
 }
 
-/** Sous-ensemble de KVNamespace utilisé par l'application (facile à simuler en test). */
+/** Subset of KVNamespace used by the app (easy to mock in tests). */
 export interface KVStore {
   get(key: string, type: 'json'): Promise<unknown>;
   put(key: string, value: string, options?: { expirationTtl?: number; metadata?: unknown }): Promise<void>;
@@ -111,16 +112,16 @@ const isGoing = (x: unknown): x is Omit<GoingEntry, 'chatId'> =>
 export type RunKind = 'evening' | 'morning' | 'week' | 'alert';
 
 /**
- * Un profil par clé : deux amis ne réécrivent jamais la même entrée. Jusqu'au 17/09/2026, tous les profils
- * partageaient la clé `profiles`, relue puis réécrite en entier : deux inscriptions dans la même seconde
- * s'effaçaient (KV garde la dernière écriture) ou la seconde était refusée (une écriture par seconde par clé).
+ * One profile per key: two friends never overwrite the same entry. Until 17/09/2026, all profiles
+ * shared the `profiles` key, read back then rewritten whole: two signups in the same second would
+ * erase each other (KV keeps the last write), or the second one would be rejected (one write per second per key).
  */
 const PROFILE_PREFIX = 'profile:';
-/** L'ancienne clé commune : lue en secours pour les amis qui n'ont encore rien modifié, plus jamais écrite. */
+/** The old shared key: read as a fallback for friends who haven't changed anything yet, never written again. */
 const LEGACY_PROFILES_KEY = 'profiles';
-/** Le profil voyage aussi en métadonnées (1 024 octets permis, ~200 utilisés) : un `list` lit tout le monde. */
+/** The profile also travels in metadata (1,024 bytes allowed, ~200 used): a single `list` reads everyone. */
 const METADATA_MAX_BYTES = 1024;
-/** KV refuse une seconde écriture sur la même clé dans la seconde (429) : un nouvel essai attend un peu plus. */
+/** KV refuses a second write to the same key within the same second (429): a retry waits a bit longer. */
 const SAME_KEY_RETRY_MS = 1100;
 
 export interface StoreOptions {
@@ -140,9 +141,10 @@ export class Store {
   }
 
   /**
-   * Tous les profils : l'ancienne clé commune, puis une page de `list` après l'autre, l'entrée propre l'emportant.
-   * `list` suit les écritures avec jusqu'à une minute de retard ailleurs dans le réseau : un ami inscrit ou modifié
-   * juste avant un envoi peut y manquer ou y figurer dans son état précédent, et reçoit le suivant.
+   * All profiles: the old shared key first, then one `list` page after another, with the profile's
+   * own entry taking priority. `list` can lag writes by up to a minute elsewhere on the network: a
+   * friend who signed up or made a change right before a send may be missing from it or show up in
+   * their previous state, and gets the next send instead.
    */
   async getProfiles(): Promise<Record<string, Profile>> {
     const all = await this.legacyProfiles();
@@ -164,12 +166,12 @@ export class Store {
     return (await this.legacyProfiles())[String(chatId)];
   }
 
-  /** Écrit chaque profil sous sa propre clé (les autres restent tels quels). */
+  /** Writes each profile under its own key (the others are left untouched). */
   async putProfiles(profiles: Record<string, Profile>): Promise<void> {
     for (const [id, profile] of Object.entries(profiles)) await this.putProfileAt(id, profile);
   }
 
-  /** Lecture-modification-écriture de ce seul profil : un autre ami ne peut plus l'effacer. */
+  /** Read-modify-write of just this one profile: another friend can no longer erase it. */
   async updateProfile(chatId: number, update: (current: Profile | undefined) => Profile): Promise<Profile> {
     const next = update(await this.getProfile(chatId));
     await this.putProfileAt(String(chatId), next);
@@ -184,8 +186,8 @@ export class Store {
   }
 
   /**
-   * Le 429 d'une seconde écriture dans la seconde sur la même clé, ou une panne passagère : la même écriture, une fois, un
-   * peu plus tard. Sans dépendre du texte de l'erreur ; un second échec remonte tel quel.
+   * The 429 from a second write within the same second on the same key, or a transient failure: the same
+   * write, once, a bit later. Without depending on the error's text; a second failure propagates as-is.
    */
   private async twice(write: () => Promise<void>): Promise<void> {
     try {
@@ -197,16 +199,16 @@ export class Store {
   }
 
   /**
-   * « J'y vais » : une clé par ami et par date (`going:<date>:<chatId>`), le spot et l'heure aussi en métadonnées pour tout
-   * relire d'un `list`. Un ami ne va qu'à un spot par jour : la nouvelle entrée remplace l'ancienne. Un double appui arrive
-   * dans la même seconde sur la même clé, d'où le nouvel essai.
+   * "I'm going": one key per friend per date (`going:<date>:<chatId>`), with the spot and time also in
+   * metadata so a single `list` reads everything back. A friend only goes to one spot per day: the new
+   * entry replaces the old one. A double tap lands within the same second on the same key, hence the retry.
    */
   async setGoing(date: string, chatId: number, spotId: string, at: string): Promise<void> {
     const entry = { spotId, at };
     await this.twice(() => this.kv.put(`going:${date}:${chatId}`, JSON.stringify(entry), { expirationTtl: GOING_TTL_S, metadata: entry }));
   }
 
-  /** Où un ami a dit qu'il allait ce jour-là : une lecture, pour n'écrire que ce qui change. */
+  /** Where a friend said they were going that day: one read, so only what changes gets written. */
   async goingOf(date: string, chatId: number): Promise<GoingEntry | undefined> {
     const entry = await this.kv.get(`going:${date}:${chatId}`, 'json');
     return isGoing(entry) ? { chatId, spotId: entry.spotId, at: entry.at } : undefined;
@@ -217,8 +219,8 @@ export class Store {
   }
 
   /**
-   * Qui y va ce jour-là. `list` suit les écritures avec jusqu'à une minute de retard : l'appui qu'on vient d'enregistrer
-   * peut manquer, l'appelant le rajoute. Une entrée illisible est sautée, jamais fatale à la liste.
+   * Who's going that day. `list` can lag writes by up to a minute: the tap we just recorded might be
+   * missing, and the caller adds it back in. An unreadable entry is skipped, never fatal to the list.
    */
   async goingOn(date: string): Promise<GoingEntry[]> {
     const prefix = `going:${date}:`;
@@ -238,10 +240,10 @@ export class Store {
   }
 
   /**
-   * Un rapport écrit avant les étoiles (16/09/2026) n'a ni `stars`, ni `heightM`, ni `windState` :
-   * rendu tel quel il donnait « NaN–NaN m · undefined SE » et dix étoiles creuses, et le run du matin
-   * l'aurait comparé à un rapport neuf pour annoncer un faux changement. On le traite comme absent :
-   * aujourd'hui se recalcule, un jour plus ancien répond « trop vieux ». Ils expirent en 48 h.
+   * A report written before stars existed (16/09/2026) has no `stars`, `heightM`, or `windState`:
+   * rendered as-is it produced "NaN–NaN m · undefined SE" and ten hollow stars, and the morning run
+   * would have compared it to a fresh report and announced a fake change. We treat it as absent:
+   * today gets recomputed, an older day answers "too old". These expire after 48h.
    */
   async getReports(date: string): Promise<Record<string, Report>> {
     const stored = unpackReports(await this.kv.get(`reports:${date}`, 'json'));
@@ -253,9 +255,9 @@ export class Store {
   }
 
   /**
-   * Les amis déjà prévenus d'une grosse journée à cette date. Une clé par ami (`alerted:<date>:<chatId>`) : deux
-   * écritures ne se marchent jamais dessus, et un `list` relit tout le monde. Ces clés sont écrites la veille au
-   * plus tard, bien plus d'une minute avant d'être relues : le retard de `list` ne les rate pas.
+   * Friends already notified about a big day on this date. One key per friend (`alerted:<date>:<chatId>`):
+   * two writes never collide, and a single `list` reads everyone back. These keys are written the day
+   * before at the latest, well more than a minute before being read back: `list`'s lag never misses them.
    */
   async alertedChatIds(date: string): Promise<Set<number>> {
     const prefix = `alerted:${date}:`;
@@ -276,7 +278,7 @@ export class Store {
     await this.kv.put(`alerted:${date}:${chatId}`, '1', { expirationTtl: ALERTED_TTL_S });
   }
 
-  /** true si le verrou vient d'être posé, false s'il existait déjà (cron rejoué, §11). */
+  /** true if the lock was just acquired, false if it already existed (cron replayed, §11). */
   async acquireLock(date: string, run: RunKind, now: string): Promise<boolean> {
     const key = `run:${date}:${run}`;
     if (await this.kv.get(key, 'json')) return false;

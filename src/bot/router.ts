@@ -28,16 +28,16 @@ export interface BotDeps {
   regions: Region[];
   fetchFn: FetchLike;
   inviteCode?: string;
-  /** prévenu de chaque arrivée, refus et message d'inconnu */
+  /** notified of every arrival, refusal and message from a stranger */
   adminChatId?: number;
   radiusKm?: number;
-  /** spots importés pour `/<spot>` et `/about` ; par défaut tout `spots-world.json` (les tests passent la liste qu'il leur faut) */
+  /** spots imported for `/<spot>` and `/about`; defaults to the whole `spots-world.json` (tests pass the list they need) */
   worldTuples?: SpotTuple[];
-  /** heure locale 'YYYY-MM-DDTHH:mm' */
+  /** local time 'YYYY-MM-DDTHH:mm' */
   now: () => string;
 }
 
-/** « Ivan Petrov (@ivan, id 42) » pour les messages à l'admin : l'id départage deux homonymes et se retrouve dans les logs. */
+/** "Ivan Petrov (@ivan, id 42)" for messages to the admin: the id tells apart two people sharing a name, and shows up in the logs. */
 function who(msg: TgMessage): string {
   const name = oneLine(`${msg.from?.first_name ?? ''} ${msg.from?.last_name ?? ''}`);
   const handle = oneLine(msg.from?.username);
@@ -49,7 +49,7 @@ function who(msg: TgMessage): string {
 const isButton = (text: string, key: 'backHome' | 'now' | 'useMyLocation'): boolean =>
   text === STRINGS.en.buttons[key] || text === STRINGS.ru.buttons[key];
 
-/** Un chat_id Telegram est toujours un entier ; refuse toute autre valeur (ex. "__proto__") avant tout accès au store. */
+/** A Telegram chat_id is always an integer; reject any other value (e.g. "__proto__") before any access to the store. */
 const isChatId = (x: unknown): x is number => Number.isInteger(x);
 
 const isValidLocation = (loc: { latitude: number; longitude: number }): boolean =>
@@ -61,11 +61,11 @@ const collectDeps = (deps: BotDeps, now: string): CollectDeps =>
   ({ spots: deps.spots, regions: deps.regions, fetchFn: deps.fetchFn, radiusKm: deps.radiusKm, now });
 
 /**
- * « Maintenant » n'a de sens que tant qu'il reste du jour : passe la derniere heure surfable, chaque
- * creneau restant vaut 0 et le rapport n'est qu'un mur de zeros qui n'apprend rien. On repond alors
- * pour demain (mode soiree), et l'appelant prefixe `dayIsDone` puisque la date n'est plus celle du
- * jour. Un rapport sans aucun spot evalue (Open-Meteo muet, hors couverture) n'est pas bascule :
- * demain serait tout aussi vide, et ce serait une seconde serie d'appels pour rien.
+ * "Now" only makes sense while there is still daylight left: past the last surfable hour, every
+ * remaining slot scores 0 and the report is just a wall of zeros that teaches nothing. We then answer
+ * for tomorrow instead (evening mode), and the caller prefixes `dayIsDone` since the date is no longer
+ * today's. A report with no spot evaluated at all (Open-Meteo silent, out of coverage) is not rolled
+ * over: tomorrow would be just as empty, and that would be a second round of calls for nothing.
  */
 async function nowReport(profile: Profile, deps: BotDeps): Promise<Report> {
   const now = deps.now();
@@ -77,8 +77,8 @@ async function nowReport(profile: Profile, deps: BotDeps): Promise<Report> {
 }
 
 /**
- * La semaine à venir (`buildWeek`). Loin de tout spot connu, on répond comme /now : sept rapports hors
- * couverture coûteraient deux appels chacun pour dire sept fois la même chose.
+ * The week ahead (`buildWeek`). Far from any known spot, we answer like /now: seven out-of-coverage
+ * reports would cost two calls each just to say the same thing seven times over.
  */
 async function handleWeek(chatId: number, profile: Profile, deps: BotDeps): Promise<void> {
   const ctx = renderCtx(profile.lang, deps);
@@ -90,7 +90,7 @@ async function handleWeek(chatId: number, profile: Profile, deps: BotDeps): Prom
   await deps.telegram.sendMessage(chatId, renderWeek(await buildWeek(profile, collectDeps(deps, now)), ctx, { today: dateOf(now) }));
 }
 
-/** Le prefixe a coller devant un rapport « maintenant » que `nowReport` a bascule sur demain. */
+/** The prefix to stick in front of a "now" report that `nowReport` rolled over to tomorrow. */
 const rolloverPrefix = (report: Report, deps: BotDeps, s: Strings): string =>
   report.date === dateOf(deps.now()) ? '' : `${s.dayIsDone}\n\n`;
 
@@ -126,11 +126,11 @@ async function handleSpotCommand(chatId: number, query: string, profile: Profile
   return true;
 }
 
-/** La journée d'un spot, demandée par sa commande ou par son bouton (📋, `/all`) : la même réponse dans les deux cas. */
+/** A spot's day, requested via its command or its button (📋, `/all`): the same response either way. */
 async function sendSpotDay(chatId: number, spot: Spot, profile: Profile, deps: BotDeps): Promise<void> {
   const s = STRINGS[profile.lang];
   const ctx = renderCtx(profile.lang, deps);
-  ctx.spots.set(spot.id, spot); // un spot importé n'est pas dans le contexte, qui ne tient que les spots curatés
+  ctx.spots.set(spot.id, spot); // an imported spot isn't in the context, which only holds curated spots
   const radiusKm = deps.radiusKm ?? RADIUS_KM;
   const distanceKm = haversineKm(profile.location, spot);
   if (distanceKm > radiusKm) {
@@ -141,8 +141,8 @@ async function sendSpotDay(chatId: number, spot: Spot, profile: Profile, deps: B
   }
 
   const report = await todayReport(chatId, profile, deps);
-  // `renderSpotDay` ne porte aucune date : sans ce prefixe, un rapport bascule sur demain passerait
-  // pour celui d'aujourd'hui.
+  // `renderSpotDay` carries no date: without this prefix, a report rolled over to tomorrow would pass
+  // for today's.
   await deps.telegram.sendMessage(chatId, `${rolloverPrefix(report, deps, s)}${renderSpotDay(report, spot.id, ctx)}`, spotMarkupFor(report, spot.id, ctx));
 }
 
@@ -156,12 +156,13 @@ export async function handleUpdate(update: TgUpdate, deps: BotDeps): Promise<voi
   let profile = await deps.store.getProfile(chatId);
 
   if (text.startsWith('/start')) return handleStart(msg, profile, deps);
-  if (text.startsWith('/amis') && deps.adminChatId !== undefined && chatId === deps.adminChatId) {
+  // `/amis` is the name this command was born with; it keeps working for the admin who has it in muscle memory.
+  if ((text.startsWith('/friends') || text.startsWith('/amis')) && deps.adminChatId !== undefined && chatId === deps.adminChatId) {
     if (profile) await refreshName(chatId, profile, msg.from, deps);
     return handleFriends(chatId, deps);
   }
-  // inconnu sans /start : silence pour lui (bot privé), mais l'admin voit qui frappe à la porte
-  if (!profile) return notifyAdmin(deps, `${who(msg)} a écrit au bot sans l'avoir rejoint.`);
+  // a stranger without /start: silence for them (private bot), but the admin sees who's knocking
+  if (!profile) return notifyAdmin(deps, `${who(msg)} wrote to the bot without joining it.`);
   profile = await refreshName(chatId, profile, msg.from, deps);
   const s = STRINGS[profile.lang];
   const { telegram, store } = deps;
@@ -187,9 +188,9 @@ export async function handleUpdate(update: TgUpdate, deps: BotDeps): Promise<voi
     await telegram.sendMessage(chatId, `${rolloverPrefix(report, deps, s)}${renderEvening(report, ctx)}\n\n${s.locationSaved}`, detailsMarkupFor(report, ctx));
     return;
   }
-  // Le bouton 📍 demande la position à Telegram. Quand Telegram ne peut pas la joindre (localisation refusée ou coupée
-  // pour l'application), certaines applications envoient à la place le texte du bouton : dire quoi activer plutôt que
-  // de répondre par l'aide.
+  // The 📍 button asks Telegram for the location. When Telegram can't obtain it (location denied or turned
+  // off for the app), some apps send the button's text instead: say what to turn on rather than
+  // answering with the help text.
   if (isButton(text, 'useMyLocation')) {
     await telegram.sendMessage(chatId, fill(s.locationNeeded, { button: s.buttons.useMyLocation }));
     return;
@@ -248,15 +249,15 @@ async function handleStart(msg: TgMessage, profile: Profile | undefined, deps: B
     if (!deps.inviteCode || !safeEqual(code ?? '', deps.inviteCode)) {
       console.warn(`invite refused for chat ${chatId}`);
       await deps.telegram.sendMessage(chatId, STRINGS[lang].privateBot);
-      const why = !deps.inviteCode ? "INVITE_CODE n'est pas configuré" : code ? "mauvais code d'invitation" : "/start sans code d'invitation";
-      await notifyAdmin(deps, `Accès refusé à ${who(msg)} : ${why}.`);
+      const why = !deps.inviteCode ? 'INVITE_CODE is not set' : code ? 'wrong invite code' : '/start without an invite code';
+      await notifyAdmin(deps, `Access refused for ${who(msg)}: ${why}.`);
       return;
     }
-    // Plus de questions : la note ne dépend ni du niveau ni de la planche, le profil est prêt tout de suite.
+    // No more questions: the rating depends on neither skill level nor board, so the profile is ready right away.
     const created = await deps.store.updateProfile(chatId, () => ({ ...newProfile(chatId, lang, deps.now()), ...telegramName(msg.from) }));
     const s = STRINGS[created.lang];
     await deps.telegram.sendMessage(chatId, welcomeText(created, s), persistentKeyboard(s));
-    await notifyAdmin(deps, `${who(msg)} a rejoint le bot.`);
+    await notifyAdmin(deps, `${who(msg)} joined the bot.`);
     return;
   }
   const s = STRINGS[profile.lang];
@@ -268,13 +269,13 @@ async function handleStart(msg: TgMessage, profile: Profile | undefined, deps: B
   await deps.telegram.sendMessage(chatId, `${s.reactivated}\n${profileSummary(p, s)}`, persistentKeyboard(s));
 }
 
-/** `/amis`, pour l'admin seulement : qui est inscrit, où, à quelles heures, et qui s'est mis en pause ou a bloqué le bot. */
+/** `/friends`, for the admin only: who's registered, where, at what hours, and who has paused or blocked the bot. */
 async function handleFriends(chatId: number, deps: BotDeps): Promise<void> {
   const profiles = Object.values(await deps.store.getProfiles()).filter((p): p is Profile => Boolean(p) && typeof p === 'object');
   for (const text of renderFriends(profiles, deps.spots, deps.radiusKm ?? RADIUS_KM)) await deps.telegram.sendMessage(chatId, text);
 }
 
-/** Le profil avec le nom Telegram d'aujourd'hui. Un expéditeur sans prénom n'est pas un compte Telegram ordinaire : rien ne change. */
+/** The profile with today's Telegram name. A sender with no first name isn't an ordinary Telegram account: nothing changes. */
 function withName(profile: Profile, from: TgUser | undefined): Profile {
   if (!from?.first_name) return profile;
   const { name, username } = telegramName(from);
@@ -284,7 +285,7 @@ function withName(profile: Profile, from: TgUser | undefined): Profile {
   return next;
 }
 
-/** Le nom Telegram suit ce que l'ami affiche aujourd'hui, pour `/amis` : une écriture seulement quand il a changé. */
+/** The Telegram name follows what the friend displays today, for `/amis`: a write only when it has changed. */
 async function refreshName(chatId: number, profile: Profile, from: TgUser | undefined, deps: BotDeps): Promise<Profile> {
   const named = withName(profile, from);
   if (named.name === profile.name && named.username === profile.username) return profile;
@@ -318,8 +319,8 @@ async function handleCallback(cb: TgCallbackQuery, deps: BotDeps): Promise<void>
   const [kind, value = '', rest = ''] = (cb.data ?? '').split(':');
   const { telegram, store } = deps;
 
-  // `lvl:*`, `board:*`, `prof:level` et `prof:board` venaient de l'ancien onboarding : leurs boutons
-  // peuvent encore traîner dans l'historique d'un chat, ils tombent dans `default` et ne font rien.
+  // `lvl:*`, `board:*`, `prof:level` and `prof:board` came from the old onboarding: their buttons
+  // can still be lying around in a chat's history; they fall into `default` and do nothing.
   switch (kind) {
     case 'prof': {
       if (value === 'hours') {
@@ -330,10 +331,10 @@ async function handleCallback(cb: TgCallbackQuery, deps: BotDeps): Promise<void>
       return;
     }
     case 'stars': {
-      // un seuil que le clavier ne propose pas vient d'un bouton fabriqué
+      // a threshold the keyboard doesn't offer comes from a fabricated button
       const minStars = Number(value);
       if (!STAR_CHOICES.includes(minStars)) return;
-      // le même seuil à nouveau ne vaut pas une écriture : les 1 000 du jour servent aussi aux envois
+      // the same threshold again isn't worth a write: the day's 1,000 also serve the scheduled sends
       const p = profile.minStars === minStars ? profile : await store.updateProfile(chatId, (cur) => ({ ...(cur ?? profile), minStars }));
       await telegram.sendMessage(chatId, `${s.profile.saved}\n${profileSummary(p, s)}`);
       return;
@@ -348,7 +349,7 @@ async function handleCallback(cb: TgCallbackQuery, deps: BotDeps): Promise<void>
     case 'rep':
       return handleDetails(chatId, value, profile, deps);
     case 'spot': {
-      // un bouton de 📋 ou de /all ; un id inconnu — ou fabriqué — ne répond rien
+      // a button from 📋 or from /all; an unknown — or fabricated — id gets no response
       const spot = spotById(value, renderCtx(profile.lang, deps));
       if (spot) await sendSpotDay(chatId, spot, profile, deps);
       return;
@@ -363,12 +364,12 @@ async function handleCallback(cb: TgCallbackQuery, deps: BotDeps): Promise<void>
 }
 
 /**
- * Jusqu'où un bouton 🙋 peut viser : ceux des messages parlent d'aujourd'hui (/now, matin) ou de demain (soir). Plus loin,
- * c'est un bouton fabriqué — et une entrée gardée 3 jours à partir de l'appui expirerait avant sa date.
+ * How far ahead a 🙋 button can target: message buttons talk about today (/now, morning) or tomorrow
+ * (evening). Beyond that, it's a fabricated button — and an entry kept for 3 days from the tap would expire before its date.
  */
 const GOING_MAX_DAYS_AHEAD = 1;
 
-/** La date d'un bouton 🙋 : une vraie date du calendrier, au plus une semaine après aujourd'hui, et si ce jour est déjà fini. */
+/** A 🙋 button's date: a real calendar date, at most one week after today, and whether that day is already over. */
 function goingDate(compact: string, today: string): { date: string; past: boolean } | undefined {
   const date = expandCompactDate(compact);
   if (!date) return undefined;
@@ -378,9 +379,9 @@ function goingDate(compact: string, today: string): { date: string; past: boolea
 }
 
 /**
- * 🙋 « J'y vais » : noter où l'ami va ce jour-là, puis lui montrer — à lui seul, personne d'autre n'est prévenu — qui y va,
- * avec de quoi se désister. Les données d'un bouton se falsifient : date et spot sont vérifiés avant toute écriture. Les
- * 1 000 écritures KV du jour servent aussi aux envois programmés : un appui qui ne change rien n'en coûte aucune.
+ * 🙋 "I'm going": record where the friend is going that day, then show them — them alone, nobody else is
+ * notified — who else is going, with a way to back out. A button's data can be forged: date and spot are
+ * verified before any write. The day's 1,000 KV writes also serve the scheduled sends: a tap that changes nothing costs none of them.
  */
 async function handleGoing(chatId: number, compact: string, spotId: string, profile: Profile, deps: BotDeps): Promise<void> {
   const s = STRINGS[profile.lang];
@@ -393,7 +394,7 @@ async function handleGoing(chatId: number, compact: string, spotId: string, prof
   const mine = current?.spotId === spotId ? current : { chatId, spotId, at: now };
   if (mine !== current) await deps.store.setGoing(day.date, chatId, spotId, now);
   const [listed, profiles] = await Promise.all([deps.store.goingOn(day.date), deps.store.getProfiles()]);
-  // `list` peut ne pas avoir encore vu cet appui, ou montrer l'ancien choix de l'ami : sa place est celle qu'il vient de choisir
+  // `list` may not have seen this tap yet, or may show the friend's old choice: their place is the one they just picked
   const going = [...listed.filter((e) => e.chatId !== chatId), mine];
   await deps.telegram.sendMessage(chatId, renderGoing(day.date, going, chatId, profiles, ctx), {
     inline_keyboard: [[{ text: s.buttons.notGoing, callback_data: notGoingData(day.date) }]],

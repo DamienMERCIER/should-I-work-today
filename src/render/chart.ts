@@ -8,9 +8,9 @@ const pad2 = (h: number): string => String(h).padStart(2, '0');
 const slotAt = (date: string, h: number): string => `${date}T${pad2(h)}:00`;
 
 /**
- * Toute heure du jour dont le créneau touche la lumière, même partiellement. Le moteur, lui, ne
- * note que les créneaux qui ont ≥ 45 min de jour : on trace donc une colonne de plus de chaque
- * côté, à zéro, ce qui montre où la journée s'ouvre et se ferme plutôt que de couper net.
+ * Every hour of the day whose slot touches daylight, even partially. The engine itself only
+ * scores slots with ≥ 45 min of daylight: so we plot one extra column on each side, at zero,
+ * which shows where the day opens and closes instead of cutting off abruptly.
  */
 function daylightHours(report: Report): number[] {
   const { date } = report;
@@ -61,9 +61,9 @@ export function chartHours(report: Report): number[] {
 }
 
 /**
- * Une barre par étoile : `·` à 0, puis ▁▂▃▄▅▆▇ de 1★ à 7★, █ à partir de 8★. Les notes sont des étoiles
- * entières (`src/engine/rating.ts`) ; découper 0..10 en huit tranches égales donnait le même glyphe à
- * 5★ et 6★, justement là où se joue la différence entre une bonne journée et une journée exceptionnelle.
+ * One bar per star: `·` at 0, then ▁▂▃▄▅▆▇ from 1★ to 7★, █ from 8★ up. Scores are whole stars
+ * (`src/engine/rating.ts`); splitting 0..10 into eight equal slices gave the same glyph to 5★
+ * and 6★, exactly where the difference between a good day and an exceptional one is decided.
  */
 const BLOCKS = '▁▂▃▄▅▆▇█';
 
@@ -78,15 +78,15 @@ export function sparkline(scores: number[]): string {
 }
 
 /**
- * La règle au-dessus d'un sparkline, sur une grille d'un caractère par heure : le repère de
- * `hours[i]` commence au caractère `i`, donc au-dessus de son glyphe. La première et la dernière
- * heure sont toujours écrites, et les repères intermédiaires (tous les 3) ne sont posés que s'ils
- * gardent une colonne vide de chaque côté. Un repère à deux chiffres sur la dernière colonne fait
- * dépasser la règle d'un caractère : c'est voulu, rien ne s'aligne sur son bord droit, et l'heure
- * de fin de journée compte plus qu'un bord net.
+ * The ruler above a sparkline, on a grid of one character per hour: the label for
+ * `hours[i]` starts at character `i`, so right above its glyph. The first and last
+ * hour are always written, and the in-between labels (every 3) are only placed if they
+ * keep an empty column on each side. A two-digit label on the last column makes the
+ * ruler run one character past the edge: that's intentional, nothing aligns on its right
+ * edge, and the end-of-day hour matters more than a clean border.
  */
 export function hourRuler(hours: number[]): string {
-  const width = hours.length + 2; // un repère à deux chiffres sur la dernière colonne déborde d'un cran
+  const width = hours.length + 2; // a two-digit label on the last column overflows by one notch
   const cells = Array.from({ length: width }, () => ' ');
   const place = (i: number, label: string): boolean => {
     if (i < 0 || i + label.length > width) return false;

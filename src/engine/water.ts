@@ -1,10 +1,10 @@
-/** La combinaison conseillée, de la plus légère à la plus chaude. `full54Cold` : 5/4 avec chaussons, gants et cagoule. */
+/** The recommended wetsuit, from lightest to warmest. `full54Cold`: 5/4 with boots, gloves and hood. */
 export type Wetsuit = 'lycra' | 'shorty' | 'full32' | 'full43' | 'full54' | 'full54Cold';
 
 /**
- * La tenue pour une eau à `waterC` °C, arrondie au degré : le barème habituel des surf shops. Chaussons dès
- * la 5/4, gants et cagoule en plus à 10 °C et moins. Un conseil pour tout le monde, comme les étoiles : ni
- * frileux ni habitué.
+ * The wetsuit for water at `waterC` °C, rounded to the nearest degree: the usual surf-shop scale. Boots
+ * from the 5/4 up, plus gloves and a hood at 10 °C and below. One recommendation for everyone, same as
+ * the star rating: not tuned for people who feel the cold more, or less.
  */
 export function wetsuitFor(waterC: number): Wetsuit {
   if (waterC >= 24) return 'lycra';

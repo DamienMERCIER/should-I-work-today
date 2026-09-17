@@ -7,60 +7,57 @@ import { oneLine } from './text';
 
 const NAME_MAX = 64;
 const USERNAME_MAX = 32;
-/** Sous les 4 096 caractères d'un message Telegram, avec de la marge pour les entités HTML. */
+/** Under a Telegram message's 4,096-character limit, with headroom for HTML entities. */
 const MESSAGE_MAX = 4000;
 const FLAGS: Record<Lang, string> = { en: '🇬🇧', ru: '🇷🇺' };
 
-/** Coupé par caractère, pas par unité UTF-16 : un emoji ne se retrouve jamais coupé en deux. */
+/** Cut by character, not by UTF-16 unit: an emoji never ends up split in two. */
 const cap = (s: string, max: number): string => [...s].slice(0, max).join('');
 
-/** Le nom Telegram d'un ami tel que son profil le garde : une ligne, sans caractère de contrôle ni bidi, bornée. */
+/** A friend's Telegram name the way their profile keeps it: one line, no control character or bidi, length-capped. */
 export function telegramName(from: TgUser | undefined): { name?: string; username?: string } {
   const name = cap(oneLine(`${from?.first_name ?? ''} ${from?.last_name ?? ''}`), NAME_MAX);
   const username = cap(oneLine(from?.username), USERNAME_MAX);
   return { ...(name ? { name } : {}), ...(username ? { username } : {}) };
 }
 
-/** En français, 0 et 1 prennent le singulier : « 0 inscrit », « 1 actif », « 2 actifs ». */
-const count = (n: number, one: string, many: string): string => `${n} ${n <= 1 ? one : many}`;
-
 /**
- * `/amis` pour l'admin : les chiffres, puis une ligne par ami dans l'ordre d'arrivée — nom (@pseudo), langue, lieu
- * (Muizenberg, ou le spot le plus proche de sa position), horaires, date d'arrivée et, s'il ne reçoit plus rien,
- * pourquoi. Découpé en plusieurs messages quand la liste dépasse la taille d'un message.
+ * `/friends` for the admin: the counts, then one line per friend in arrival order — name (@handle), language, place
+ * (Muizenberg, or the spot nearest their location), hours, join date and, if they no longer receive anything,
+ * why. Split across several messages when the list exceeds one message's size.
  */
 export function renderFriends(profiles: Profile[], spots: Spot[], radiusKm: number): string[] {
   const sorted = [...profiles].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const active = sorted.filter((p) => p.active).length;
   const blocked = sorted.filter((p) => !p.active && p.inactiveReason === 'blocked').length;
   const paused = sorted.length - active - blocked;
-  const counts = [count(sorted.length, 'inscrit', 'inscrits'), count(active, 'actif', 'actifs')];
-  if (paused > 0) counts.push(`${paused} en pause`);
-  if (blocked > 0) counts.push(`${blocked} ${blocked === 1 ? 'a' : 'ont'} bloqué le bot`);
+  const counts = [`${sorted.length} signed up`, `${active} active`];
+  if (paused > 0) counts.push(`${paused} paused`);
+  if (blocked > 0) counts.push(`${blocked} blocked the bot`);
 
   const nearbyAt = nearbyByPlace(spots, radiusKm);
   const place = (p: Profile): string => {
     if (p.location.source === 'default') return DEFAULT_LOCATION_NAME;
     const nearest = nearbyAt(p.location)[0];
-    return nearest ? `près de ${esc(nearest.spot.short)}` : 'hors couverture';
+    return nearest ? `near ${esc(nearest.spot.short)}` : 'out of range';
   };
-  // Un pseudo est unique, un nom non : sans pseudo, l'id départage deux amis qui s'appellent pareil.
+  // A handle is unique, a name isn't: without a handle, the id tells apart two friends with the same name.
   const label = (p: Profile): string => {
     if (p.name) return `${esc(p.name)} (${p.username ? `@${esc(p.username)}` : `id ${p.chatId}`})`;
     return p.username ? `@${esc(p.username)}` : `id ${p.chatId}`;
   };
   const status = (p: Profile): string => {
     if (p.active) return '';
-    return p.inactiveReason === 'blocked' ? ' · 🚫 a bloqué le bot' : ' · ⏸️ en pause';
+    return p.inactiveReason === 'blocked' ? ' · 🚫 blocked the bot' : ' · ⏸️ paused';
   };
   const lines = sorted.map((p, i) => {
     const hours = `${fmtTime(p.workHours.start)}–${fmtTime(p.workHours.end)}`;
     const joined = `${p.createdAt.slice(8, 10)}/${p.createdAt.slice(5, 7)}`;
-    return `${i + 1}. ${label(p)} · ${FLAGS[p.lang] ?? p.lang} · ${place(p)} · ${hours} · depuis le ${joined}${status(p)}`;
+    return `${i + 1}. ${label(p)} · ${FLAGS[p.lang] ?? p.lang} · ${place(p)} · ${hours} · since ${joined}${status(p)}`;
   });
 
   const messages: string[] = [];
-  let current = `👥 <b>Amis</b> · ${counts.join(' · ')}\n`;
+  let current = `👥 <b>Friends</b> · ${counts.join(' · ')}\n`;
   for (const line of lines) {
     if (current.length + 1 + line.length > MESSAGE_MAX) {
       messages.push(current);

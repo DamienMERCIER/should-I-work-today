@@ -1,27 +1,27 @@
 import { angularDistance } from './geo';
 
 /**
- * Note « façon surf-forecast » : étoiles 0..10 + couleur (or = propre, blanc = abîmé par l'onshore).
+ * A "surf-forecast style" rating: stars 0..10 + color (gold = clean, white = messed up by onshore wind).
  *
- * Reconstruit le 16/09/2026 à partir de 78 lignes lues sur surf-forecast.com (Muizenberg, Long Beach,
- * Cape Town wavefinder, Papatowai NZ, Cathedral Rock AU) : note, hauteur, période, énergie, vent,
- * état du vent. Sur ces 78 lignes le modèle ci-dessous tombe juste 71 % du temps et à ±1 étoile 97 %
- * du temps (les tables du site arrondissent la hauteur au 0,1 m / 0,5 m et le vent aux 5 km/h, d'où
- * le bruit résiduel). Ce que les données disent, dans l'ordre d'importance :
+ * Reconstructed on 2026-09-16 from 78 lines read on surf-forecast.com (Muizenberg, Long Beach,
+ * Cape Town wavefinder, Papatowai NZ, Cathedral Rock AU): rating, height, period, energy, wind,
+ * wind state. On those 78 lines the model below lands exactly right 71% of the time and within
+ * ±1 star 97% of the time (the site's tables round height to 0.1 m / 0.5 m and wind to 5 km/h, hence
+ * the residual noise). What the data says, in order of importance:
  *
- *  1. La note de base ne dépend (presque) que de la HAUTEUR de houle dirigée vers le spot, en gros
- *     « une demi-étoile par pied » : 0,7 m → 2, 1,5 m → 3, 2,3 m → 4, 3 m → 5, 3,5 m → 6, 4 m → 7-8,
- *     5 m → 9. La période ne bouge la note qu'à la marge (±1 sur 10 s vs 18 s), contrairement à ce
- *     que laisse entendre la FAQ du site. L'énergie affichée vaut ≈ 2·H²·T² kJ.
- *  2. Le vent est un MULTIPLICATEUR brutal et asymétrique, en six états (glassy, off, cross-off,
- *     cross, cross-on, on) découpés en secteurs de 45° autour de la direction offshore :
- *     onshore et cross-onshore tombent à 0 dès 20 km/h (11 kt) ; cross-off tient jusqu'à 25 km/h
- *     puis s'effondre (35 km/h → ×0,4, 45 km/h → ×0,07) ; offshore ne coûte rien jusqu'à 30 km/h.
- *  3. La couleur : or quand le vent n'a pas de composante onshore (glassy, off, cross-off), blanc
- *     sinon (App Store : « gold = clean waves, white = onshore »).
+ *  1. The base rating depends (almost) only on the HEIGHT of swell directed at the spot, roughly
+ *     "half a star per foot": 0.7 m → 2, 1.5 m → 3, 2.3 m → 4, 3 m → 5, 3.5 m → 6, 4 m → 7-8,
+ *     5 m → 9. Period only moves the rating at the margin (±1 over 10s vs 18s), unlike what the
+ *     site's FAQ suggests. The displayed energy is ≈ 2·H²·T² kJ.
+ *  2. Wind is a brutal, asymmetric MULTIPLIER, in six states (glassy, off, cross-off,
+ *     cross, cross-on, on) split into 45° sectors around the offshore direction:
+ *     onshore and cross-onshore drop to 0 as early as 20 km/h (11 kt); cross-off holds up to 25 km/h
+ *     then collapses (35 km/h → ×0.4, 45 km/h → ×0.07); offshore costs nothing up to 30 km/h.
+ *  3. Color: gold when the wind has no onshore component (glassy, off, cross-off), white
+ *     otherwise (App Store: "gold = clean waves, white = onshore").
  *
- * C'est la note du bot : `score.ts` l'applique à chaque heure de chaque spot, et ne garde du reste
- * (lumière, orage) que ce qui décide si une heure peut compter pour une session.
+ * This is the bot's rating: `score.ts` applies it to every hour of every spot, and keeps from the
+ * rest (daylight, thunderstorm) only what decides whether an hour can count toward a session.
  */
 
 export type WindState = 'glassy' | 'off' | 'cross-off' | 'cross' | 'cross-on' | 'on';
@@ -29,19 +29,19 @@ export type WindState = 'glassy' | 'off' | 'cross-off' | 'cross' | 'cross-on' | 
 type Curve = ReadonlyArray<readonly [kmh: number, factor: number]>;
 
 export const RATING = {
-  /** En dessous, le site affiche « glassy » quel que soit l'angle (le vent est arrondi aux 5 km/h). */
+  /** Below this, the site shows "glassy" regardless of angle (wind is rounded to the nearest 5 km/h). */
   glassyMaxKmh: 5,
-  /** Demi-largeur du secteur « off » / « on » ; les états intermédiaires prennent 45° chacun. */
+  /** Half-width of the "off" / "on" sector; the intermediate states each take 45°. */
   sectorHalfWidthDeg: 22.5,
   /**
-   * Note de base = 1,81 + 0,37·H + 0,23·H² (H en m, houle dirigée vers le spot), bornée à 10.
-   * Ajustement quadratique sur 44 lignes à vent propre (rmse 0,53). L'alternative linéaire
-   * « 0,5 étoile par pied + 0,4 » fait aussi bien jusqu'à 3,5 m mais sous-estime 4 m et plus.
+   * Base rating = 1.81 + 0.37·H + 0.23·H² (H in m, swell directed at the spot), capped at 10.
+   * Quadratic fit on 44 clean-wind lines (rmse 0.53). The linear alternative
+   * "0.5 star per foot + 0.4" does just as well up to 3.5 m but underestimates 4 m and beyond.
    */
   base: { c0: 1.81, c1: 0.37, c2: 0.23 },
-  /** Hauteur (m) en dessous de laquelle c'est plat : 0 étoile quoi qu'il arrive. */
+  /** Height (m) below which it's flat: 0 stars no matter what. */
   flatBelowM: 0.3,
-  /** Facteur vent par état, en km/h (unité des tables du site ; l'appelant passe des nœuds). */
+  /** Wind factor per state, in km/h (the unit of the site's tables; the caller passes knots). */
   wind: {
     glassy: [[0, 1]] as Curve,
     off: [[30, 1], [35, 0.75], [45, 0.4], [55, 0]] as Curve,
@@ -50,15 +50,15 @@ export const RATING = {
     'cross-on': [[3, 1], [5, 0.75], [10, 0.6], [15, 0.3], [20, 0]] as Curve,
     on: [[3, 1], [5, 0.7], [10, 0.45], [15, 0.1], [18, 0]] as Curve,
   },
-  /** États sans composante onshore : étoiles « or ». */
+  /** States with no onshore component: "gold" stars. */
   cleanStates: ['glassy', 'off', 'cross-off'] as readonly WindState[],
-  /** kJ ≈ k·H²·T² ; k ajusté sur les tables (0,9..1,0 une fois les arrondis pris en compte). */
+  /** kJ ≈ k·H²·T²; k fitted from the tables (0.9..1.0 once rounding is accounted for). */
   energyK: 2,
 } as const;
 
 export const KT_TO_KMH = 1.852;
 
-/** Linéaire par morceaux : valeur du premier point avant lui, du dernier après lui. */
+/** Piecewise linear: value of the first point before it, of the last point after it. */
 function piecewise(curve: Curve, x: number): number {
   const first = curve[0];
   const last = curve[curve.length - 1];
@@ -73,9 +73,9 @@ function piecewise(curve: Curve, x: number): number {
 }
 
 /**
- * État du vent façon surf-forecast : angle entre la direction D'OÙ vient le vent et la direction
- * offshore (facing + 180), en secteurs de 45° : off ≤ 22,5°, cross-off ≤ 67,5°, cross ≤ 112,5°,
- * cross-on ≤ 157,5°, on au-delà. Un vent sous `glassyMaxKmh` est « glassy » quel que soit l'angle.
+ * Wind state, surf-forecast style: angle between the direction the wind is coming FROM and the
+ * offshore direction (facing + 180), in 45° sectors: off ≤ 22.5°, cross-off ≤ 67.5°, cross ≤ 112.5°,
+ * cross-on ≤ 157.5°, on beyond that. A wind under `glassyMaxKmh` is "glassy" regardless of angle.
  */
 export function windState(windFromDeg: number, facingDeg: number, windKt: number): WindState {
   if (windKt * KT_TO_KMH < RATING.glassyMaxKmh) return 'glassy';
@@ -88,7 +88,7 @@ export function windState(windFromDeg: number, facingDeg: number, windKt: number
   return 'on';
 }
 
-/** Note de base continue 0..10, avant vent. `heightM` = houle dirigée vers le spot, près du bord. */
+/** Continuous base rating 0..10, before wind. `heightM` = swell directed at the spot, near shore. */
 export function starBase(heightM: number): number {
   if (heightM < RATING.flatBelowM) return 0;
   const { c0, c1, c2 } = RATING.base;
@@ -96,10 +96,10 @@ export function starBase(heightM: number): number {
 }
 
 /**
- * Étoiles avant arrondi : ce que valent une note de base et un facteur vent ensemble. Arrondi, c'est
- * la note affichée ; brut, c'est l'unité commune qui permet de peser ce que coûte le vent ou la houle
- * — explications 📋, raison d'un 🔴, cause d'un changement le matin — sans comparer deux facteurs qui
- * ne sont pas sur la même échelle.
+ * Stars before rounding: what a base rating and a wind factor are worth together. Rounded, it's
+ * the displayed rating; raw, it's the common unit that lets you weigh what wind or swell costs
+ * — 📋 explanations, the reason for a 🔴, the cause of a morning change — without comparing two
+ * factors that aren't on the same scale.
  */
 export function rawStars(base: number, windFactor: number): number {
   return base < 0.5 ? 0 : base * windFactor;
@@ -109,13 +109,13 @@ export function windStarFactor(state: WindState, windKt: number): number {
   return piecewise(RATING.wind[state], windKt * KT_TO_KMH);
 }
 
-/** Énergie « kJ » telle que le site l'affiche : ≈ 2·H²·T². Sert à parler la même langue que lui. */
+/** Energy "kJ" the way the site displays it: ≈ 2·H²·T². Used to speak the same language as it. */
 export function energyKJ(heightM: number, periodS: number): number {
   return Math.round(RATING.energyK * heightM * heightM * periodS * periodS);
 }
 
 export interface StarInput {
-  /** houle dirigée vers le spot, en mètres (près du bord, PAS la hauteur de face en pieds) */
+  /** swell directed at the spot, in meters (near shore, NOT the face height in feet) */
   heightM: number;
   periodS: number;
   windKt: number;
@@ -124,12 +124,12 @@ export interface StarInput {
 }
 
 export interface StarRating {
-  /** 0..10 entier, comparable à la colonne « Rating (10 max) » du site */
+  /** 0..10 integer, comparable to the site's "Rating (10 max)" column */
   stars: number;
-  /** true = étoiles or (glassy, offshore, cross-offshore) ; false = blanches (le vent a une composante onshore) */
+  /** true = gold stars (glassy, offshore, cross-offshore); false = white (the wind has an onshore component) */
   clean: boolean;
   state: WindState;
-  /** note de base avant vent, continue, pour le debug et la calibration */
+  /** base rating before wind, continuous, for debugging and calibration */
   base: number;
   windFactor: number;
   energyKJ: number;
@@ -148,9 +148,9 @@ export function rateLikeSurfForecast(input: StarInput): StarRating {
 }
 
 /**
- * Rendu texte pour Telegram, où le texte n'a pas de couleur : l'emoji ⭐, jaune partout, pour l'or (propre), ☆ creuses
- * pour le blanc (onshore). Un ★ plein prenait la couleur du texte : blanc en mode sombre, l'or ne se voyait pas.
- * `⭐⭐⭐⭐☆☆` n'existe pas : c'est tout l'un ou tout l'autre, comme sur le site.
+ * Text rendering for Telegram, where text has no color: the ⭐ emoji, yellow everywhere, for gold (clean), hollow ☆
+ * for white (onshore). A solid ★ took on the text color: white in dark mode, so gold didn't show.
+ * `⭐⭐⭐⭐☆☆` doesn't happen: it's all one or all the other, just like on the site.
  */
 export function starGlyphs(rating: Pick<StarRating, 'stars' | 'clean'>): string {
   if (rating.stars === 0) return '·';

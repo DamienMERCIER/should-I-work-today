@@ -1,6 +1,6 @@
 import type { WindState } from './engine/rating';
 
-/** Les six états de vent de surf-forecast (`src/engine/rating.ts`). */
+/** The six surf-forecast wind states (`src/engine/rating.ts`). */
 export type { WindState };
 
 export type Level = 'beginner' | 'intermediate' | 'advanced';
@@ -15,9 +15,9 @@ export interface LatLon { lat: number; lon: number }
 export interface WorkHours { start: string; end: string }
 
 /**
- * Ni niveau ni planche : la note est celle de surf-forecast, la même pour tout le monde
- * (§ RAPPORT-surf-forecast.md). Un profil écrit avant le 16/09/2026 peut encore porter `level`,
- * `board` et `onboarding` en KV : `Store` les retire à la lecture.
+ * No level, no board: the rating is surf-forecast's, the same for everyone
+ * (§ docs/rating.md). A profile written before 16/09/2026 can still carry `level`,
+ * `board`, and `onboarding` in KV: `Store` strips them on read.
  */
 export interface Profile {
   chatId: number;
@@ -25,13 +25,13 @@ export interface Profile {
   workHours: WorkHours;
   location: LatLon & { source: 'default' | 'custom' };
   active: boolean;
-  /** pourquoi `active` est faux : `/stop`, ou le bot bloqué par l'ami (absent avant le 17/09/2026) */
+  /** why `active` is false: `/stop`, or the bot got blocked by the friend (absent before 17/09/2026) */
   inactiveReason?: 'stopped' | 'blocked';
   awaiting?: 'hours';
-  /** à partir de combien d'étoiles le bot dit d'aller surfer ; absent = le seuil commun (`SCORING.good`) */
+  /** from how many stars the bot says to go surf; absent = the common threshold (`SCORING.good`) */
   minStars?: number;
   createdAt: string;
-  /** nom et pseudo Telegram, sur une ligne, pour la liste `/amis` de l'admin */
+  /** name and Telegram handle, on one line, for the admin's `/friends` list */
   name?: string;
   username?: string;
 }
@@ -41,7 +41,7 @@ export interface Region { id: string; name: string; tz: 'Africa/Johannesburg'; s
 export interface Spot {
   id: string;
   name: string;
-  /** libellé court pour les tableaux (≤ 13 caractères) */
+  /** short label for tables (≤ 13 characters) */
   short: string;
   region: string;
   lat: number;
@@ -56,13 +56,13 @@ export interface Spot {
   notes?: string;
 }
 
-// ---- séries horaires normalisées (sorties des adaptateurs, entrées du moteur) ----
+// ---- normalized hourly series (adapter outputs, engine inputs) ----
 export interface SwellComponent { heightM: number; periodS: number; directionDeg: number }
 export interface SwellHour {
   time: string; primary: SwellComponent; secondary: SwellComponent; seaLevelM: number;
-  /** période pic de la houle (gwam) ; absente si le modèle ne la publie pas */
+  /** peak swell period (gwam); absent if the model doesn't publish it */
   peakPeriodS?: number;
-  /** température de l'eau en surface (°C) ; absente si le modèle ne la publie pas pour cette heure */
+  /** sea surface temperature (°C); absent if the model doesn't publish it for this hour */
   seaTempC?: number;
 }
 export interface WindHour {
@@ -71,36 +71,36 @@ export interface WindHour {
 }
 export interface DailySun { date: string; sunrise: string; sunset: string; tempMaxC: number; tempMinC: number; precipMm: number }
 
-// ---- sorties du moteur ----
+// ---- engine outputs ----
 /**
- * Ce qui fait la note d'une heure. `swell` = note de base surf-forecast ramenée sur 0..1 (base / 10),
- * `wind` = multiplicateur vent de l'état courant ; `day` et `weather` ne touchent pas les étoiles, ils
- * disent seulement si l'heure peut compter pour une session.
+ * What makes up an hour's rating. `swell` = the surf-forecast base rating scaled to 0..1 (base / 10),
+ * `wind` = the current wind state's multiplier; `day` and `weather` don't affect the stars, they
+ * only say whether the hour can count toward a session.
  */
 export interface HourFactors { swell: number; wind: number; day: number; weather: number }
 export interface SpotHour {
   time: string;
-  /** houle dirigée vers le spot, à sa cellule (m) — la hauteur sur laquelle surf-forecast note */
+  /** swell directed at the spot, at its cell (m) — the height surf-forecast rates on */
   heightM: number; periodS: number; swellDirDeg: number;
   windKt: number; windDirDeg: number; windState: WindState;
   tide: { state: TideState; trend: TideTrend };
-  /** note surf-forecast pure, 0..10, même de nuit */
+  /** pure surf-forecast rating, 0..10, even at night */
   stars: number;
-  /** étoiles « or » : pas de composante onshore */
+  /** "gold" stars: no onshore component */
   clean: boolean;
   factors: HourFactors;
-  /** les étoiles si l'heure a du jour et pas d'orage, 0 sinon : c'est ce que lisent fenêtres et verdict */
+  /** the stars if the hour has daylight and no storm, 0 otherwise: this is what windows and the verdict read */
   score: number;
 }
 export interface Window { start: string; end: string; peak: number; mean: number }
 export interface SpotResult {
   spotId: string; distanceKm: number;
   hours: SpotHour[]; windows: Window[]; best?: Window; maxScore: number;
-  /** l'eau du jour au spot, au degré : moyenne des heures de jour (des heures évaluées s'il n'y en a pas) ; absente sans donnée */
+  /** the day's water temperature at the spot, to the degree: average of daylight hours (of evaluated hours if there are none); absent without data */
   waterTempC?: number;
 }
 export interface TideEvent { time: string; kind: 'high' | 'low'; heightM: number }
-/** Un ami qui a dit « j'y vais » : où, et quand il l'a dit. */
+/** A friend who said "I'm going": where, and when they said it. */
 export interface GoingEntry { chatId: number; spotId: string; at: string }
 export interface RawConditions { swellHeightM: number; periodS: number; swellDirDeg: number; windKt: number; windDirDeg: number }
 export interface SpotPick { spotId: string; window: Window }
@@ -115,7 +115,7 @@ export type Verdict =
 export interface Report {
   chatId: number;
   date: string;
-  /** le seuil de l'ami au moment du calcul ; absent dans les rapports écrits avant le 17/09/2026 */
+  /** the friend's threshold at calculation time; absent in reports written before 17/09/2026 */
   minStars?: number;
   mode: ReportMode;
   generatedAt: string;

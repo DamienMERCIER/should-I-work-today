@@ -55,11 +55,11 @@ export interface ServerData {
   failMarine?: boolean; failForecast?: boolean; failPeak?: boolean;
 }
 
-/** Répond comme Open-Meteo : un objet pour un point, un tableau pour plusieurs. */
+/** Responds like Open-Meteo: a single object for one point, an array for several. */
 export function openMeteoServer(data: ServerData) {
   return (url: string): Response => {
     const points = (new URL(url).searchParams.get('latitude') ?? '').split(',').length;
-    // l'appel période pic (models=gwam) cible aussi marine-api : le détecter en premier.
+    // the peak-period call (models=gwam) also targets marine-api: detect it first.
     const one = url.includes('swell_wave_peak_period')
       ? (data.failPeak ? null : peakJson(data.swell))
       : url.includes('marine-api')

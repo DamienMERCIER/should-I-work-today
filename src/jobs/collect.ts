@@ -14,9 +14,9 @@ export interface CollectDeps { spots: Spot[]; regions: Region[]; fetchFn: FetchL
 
 interface Near { spot: Spot; distanceKm: number }
 interface RegionData {
-  /** point régional : sert à la marée */
+  /** regional point: used for the tide */
   swell: SwellHour[];
-  /** houle à la cellule de chaque spot : c'est sur elle que se calculent les étoiles */
+  /** swell at each spot's cell: this is what the stars are calculated from */
   spotSwell: Map<string, SwellHour[]>;
   forecasts: Map<string, ForecastSeries>;
   tide: Map<string, TideInfo>;
@@ -52,7 +52,7 @@ export function nearestSpots(spots: Spot[], at: LatLon, n = 3, worldTuples?: Spo
 
 const toError = (err: unknown): OpenMeteoError => (err instanceof OpenMeteoError ? err : new OpenMeteoError(String(err)));
 
-/** Fusionne par timestamp (pas par index : les deux séries peuvent différer en longueur/ordre). `null` (ou une heure absente) laisse `peakPeriodS` non défini plutôt que de fabriquer 0 — `effectiveSwell` retombe alors sur la période moyenne. */
+/** Merges by timestamp (not by index: the two series can differ in length/order). `null` (or a missing hour) leaves `peakPeriodS` undefined rather than fabricating 0 — `effectiveSwell` then falls back to the mean period. */
 export function mergePeakPeriod(swell: SwellHour[], peak: PeakPeriodHour[]): SwellHour[] {
   const byTime = new Map(peak.map((p) => [p.time, p.peakPeriodS]));
   return swell.map((h) => {
@@ -62,15 +62,15 @@ export function mergePeakPeriod(swell: SwellHour[], peak: PeakPeriodHour[]): Swe
 }
 
 /**
- * La houle à la cellule du spot, heure par heure ; la régionale × `exposure` pour chaque heure où la
- * cellule ne publie rien. Open-Meteo rend `null` pour une valeur qu'il n'a pas et l'adaptateur le lit
- * comme 0 : une cellule océanique n'affiche jamais exactement 0,00 m sur les deux composantes, c'est
- * une valeur absente. Heure par heure et non série entière, pour qu'une cellule qui se tait au milieu
- * de l'échéance ne transforme pas le lendemain en « 0★ (swell 0.0 m) ». Le 16/09/2026 les 35 spots
- * curatés avaient tous une série complète ; le repli vise surtout les spots du monde importés.
+ * Swell at the spot's cell, hour by hour; the regional swell × `exposure` for each hour where the
+ * cell publishes nothing. Open-Meteo returns `null` for a value it doesn't have and the adapter reads
+ * it as 0: an ocean cell never shows exactly 0.00 m on both components, that's a missing value.
+ * Hour by hour rather than the whole series, so a cell that goes silent partway through the forecast
+ * horizon doesn't turn the next day into "0★ (swell 0.0 m)". On 2026-09-16 the 35 curated spots all
+ * had a complete series; the fallback mainly targets the imported world spots.
  *
- * La température de l'eau suit sa propre règle : celle de la cellule quand elle existe, même quand la houle
- * vient de la région — elle sort d'un autre modèle, sur une autre grille —, sinon celle de la région.
+ * Water temperature follows its own rule: the cell's value when it exists, even when the swell comes
+ * from the region — it comes from a different model, on a different grid — otherwise the region's value.
  */
 export function spotSwellSeries(atSpot: SwellHour[] | undefined, regional: SwellHour[], exposure: number): SwellHour[] {
   const scaled = (h: SwellHour): SwellHour => ({
@@ -90,29 +90,29 @@ export function spotSwellSeries(atSpot: SwellHour[] | undefined, regional: Swell
   });
 }
 
-/** Jours de prévision demandés par appel. Sans option, ceux qu'il faut au verdict d'un seul jour. */
+/** Forecast days requested per call. Without an option, whatever a single day's verdict needs. */
 export interface LoadOptions { forecastDays?: number }
 
 async function loadRegion(region: Region, spots: Spot[], fetchFn: FetchLike, opts: LoadOptions = {}): Promise<RegionData> {
-  // Un verdict d'un jour : marée J−3 h .. J+27 h → 3 jours ; vent/météo, seul le jour J est lu → 2 jours
-  // suffisent. La semaine à venir demande `forecastDays` pour les trois appels : les réponses grossissent,
-  // pas leur nombre.
-  // période pic (gwam, §adapters/openMeteo) : 3e appel séparé, best-effort — une panne ne doit pas priver
-  // la région de verdict (§10.1), juste la ramener au repli période moyenne déjà géré par effectiveSwell.
-  // Houle : le point régional (marée) ET la cellule de chaque spot (étoiles), dans le même appel —
-  // Open-Meteo accepte plusieurs points par requête, donc zéro sous-requête de plus (§ RAPPORT 1.2).
+  // A single day's verdict: tide day D−3h .. day D+27h → 3 days; wind/weather, only day D itself is read → 2 days
+  // is enough. The upcoming week needs `forecastDays` for all three calls: the responses get bigger,
+  // not more numerous.
+  // peak period (gwam, §adapters/openMeteo): separate 3rd call, best-effort — a failure must not deprive
+  // the region of a verdict (§10.1), it should just fall back to the mean period already handled by effectiveSwell.
+  // Swell: the regional point (tide) AND each spot's cell (stars), in the same call —
+  // Open-Meteo accepts several points per request, so zero extra sub-requests (§ docs/rating.md 1.2).
   const [[regional, ...atSpots], forecasts, peakSeries] = await Promise.all([
     fetchMarine([region.swellRef, ...spots], fetchFn, { forecastDays: opts.forecastDays ?? 3 }),
     fetchForecast(spots, fetchFn, { forecastDays: opts.forecastDays ?? 2 }),
-    // retries: 0 — best-effort : le Promise.all attend cette 3e requête comme les deux autres, donc la
-    // faire re-essayer (2 s de délai par défaut) retarderait toute la région pour un gain marginal ;
-    // en cas d'échec on retombe simplement sur la période moyenne.
+    // retries: 0 — best-effort: the Promise.all waits for this 3rd request just like the other two, so
+    // making it retry (2s delay by default) would delay the whole region for a marginal gain;
+    // on failure we simply fall back to the mean period.
     fetchPeakPeriod([region.swellRef], fetchFn, { retries: 0, forecastDays: opts.forecastDays ?? 3 }).catch((err) => {
       console.warn(`[collect] peak period unavailable for region ${region.id}, falling back to mean period: ${String(err)}`);
       return null;
     }),
   ]);
-  // la période pic n'existe qu'au point régional (gwam) : on la fusionne aussi dans chaque série spot
+  // the peak period only exists at the regional point (gwam): we merge it into each spot series too
   const withPeak = (series: SwellHour[]): SwellHour[] => (peakSeries ? mergePeakPeriod(series, peakSeries[0]) : series);
   return {
     swell: withPeak(regional),
@@ -132,22 +132,22 @@ const tideFor = (data: RegionData, date: string): TideInfo => {
 };
 
 /**
- * Évaluations déjà faites dans cet appel, par spot, date et heure de départ. Les étoiles ne dépendent
- * plus du profil (ni niveau ni planche) : des amis au même endroit, ou les sept jours d'une semaine
- * demandés par plusieurs profils, réutilisent la même évaluation au lieu de refaire le CPU pour chacun.
- * Seule la distance, propre à chaque profil, est recopiée.
+ * Evaluations already done in this call, by spot, date and start time. The star rating no longer
+ * depends on the profile (neither level nor board): friends at the same place, or the seven days of a
+ * week requested by several profiles, reuse the same evaluation instead of redoing the CPU work for each.
+ * Only the distance, specific to each profile, is copied over.
  */
 type EvalCache = Map<string, SpotResult>;
 
-/** Un verdict par profil, pour le jour demandé. Enveloppe de `buildReportList` indexée par chat. */
+/** One verdict per profile, for the requested day. Wrapper over `buildReportList` indexed by chat. */
 export async function buildReports(reqs: EvalRequest[], deps: CollectDeps): Promise<Map<number, Report>> {
   const list = await buildReportList(reqs, deps);
   return new Map(list.map((report, i) => [reqs[i].profile.chatId, report]));
 }
 
 /**
- * Un rapport par requête, dans l'ordre des requêtes — plusieurs dates par profil sont permises (semaine
- * à venir). Chaque région n'est chargée qu'une fois pour toutes les requêtes et toutes les dates.
+ * One report per request, in the order of the requests — several dates per profile are allowed (the
+ * upcoming week). Each region is loaded only once for all requests and all dates.
  */
 export async function buildReportList(reqs: EvalRequest[], deps: CollectDeps, opts: LoadOptions = {}): Promise<Report[]> {
   const radiusKm = deps.radiusKm ?? RADIUS_KM;
@@ -155,7 +155,7 @@ export async function buildReportList(reqs: EvalRequest[], deps: CollectDeps, op
   const nearbyAt = nearbyByPlace(deps.spots, radiusKm);
   const perRequest = reqs.map((req) => ({ req, nearby: nearbyAt(req.profile.location) }));
 
-  // 1. spots requis par région
+  // 1. spots required per region
   const needed = new Map<string, Map<string, Spot>>();
   for (const { nearby } of perRequest) {
     for (const { spot } of nearby) {
@@ -165,7 +165,7 @@ export async function buildReportList(reqs: EvalRequest[], deps: CollectDeps, op
     }
   }
 
-  // 2. deux appels par région, toutes les régions en parallèle
+  // 2. two calls per region, all regions in parallel
   const regionData = new Map<string, RegionData | OpenMeteoError>();
   await Promise.all(
     [...needed].map(async ([regionId, spotMap]) => {
@@ -182,9 +182,10 @@ export async function buildReportList(reqs: EvalRequest[], deps: CollectDeps, op
     }),
   );
 
-  // 3. un rapport par groupe d'amis identique — même date, même lieu, mêmes horaires : les étoiles, le verdict,
-  // les marées et, hors couverture, les appels bruts ne dépendent que de ça. Chacun reçoit ce corps partagé avec
-  // son propre chat et sa propre position. À 40 amis, le dimanche refaisait sinon 280 verdicts et assemblages.
+  // 3. one report per identical group of friends — same date, same place, same work hours: the star rating,
+  // the verdict, the tides, and, out of coverage, the raw calls only depend on that. Each one gets this shared
+  // body with their own chat and their own location. With 40 friends, Sunday's send would otherwise redo 280
+  // verdicts and assemblies.
   const cache: EvalCache = new Map();
   const bodies = new Map<string, Promise<Report>>();
   return Promise.all(
@@ -201,13 +202,13 @@ export async function buildReportList(reqs: EvalRequest[], deps: CollectDeps, op
   );
 }
 
-/** Le seuil d'un ami, ou celui de tout le monde s'il n'y a pas touché. */
+/** The friend's threshold, or everyone's if they haven't changed it. */
 export const minStars = (p: Profile): number => p.minStars ?? SCORING.good;
 
-/** Une position comme clé de regroupement : les amis au même endroit partagent spots proches, rapport et message. */
+/** A location as a grouping key: friends at the same place share nearby spots, report and message. */
 export const placeKey = (at: LatLon): string => `${at.lat},${at.lon}`;
 
-/** Les spots proches d'une position, cherchés une fois par position : ~6 000 spots importés à parcourir. */
+/** The spots near a location, looked up once per location: ~6,000 imported spots to scan. */
 export function nearbyByPlace(spots: Spot[], radiusKm: number): (at: LatLon) => Near[] {
   const byPlace = new Map<string, Near[]>();
   return (at) => {
@@ -221,13 +222,13 @@ export function nearbyByPlace(spots: Spot[], radiusKm: number): (at: LatLon) => 
   };
 }
 
-/** Jours de la semaine à venir, pour `/week` comme pour l'envoi du dimanche. */
+/** Days of the upcoming week, for `/week` as well as the Sunday send. */
 export const WEEK_DAYS = 7;
 
 /**
- * La semaine à venir d'un profil : aujourd'hui s'il reste une heure surfable (le reste de la journée,
- * comme /now), sinon demain, puis les jours suivants jusqu'à sept — une seule charge par région pour
- * les huit dates demandées.
+ * A profile's upcoming week: today if there's still a surfable hour left (the rest of the day,
+ * like /now), otherwise tomorrow, then the following days up to seven — a single load per region for
+ * the eight dates requested.
  */
 export async function buildWeek(profile: Profile, deps: CollectDeps): Promise<Report[]> {
   const today = dateOf(deps.now);
@@ -257,12 +258,12 @@ function baseReport(req: EvalRequest, deps: CollectDeps, radiusKm: number): Omit
   };
 }
 
-/** Une exception du moteur ne doit priver que ce profil de verdict (§10.1), jamais tout le run. */
+/** An exception in the engine should only deprive this profile of a verdict (§10.1), never the whole run. */
 function assembleSafely(req: EvalRequest, nearby: Near[], regionData: Map<string, RegionData | OpenMeteoError>, deps: CollectDeps, radiusKm: number, cache: EvalCache): Report {
   try {
     return assemble(req, nearby, regionData, deps, radiusKm, cache);
   } catch (err) {
-    console.error(`[collect] ${req.profile.chatId} ${req.date}: ${String(err)}`); // défaut du moteur, pas une absence de données
+    console.error(`[collect] ${req.profile.chatId} ${req.date}: ${String(err)}`); // engine fault, not a lack of data
     return { ...baseReport(req, deps, radiusKm), verdict: { kind: 'noData', reason: `engine: ${String(err)}` } };
   }
 }
@@ -324,8 +325,8 @@ async function outOfCoverage(req: EvalRequest, deps: CollectDeps, radiusKm: numb
   }
   try {
     const at = req.profile.location;
-    // pas d'appel période pic ici : cette branche n'affiche qu'une ligne de conditions brutes (swell_wave_period,
-    // la période moyenne), jamais d'étoiles.
+    // no peak period call here: this branch only shows a line of raw conditions (swell_wave_period,
+    // the mean period), never a star rating.
     const [[swell], [forecast]] = await Promise.all([fetchMarine([at], deps.fetchFn), fetchForecast([at], deps.fetchFn, { forecastDays: 2 })]);
     const refTime = req.fromTime ? floorHour(req.fromTime) : `${req.date}T09:00`;
     const s = swell.find((h) => h.time === refTime);

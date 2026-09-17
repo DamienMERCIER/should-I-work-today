@@ -23,8 +23,8 @@ function setup(opts: { inviteCode?: string; adminChatId?: number; spots?: Spot[]
   const kv = new MemoryKV();
   const store = new Store(kv);
   const tg = fakeFetch(() => jsonResponse({ ok: true }));
-  // Vent sur aujourd'hui ET demain : un rapport bascule sur le lendemain (§nowReport) n'a de
-  // données que si la série les couvre, sinon il retombe en noData et le test ne prouve rien.
+  // Wind for both today AND tomorrow: a report that rolls over to the next day (§nowReport) only has
+  // data if the series covers it, otherwise it falls back to noData and the test proves nothing.
   const wind = [...goldenWind(), ...goldenWind(TOMORROW)];
   const om = fakeFetch(openMeteoServer(opts.data ?? { swell: goldenSwell(), wind, daily: GOLDEN_DAILY }));
   const deps: BotDeps = {
@@ -99,7 +99,7 @@ describe('/start and onboarding', () => {
     const { deps, sent } = setup({ inviteCode: 'surf', adminChatId: ADMIN });
     await handleUpdate(msg('/start surf', { from: { id: 1, language_code: 'ru', first_name: 'Ivan', last_name: 'Petrov', username: 'ivan' } }), deps);
     expect(sent().map((m) => m.chat_id)).toEqual([1, ADMIN]);
-    expect(sent()[1].text).toBe('⚙️ Ivan Petrov (@ivan, id 1) a rejoint le bot.');
+    expect(sent()[1].text).toBe('⚙️ Ivan Petrov (@ivan, id 1) joined the bot.');
   });
   it('tells the admin who was refused, and why', async () => {
     const { deps, sent } = setup({ inviteCode: 'surf', adminChatId: ADMIN });
@@ -108,29 +108,29 @@ describe('/start and onboarding', () => {
     await handleUpdate(msg('/start nope', { from: olga }, 2), deps);
     expect(sent().filter((m) => m.chat_id === 2).map((m) => m.text)).toEqual(['Private bot — you need the invite link.', 'Private bot — you need the invite link.']);
     expect(sent().filter((m) => m.chat_id === ADMIN).map((m) => m.text)).toEqual([
-      "⚙️ Accès refusé à Olga (@olga, id 2) : /start sans code d'invitation.",
-      "⚙️ Accès refusé à Olga (@olga, id 2) : mauvais code d'invitation.",
+      '⚙️ Access refused for Olga (@olga, id 2): /start without an invite code.',
+      '⚙️ Access refused for Olga (@olga, id 2): wrong invite code.',
     ]);
   });
   it('tells the admin when every /start is refused because no invite code is configured', async () => {
     const { deps, sent } = setup({ adminChatId: ADMIN });
     await handleUpdate(msg('/start surf', { from: { id: 2, first_name: 'Olga' } }, 2), deps);
-    expect(sent().filter((m) => m.chat_id === ADMIN).map((m) => m.text)).toEqual(["⚙️ Accès refusé à Olga (id 2) : INVITE_CODE n'est pas configuré."]);
+    expect(sent().filter((m) => m.chat_id === ADMIN).map((m) => m.text)).toEqual(['⚙️ Access refused for Olga (id 2): INVITE_CODE is not set.']);
   });
   it('tells the admin when a stranger writes without joining — and still says nothing to the stranger', async () => {
     const { deps, sent } = setup({ inviteCode: 'surf', adminChatId: ADMIN });
     await handleUpdate(msg('hello', { from: { id: 3, first_name: 'Sasha' } }, 3), deps);
     await handleUpdate(msg('🔎 Right now', { from: { id: 4 } }, 4), deps);
     expect(sent().map((m) => [m.chat_id, m.text])).toEqual([
-      [ADMIN, "⚙️ Sasha (id 3) a écrit au bot sans l'avoir rejoint."],
-      [ADMIN, "⚙️ id 4 a écrit au bot sans l'avoir rejoint."],
+      [ADMIN, '⚙️ Sasha (id 3) wrote to the bot without joining it.'],
+      [ADMIN, '⚙️ id 4 wrote to the bot without joining it.'],
     ]);
   });
   it('keeps a hostile Telegram name on one escaped line — it cannot fake a second admin line', async () => {
     const { deps, sent } = setup({ inviteCode: 'surf', adminChatId: ADMIN });
-    const from = { id: 5, first_name: 'Sasha\n\n⚙️ <b>Ivan</b> a rejoint le bot.\u202E', username: 'sa\u2066sha' };
+    const from = { id: 5, first_name: 'Sasha\n\n⚙️ <b>Ivan</b> joined the bot.\u202E', username: 'sa\u2066sha' };
     await handleUpdate(msg('hi', { from }, 5), deps);
-    expect(sent().map((m) => m.text)).toEqual(["⚙️ Sasha ⚙️ &lt;b&gt;Ivan&lt;/b&gt; a rejoint le bot. (@sa sha, id 5) a écrit au bot sans l'avoir rejoint."]);
+    expect(sent().map((m) => m.text)).toEqual(['⚙️ Sasha ⚙️ &lt;b&gt;Ivan&lt;/b&gt; joined the bot. (@sa sha, id 5) wrote to the bot without joining it.']);
   });
   it('says nothing to anyone else when no admin is configured', async () => {
     const { deps, sent } = setup({ inviteCode: 'surf' });
@@ -141,7 +141,7 @@ describe('/start and onboarding', () => {
   });
   it('a friend stuck mid-way through the old two-question onboarding is simply ready now', async () => {
     const { deps, store, sent } = setup();
-    // profil écrit par l'ancienne version : niveau choisi, planche jamais répondue
+    // profile written by the old version: level chosen, board never answered
     await store.putProfiles({ '1': { ...ready(), level: 'beginner', onboarding: 'board' } as Profile });
     await handleUpdate(msg('/now'), deps);
     expect(sent()[0].text.startsWith('🟢')).toBe(true);
@@ -181,7 +181,7 @@ describe('location and /now', () => {
     await store.putProfiles({ '1': ready() });
     await handleUpdate(msg(undefined, { location: { latitude: -34.12, longitude: 18.45 } }), deps);
     expect((await store.getProfile(1))?.location).toEqual({ lat: -34.12, lon: 18.45, source: 'custom' });
-    expect(omCalls).toHaveLength(3); // marine + forecast + période pic
+    expect(omCalls).toHaveLength(3); // marine + forecast + peak period
     expect(sent()[0].text.startsWith('🟢 <b>GO SURF</b> (today)')).toBe(true);
     expect(sent()[0].text.endsWith('Location saved — the 19:00 verdict will use it.')).toBe(true);
     // go buttons (ordered by peak) before the 📋 row — same verdict rendering path as the evening/morning push.
@@ -240,8 +240,8 @@ describe('/now on a 🔴 day', () => {
 });
 
 describe('/now once the light has gone', () => {
-  // 19:30 : le soleil s'est couché à 18:38, donc plus une seule heure de la journée ne passe le
-  // seuil des 45 min de jour. Répondre « pour le reste d'aujourd'hui » ne peut donner que des zéros.
+  // 19:30: the sun set at 18:38, so not a single hour of the day still clears the 45-min-of-daylight
+  // threshold. Answering "for the rest of today" can only produce zeros.
   const evening = { now: `${GOLDEN_DATE}T19:30` };
 
   it('answers for tomorrow, and says so, instead of a wall of zeros', async () => {
@@ -282,7 +282,7 @@ describe('/now once the light has gone', () => {
   });
 
   it('still answers for today while a daylight hour remains', async () => {
-    const { deps, store, sent } = setup({ now: `${GOLDEN_DATE}T17:00` }); // coucher 18:38 : 17:00 et 18:00 comptent encore
+    const { deps, store, sent } = setup({ now: `${GOLDEN_DATE}T17:00` }); // sunset 18:38: 17:00 and 18:00 still count
     await store.putProfiles({ '1': ready() });
     await handleUpdate(msg('/now'), deps);
     expect(sent()[0].text).not.toContain('Today is done');
@@ -297,7 +297,7 @@ describe('/now once the light has gone', () => {
 });
 
 describe('/week — the week ahead', () => {
-  // mer 16 (aujourd'hui) → : 3,5 / 2,3 / 1,2 / 0,2 m, puis on recommence ; vent de SE 8 kt partout
+  // Wed 16 (today) onward: 3,5 / 2,3 / 1,2 / 0,2 m, then it repeats; SE wind at 8 kt everywhere
   const week = weekData(GOLDEN_DATE, 10, (i) => [3.5, 2.3, 1.2, 0.2][i % 4]);
   const dayLines = (text: string): string[] => text.split('\n').filter((l) => /^(🟢|🌅|🌇|🔴|⚠️) <b>/.test(l));
 
@@ -310,13 +310,13 @@ describe('/week — the week ahead', () => {
     expect(text.startsWith('📅 <b>THE WEEK AHEAD</b>')).toBe(true);
     const lines = dayLines(text);
     expect(lines).toHaveLength(7);
-    // 18:00 n'a que 38 min de jour (coucher 18:38) : les fenêtres se ferment à 18:00
+    // 18:00 only has 38 min of daylight (sunset 18:38): windows close at 18:00
     expect(lines[0]).toBe('🟢 <b>Today</b> · Long Beach ⭐⭐⭐⭐⭐⭐ · 8:00–18:00');
     expect(lines[1]).toBe('🟢 <b>Thu 17</b> · Long Beach ⭐⭐⭐⭐ · 7:00–18:00');
     expect(lines[2]).toBe('🔴 <b>Fri 18</b> · Long Beach ⭐⭐⭐');
     expect(lines[3]).toBe('🔴 <b>Sat 19</b> · 0★ everywhere');
     expect(lines[6]).toBe('🔴 <b>Tue 22</b> · Long Beach ⭐⭐⭐');
-    // dimanche 20 fait aussi 6★ : à égalité, le plus tôt gagne
+    // Sunday 20 also scores 6★: on a tie, the earliest one wins
     expect(text).toContain(`⭐ Best: Today · Kommetjie – Long Beach ⭐⭐⭐⭐⭐⭐ · 8:00–18:00`);
     expect(omCalls).toHaveLength(3);
     expect(omCalls.every((c) => c.url.includes('forecast_days=8'))).toBe(true);
@@ -379,7 +379,7 @@ describe('/profil, hours, /lang, help', () => {
     for (const data of ['stars:9', 'stars:2', 'stars:x', 'stars:']) await handleUpdate(cb(data), deps);
     expect((await store.getProfile(1))?.minStars).toBe(6);
     expect(sent()).toHaveLength(2);
-    // le même seuil à nouveau : on répond, sans écrire pour rien
+    // the same threshold again: it still answers, without a needless write
     const writes = kv.writes.length;
     await handleUpdate(cb('stars:6'), deps);
     expect(kv.writes).toHaveLength(writes);
@@ -443,7 +443,7 @@ describe('📋 details callback', () => {
     await store.putReports('2026-09-16', { '1': goldenReport() });
     await handleUpdate(cb('rep:2026-09-16'), deps);
     expect(sent()[0].text.startsWith('📋 <b>Your day</b> (Wed 16 Sept)')).toBe(true);
-    // les spots dont la vue montre une rangée, en boutons qui ouvrent leur journée
+    // the spots whose view shows a row, as buttons that open their day
     expect(sent()[0].text.split('\n').pop()).toBe('👇 Tap a spot for its day');
     expect(sent()[0].reply_markup).toEqual({
       inline_keyboard: [[{ text: 'Long Beach 6⭐', callback_data: 'spot:kommetjie-long-beach' }, { text: 'Muizenberg 2☆', callback_data: 'spot:muizenberg' }]],
@@ -524,7 +524,7 @@ describe('🙋 going — who is surfing that day', () => {
     deps.now = () => '2026-09-16T08:45';
     await handleUpdate(cb(`go:260916:${LB}`), deps);
     expect(kv.writes.filter((k) => k.startsWith('going:'))).toEqual(['going:2026-09-16:1']);
-    expect(await store.goingOf('2026-09-16', 1)).toMatchObject({ at: NOW }); // l'heure du premier appui reste
+    expect(await store.goingOf('2026-09-16', 1)).toMatchObject({ at: NOW }); // the time of the first tap stays
     await handleUpdate(cb('nogo:260917'), deps);
     expect(kv.writes.filter((k) => k.startsWith('going:'))).toEqual(['going:2026-09-16:1']);
     expect(sent().at(-1)?.text).toBe("👌 Noted, you're not going on Thu 17 Sept.");
@@ -544,8 +544,8 @@ describe('🙋 going — who is surfing that day', () => {
   it('ignores a forged or broken button, and says a past day is over', async () => {
     const { deps, store, kv, sent } = setup();
     await store.putProfiles({ '1': ready() });
-    // 30 février : `Date` le lirait comme le 2 mars
-    // les boutons ne visent qu'aujourd'hui ou demain : après-demain vient d'un bouton fabriqué
+    // Feb 30: `Date` would read it as March 2
+    // buttons only ever target today or tomorrow: the day after tomorrow comes from a forged button
     for (const data of ['go:260916:nope', `go:2609:${LB}`, `go:260918:${LB}`, `go:260230:${LB}`, 'go:260916', 'nogo:xx']) await handleUpdate(cb(data), deps);
     expect(sent()).toEqual([]);
     await handleUpdate(cb(`go:260915:${LB}`), deps);
@@ -554,36 +554,43 @@ describe('🙋 going — who is surfing that day', () => {
   });
 });
 
-describe('/amis — the admin sees who is in', () => {
+describe('/friends — the admin sees who is in', () => {
   it('lists every friend with the Telegram name they joined with, to the admin', async () => {
     const { deps, store, sent } = setup({ inviteCode: 'surf', adminChatId: ADMIN });
     await store.putProfiles({ [String(ADMIN)]: ready({ chatId: ADMIN, createdAt: '2026-09-15T08:00' }) });
     await handleUpdate(msg('/start surf', { from: { id: 5, first_name: 'Ivan', last_name: 'Petrov', username: 'ivan' } }, 5), deps);
     expect(await store.getProfile(5)).toMatchObject({ name: 'Ivan Petrov', username: 'ivan' });
-    await handleUpdate(msg('/amis', {}, ADMIN), deps);
+    await handleUpdate(msg('/friends', {}, ADMIN), deps);
     const list = sent().filter((m) => m.chat_id === ADMIN).map((m) => m.text).find((t) => t.startsWith('👥'));
-    expect(list).toContain('· 2 inscrits · 2 actifs');
+    expect(list).toContain('· 2 signed up · 2 active');
     expect(list).toContain('Ivan Petrov (@ivan) · 🇬🇧 · Muizenberg');
   });
 
   it("keeps the admin's own name up to date too", async () => {
     const { deps, store } = setup({ adminChatId: ADMIN });
     await store.putProfiles({ [String(ADMIN)]: ready({ chatId: ADMIN, name: 'Old' }) });
-    await handleUpdate(msg('/amis', { from: { id: ADMIN, first_name: 'Damien' } }, ADMIN), deps);
+    await handleUpdate(msg('/friends', { from: { id: ADMIN, first_name: 'Damien' } }, ADMIN), deps);
     expect((await store.getProfile(ADMIN))?.name).toBe('Damien');
   });
 
   it('works for the admin even without a profile of their own', async () => {
     const { deps, store, sent } = setup({ adminChatId: ADMIN });
     await store.putProfiles({ '1': ready() });
+    await handleUpdate(msg('/friends', {}, ADMIN), deps);
+    expect(sent().map((m) => [m.chat_id, m.text.split('\n')[0]])).toEqual([[ADMIN, '👥 <b>Friends</b> · 1 signed up · 1 active']]);
+  });
+
+  it('still answers to its old name /amis', async () => {
+    const { deps, store, sent } = setup({ adminChatId: ADMIN });
+    await store.putProfiles({ '1': ready() });
     await handleUpdate(msg('/amis', {}, ADMIN), deps);
-    expect(sent().map((m) => [m.chat_id, m.text.split('\n')[0]])).toEqual([[ADMIN, '👥 <b>Amis</b> · 1 inscrit · 1 actif']]);
+    expect(sent().map((m) => [m.chat_id, m.text.split('\n')[0]])).toEqual([[ADMIN, '👥 <b>Friends</b> · 1 signed up · 1 active']]);
   });
 
   it('is just an unknown command for any other friend', async () => {
     const { deps, store, sent } = setup({ adminChatId: ADMIN });
     await store.putProfiles({ '1': ready() });
-    await handleUpdate(msg('/amis'), deps);
+    await handleUpdate(msg('/friends'), deps);
     expect(sent().map((m) => m.chat_id)).toEqual([1]);
     expect(sent()[0].text.startsWith('Commands:')).toBe(true);
   });
@@ -651,7 +658,7 @@ describe('/all, /<spot> and /about', () => {
       id: `world-${i}`, name: `World Spot ${i}`, short: `W${i}`, region: 'cape-peninsula', lat: 0, lon: 0, facing: 0,
       swellWindow: [0, 90], exposure: 0.7, tide: { best: [], forbidden: [] }, levels: {}, character: 'punchy', verified: false,
     }));
-    // de 10★ à 1★, jamais croissant : le tri stable garde world-0 en tête et l'ordre d'insertion ensuite
+    // from 10★ down to 1★, never increasing: the stable sort keeps world-0 in front, then insertion order
     const manyResults: SpotResult[] = manySpots.map((s, i) => ({ spotId: s.id, distanceKm: 1, hours: [], windows: [], best: undefined, maxScore: 10 - Math.floor((10 * i) / n) }));
 
     const { deps, store, sent } = setup({ spots: manySpots });

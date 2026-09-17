@@ -5,8 +5,8 @@ export type ProcessedEntry =
   // `short` is deliberately not stored: `writeOutput` (scripts/import-spots.ts) always recomputes it
   // via `deriveShort` at write time (global-uniqueness disambiguation needs the whole kept set, not a
   // single spot in isolation), so a `short` field here would be write-only dead data.
-  // `facingFrom` : lue dans le tableau de vent de la page, ou calculée par l'altitude en secours ;
-  // absent d'une progression écrite avant la lecture du vent (17/09/2026), où tout venait de l'altitude.
+  // `facingFrom`: read from the page's wind table, or computed from elevation as a fallback;
+  // absent from a progress file written before the wind reading was added (17/09/2026), when everything came from elevation.
   | { status: 'spot'; name: string; lat: number; lon: number; facing: number; type: string; facingFrom?: 'wind' | 'elevation' }
   | { status: 'skipped'; reason: string };
 

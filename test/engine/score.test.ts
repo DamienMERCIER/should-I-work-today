@@ -8,8 +8,8 @@ import { KOMMETJIE_LONG_BEACH, MUIZENBERG, OUTER_KOM, SUN_SEPT } from '../helper
 
 const DATE = '2026-09-16';
 const tideFn = cosineTide(DATE);
-// 3,5 m : note de base surf-forecast 1,81 + 0,37·3,5 + 0,23·3,5² = 5,92 → 6 étoiles par vent propre,
-// c'est-à-dire exactement le seuil `epic`. periodS 10,2 = période moyenne, peakPeriodS 13 = période pic.
+// 3,5 m: surf-forecast base rating 1,81 + 0,37·3,5 + 0,23·3,5² = 5,92 → 6 stars in clean wind,
+// i.e. exactly the `epic` threshold. periodS 10,2 = mean period, peakPeriodS 13 = peak period.
 const swell = swellSeries('2026-09-15T00:00', '2026-09-17T23:00', (time) => ({
   primary: { heightM: 3.5, periodS: 10.2, directionDeg: 225 }, secondary: NO_SWELL, seaLevelM: tideFn(time),
   peakPeriodS: 13,
@@ -22,8 +22,8 @@ const tide = computeTide(swell, DATE);
 const base = { date: DATE, swell, wind, sun: SUN_SEPT, tide, distanceKm: 13.4 };
 
 describe('evaluateSpot — water temperature', () => {
-  // nuit à 10 °C ; de jour (7:00 → 17:00, 11 h) 13 °C le matin puis 14 °C : moyenne de jour 149/11 = 13,5 → 14,
-  // moyenne sur 24 h 279/24 = 11,6 → 12
+  // night at 10 °C; by day (7:00 → 17:00, 11 h) 13 °C in the morning then 14 °C: day average 149/11 = 13,5 → 14,
+  // 24 h average 279/24 = 11,6 → 12
   const warmth = (time: string): number => {
     const hour = Number(time.slice(11, 13));
     return hour < 7 || hour > 17 ? 10 : hour < 12 ? 13 : 14;
@@ -53,19 +53,19 @@ describe('evaluateSpot — golden scenario (3.5 m SW, SE wind building from 8 to
   it('Kommetjie Long Beach: SE is offshore, 6 gold stars until the wind builds, window 07:00→12:00', () => {
     const r = evaluateSpot({ ...base, spot: KOMMETJIE_LONG_BEACH });
     const at = (h: string) => r.hours.find((x) => x.time === `${DATE}T${h}`)!;
-    expect(at('07:00').heightM).toBeCloseTo(3.5, 6); // 225° est dans la fenêtre [200, 290] : toute la houle compte
-    expect(at('07:00').periodS).toBe(13); // la période pic quand gwam la publie
+    expect(at('07:00').heightM).toBeCloseTo(3.5, 6); // 225° is inside the [200, 290] window: all of the swell counts
+    expect(at('07:00').periodS).toBe(13); // the peak period, when gwam publishes it
     expect(at('07:00').windState).toBe('off');
     expect(at('07:00').tide).toEqual({ state: 'high', trend: 'rising' });
     expect(at('07:00').clean).toBe(true);
-    // 8 et 12 kt (15 et 22 km/h) : l'offshore ne coûte rien sous 30 km/h
+    // 8 and 12 kt (15 and 22 km/h): offshore costs nothing under 30 km/h
     expect(at('07:00').score).toBe(6);
     expect(at('10:00').score).toBe(6);
-    // 18 kt = 33 km/h → ×0,83 → 4,9 → 5 ; 24 kt = 44 km/h → ×0,42 → 2,5 → 2 ; 30 kt = 56 km/h → 0
+    // 18 kt = 33 km/h → ×0,83 → 4,9 → 5; 24 kt = 44 km/h → ×0,42 → 2,5 → 2; 30 kt = 56 km/h → 0
     expect(at('11:00').score).toBe(5);
     expect(at('12:00').score).toBe(2);
     expect(at('13:00').score).toBe(0);
-    // 06:00 n'a que 16 min de jour : la note pure reste 6, mais l'heure ne compte pas pour une session
+    // 06:00 only has 16 min of daylight: the raw rating stays 6, but the hour doesn't count toward a session
     expect(at('06:00').stars).toBe(6);
     expect(at('06:00').score).toBe(0);
     // mean of [6, 6, 6, 6, 5] (07:00→11:00) = 29/5 = 5,8
@@ -79,7 +79,7 @@ describe('evaluateSpot — golden scenario (3.5 m SW, SE wind building from 8 to
     const at = (h: string) => r.hours.find((x) => x.time === `${DATE}T${h}`)!;
     expect(at('07:00').windState).toBe('cross-on');
     expect(at('07:00').clean).toBe(false);
-    // 8 kt = 15 km/h cross-onshore → ×0,31 → 1,8 → 2 ; 12 kt = 22 km/h → 0 (tombe à 0 dès 20 km/h)
+    // 8 kt = 15 km/h cross-onshore → ×0,31 → 1,8 → 2; 12 kt = 22 km/h → 0 (drops to 0 starting at 20 km/h)
     expect(at('07:00').score).toBe(2);
     expect(at('10:00').score).toBe(0);
     expect(r.windows).toEqual([]);

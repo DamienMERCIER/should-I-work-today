@@ -2,11 +2,11 @@ import { SCORING } from '../config';
 import { toMs } from './time';
 
 /**
- * Ce qui décide si une heure peut compter pour une session, sans toucher aux étoiles : la lumière et
- * l'orage. La note elle-même vient de `rating.ts`, la reconstruction de surf-forecast.
+ * What decides whether an hour can count toward a session, without touching the star rating: daylight
+ * and thunderstorms. The rating itself comes from `rating.ts`, the surf-forecast reconstruction.
  */
 
-/** 1 si le créneau [slotStart, slotStart + 1 h) contient ≥ 45 min de jour. */
+/** 1 if the slot [slotStart, slotStart + 1h) contains ≥ 45 min of daylight. */
 export function daylightFactor(slotStart: string, sunrise: string, sunset: string): number {
   const start = toMs(slotStart);
   const end = start + 3_600_000;
@@ -15,11 +15,11 @@ export function daylightFactor(slotStart: string, sunrise: string, sunset: strin
 }
 
 /**
- * Reste-t-il au moins un creneau de jour d'ici la fin de la journee ? On balaie les heures plutot
- * que de comparer a `sunset` : `daylightFactor` annule deja toute heure qui chevauche le jour de
- * moins de 45 min, donc la derniere heure surfable meurt avant le coucher du soleil, pas avec lui
- * (18:00 est deja mort quand le soleil se couche a 18:38). Et avant le lever, la journee est encore
- * entiere : seul un balayage le voit.
+ * Is there at least one daylight slot left before the end of the day? We scan the hours rather
+ * than comparing against `sunset` directly: `daylightFactor` already zeroes out any hour that overlaps
+ * daylight by less than 45 min, so the last surfable hour dies before sunset, not exactly at it
+ * (18:00 is already dead when the sun sets at 18:38). And before sunrise, the whole day is still
+ * ahead: only a scan sees that.
  */
 export function hasDaylightLeft(fromTime: string, sunrise: string, sunset: string): boolean {
   const date = fromTime.slice(0, 10);

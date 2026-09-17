@@ -59,7 +59,7 @@ export class Telegram {
     return { status: res.status, json };
   }
 
-  /** HTML, sans aperçu de lien. 429 → attend `retry_after` et réessaie une fois ; 403 → `blocked` (§11). */
+  /** HTML, no link preview. 429 → waits `retry_after` then retries once; 403 → `blocked` (§11). */
   async sendMessage(chatId: number, text: string, replyMarkup?: ReplyMarkup): Promise<SendResult> {
     const body: Record<string, unknown> = {
       chat_id: chatId, text, parse_mode: 'HTML', link_preview_options: { is_disabled: true },

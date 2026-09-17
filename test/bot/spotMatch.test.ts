@@ -3,6 +3,7 @@ import { SPOTS } from '../../src/data/index';
 import { allWorldTuples, worldSpotId } from '../../src/data/world';
 import type { SpotTuple } from '../../src/data/world';
 import { matchSpot, spotSlug, totalSpotCount } from '../../src/bot/spotMatch';
+import { fastestMs } from '../helpers/timing';
 
 const byId = (id: string) => {
   const spot = SPOTS.find((s) => s.id === id);
@@ -40,8 +41,8 @@ describe('spotSlug', () => {
   });
 });
 
-// Le comportement des 35 spots curatés seuls : les spots importés ont leurs propres tests plus bas, et le fichier
-// importé grossit à chaque reprise de l'import.
+// The behaviour of the 35 curated spots alone: imported spots have their own tests further down, and the
+// imported file grows with every resumed import.
 const CURATED_ONLY: SpotTuple[] = [];
 
 describe('matchSpot against the 35 curated spots alone', () => {
@@ -59,9 +60,9 @@ describe('matchSpot against the 35 curated spots alone', () => {
   });
 
   it('"kom" is ambiguous — a prefix hit must not hide the three Kommetjie spots', () => {
-    // kommetjie_long_beach commence par "kom" ; inner_kom et outer_kom le contiennent.
-    // Tant que le niveau préfixe court-circuitait le niveau sous-chaîne, /kom renvoyait
-    // Long Beach avec assurance, sans jamais nommer les deux autres.
+    // kommetjie_long_beach starts with "kom"; inner_kom and outer_kom both contain it.
+    // As long as the prefix tier short-circuited the substring tier, /kom used to confidently
+    // return Long Beach, without ever naming the other two.
     const m = matchSpot('kom', SPOTS, CURATED_ONLY);
     expect(m.kind).toBe('ambiguous');
     expect((m as { spots: { id: string }[] }).spots.map((s) => s.id).sort()).toEqual(['inner-kom', 'kommetjie-long-beach', 'outer-kom']);
@@ -165,16 +166,7 @@ describe('matchSpot performance against an 8000-entry world set (§report "Resil
 
   it('steady state (the id-slug cache warm — the overwhelming majority of real calls on a long-lived Worker isolate, since the world tuple array never changes) stays well under the 10 ms budget even on the worst-case (no-match) query', () => {
     matchSpot('zzznotfound', SPOTS, bigWorld); // prime worldTupleIdSlug's per-tuple cache (§world.ts)
-    // Médiane plutôt que moyenne : sur une machine chargée, un seul appel ralenti par le
-    // ramasse-miettes suffisait à faire échouer le seuil sans rien dire du coût habituel.
-    const timings: number[] = [];
-    for (let i = 0; i < 21; i++) {
-      const t0 = performance.now();
-      matchSpot('zzznotfound', SPOTS, bigWorld);
-      timings.push(performance.now() - t0);
-    }
-    const medianMs = timings.sort((a, b) => a - b)[10];
-    expect(medianMs).toBeLessThan(5);
+    expect(fastestMs(() => void matchSpot('zzznotfound', SPOTS, bigWorld), 11)).toBeLessThan(5);
   });
 });
 

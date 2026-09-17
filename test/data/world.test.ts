@@ -5,6 +5,7 @@ import { validateRegions, validateSpots } from '../../src/data/schema';
 import { haversineKm, destinationPoint } from '../../src/engine/geo';
 import { spotSlug } from '../../src/bot/spotMatch';
 import type { Spot } from '../../src/types';
+import { fastestMs } from '../helpers/timing';
 import {
   allWorldTuples,
   assignRegion,
@@ -171,12 +172,9 @@ describe('worldSpots (radius query)', () => {
 
   it('scans an 8000-entry tuple array of representative long UTF-8 names in well under the 10 ms Worker CPU budget (linear scan, no eager expansion)', () => {
     expect(tuples.length).toBeGreaterThanOrEqual(8000);
-    const t0 = performance.now();
-    worldSpots(center, 20, tuples);
-    const elapsed = performance.now() - t0;
     // Tightened from the original 50 ms (5× the actual 10 ms budget) now that the data is realistic —
     // see the report for the measured figure on this machine.
-    expect(elapsed).toBeLessThan(5);
+    expect(fastestMs(() => void worldSpots(center, 20, tuples))).toBeLessThan(5);
   });
 
   it('returns an empty array when nothing is in range', () => {
@@ -239,10 +237,8 @@ describe('nearestWorldSpots', () => {
       const name = longUtf8Name(i);
       return [name, name.slice(0, 13), -80 + ((i * 37) % 160), -180 + ((i * 71) % 360), (i * 13) % 360, i % 4] as SpotTuple;
     })];
-    const t0 = performance.now();
-    const result = nearestWorldSpots(center, 3, tuples);
-    expect(performance.now() - t0).toBeLessThan(5);
-    expect(result[0].name).toBe('Near1');
+    expect(fastestMs(() => void nearestWorldSpots(center, 3, tuples))).toBeLessThan(5);
+    expect(nearestWorldSpots(center, 3, tuples)[0].name).toBe('Near1');
   });
 });
 

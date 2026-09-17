@@ -3,7 +3,7 @@ import type { Strings } from '../render/i18n';
 import { STAR_CHOICES } from '../config';
 
 export const persistentKeyboard = (s: Strings): ReplyMarkup => ({
-  // « Right now » occupe la rangée pleine largeur : c'est le bouton de loin le plus utilisé.
+  // "Right now" takes the full-width row: it's by far the most used button.
   keyboard: [[{ text: s.buttons.now }], [{ text: s.buttons.backHome }, { text: s.buttons.useMyLocation, request_location: true }]],
   resize_keyboard: true,
   is_persistent: true,
@@ -16,7 +16,7 @@ export const profileKeyboard = (s: Strings): ReplyMarkup => ({
   ]],
 });
 
-/** Les seuils proposés, sur une ligne : `3⭐` à `6⭐`. */
+/** The thresholds on offer, on one line: `3⭐` to `6⭐`. */
 export const starsKeyboard = (): ReplyMarkup => ({
   inline_keyboard: [STAR_CHOICES.map((n) => ({ text: `${n}⭐`, callback_data: `stars:${n}` }))],
 });

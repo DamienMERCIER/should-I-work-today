@@ -61,15 +61,15 @@ const ALL_LETTERS = Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 
 const DEFAULT_OUT = 'src/data/spots-world.json';
 const DEFAULT_PROGRESS_PATH = '.superpowers/import-spots-progress.json';
 /**
- * Là où le bot a des spots choisis à la main, eux seuls comptent : un spot importé à moins du rayon du bot
- * d'un spot curaté est laissé de côté. Autour du Cap, surf-forecast place ses propres Muizenberg, Clovelly ou
- * Witsands à 500 m–1,9 km des nôtres, avec une autre orientation : ils s'affichaient en double, et 35 spots au
- * lieu de 15 autour de Muizenberg portaient /week à 12,8 ms de calcul pour 10 ms permises (mesuré le 17/09/2026).
+ * Where the bot has hand-picked spots, only those count: an imported spot within the bot's radius of a
+ * curated spot is left aside. Around Cape Town, surf-forecast places its own Muizenberg, Clovelly or
+ * Witsands 500 m–1.9 km from ours, with a different facing: they showed up as duplicates, and 35 spots
+ * instead of 15 around Muizenberg drove /week's compute to 12.8 ms against a 10 ms budget (measured on 17/09/2026).
  */
 const CURATED_COVERAGE_M = RADIUS_KM * 1000;
 const WORLD_DEDUPE_THRESHOLD_M = 200; // world-vs-world (§scripts/lib/dedupe.ts dedupeAdjacentWorld)
 const CHUNK_SIZE = 200; // slugs per stage-2+3 batch, between which progress is saved (§resume grain)
-const WORLD_SHORT_MAX_LEN = 13; // schema.ts: short ≤ 13 chars ; le préfixe ≈ ne s'affiche plus depuis e2ef7b1
+const WORLD_SHORT_MAX_LEN = 13; // schema.ts: short ≤ 13 chars; the ≈ prefix hasn't been shown since e2ef7b1
 
 export interface ImportArgs {
   limit?: number;
@@ -245,14 +245,14 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<void> {
   log(`[import-spots] ${targetSlugs.length} slug(s) targeted, ${targetSlugs.length - todo.length} already done, ${todo.length} to process`);
 
   const t0 = now();
-  // Open-Meteo compte chaque point d'altitude (5 000 par heure, 10 000 par jour) : un seul état pour
-  // toute l'exécution, pour qu'un quota épuisé arrête les demandes des blocs suivants aussi.
+  // Open-Meteo counts every elevation point (5,000 per hour, 10,000 per day): a single state for
+  // the whole run, so that a spent quota also stops the requests of the following chunks.
   const elevationQuota: ElevationQuota = { exhausted: false };
   for (let i = 0; i < todo.length; i += CHUNK_SIZE) {
     const chunk = todo.slice(i, i + CHUNK_SIZE);
     try {
       const { results, skipped } = await fetchBreakPages(chunk, fetchFn, fetchOpts);
-      // L'orientation lue dans le tableau de vent de la page d'abord ; l'altitude seulement quand le vent ne tranche pas.
+      // The facing read from the page's wind table first; elevation only when the wind doesn't decide it.
       for (const r of results) {
         if (r.windFacing) progress.processed[r.slug] = { status: 'spot', name: r.name, lat: r.lat, lon: r.lon, facing: r.windFacing.facing, type: r.type, facingFrom: 'wind' };
       }

@@ -80,8 +80,8 @@ describe('nearbySpots / nearestSpots — world set wiring (§report "Resilience,
       return [name, name.slice(0, 11), -80 + ((i * 37) % 160), -180 + ((i * 71) % 360), (i * 13) % 360, i % 4];
     });
 
-    // On mesure la médiane à chaud : le premier appel paie le JIT et la charge de la machine,
-    // ce qui faisait échouer un seuil absolu à 5 ms sans rien dire du coût réel par invocation.
+    // We measure the warm median: the first call pays for the JIT and the machine's load,
+    // which used to fail an absolute 5 ms threshold without saying anything about the real per-call cost.
     const timings: number[] = [];
     for (let i = 0; i < 11; i++) {
       const t0 = performance.now();
@@ -91,7 +91,7 @@ describe('nearbySpots / nearestSpots — world set wiring (§report "Resilience,
     const median = timings.sort((a, b) => a - b)[5];
     const near = nearbySpots(SPOTS, at, 20, tuples);
 
-    expect(median).toBeLessThan(5); // budget CPU du Worker : 10 ms pour l'invocation entière
+    expect(median).toBeLessThan(5); // Worker CPU budget: 10 ms for the entire invocation
     expect(near.length).toBeGreaterThanOrEqual(15); // still finds at least the 15 curated matches (§ "geo helpers" above)
   });
 });
@@ -102,7 +102,7 @@ describe('buildReports', () => {
     const reports = await buildReports([{ profile: profile(), date: GOLDEN_DATE, mode: 'evening' }], deps(fn));
     const r = reports.get(1)!;
     expect(calls).toHaveLength(3);
-    // la houle au point régional (marée) ET à la cellule de chaque spot (étoiles), dans le même appel
+    // the swell at the regional point (tide) AND at each spot's cell (stars), in the same call
     expect(calls.find((c) => c.url.includes('marine-api') && !c.url.includes('peak'))!.url).toContain('latitude=-34.5000%2C-34.1085%2C-34.1330');
     expect(calls.find((c) => c.url.includes('/v1/forecast'))!.url).toContain('latitude=-34.1085%2C-34.1330');
     expect(r.verdict).toMatchObject({ kind: 'green', spotId: 'kommetjie-long-beach', window: { start: `${GOLDEN_DATE}T07:00`, end: `${GOLDEN_DATE}T12:00`, peak: 6 } });
@@ -185,8 +185,8 @@ describe('buildReports', () => {
       const { fn, calls } = server({ failPeak: true });
       const r = await buildReport({ profile: profile(), date: GOLDEN_DATE, mode: 'evening' }, deps(fn));
       expect(calls).toHaveLength(3);
-      // les étoiles ne dépendent pas de la période : la panne ne change que la période affichée, repliée
-      // sur la période moyenne (10,2 s au lieu de 13 s)
+      // stars don't depend on the period: the outage only changes the displayed period, which falls back
+      // to the mean period (10,2 s instead of 13 s)
       expect(r.verdict).toMatchObject({ kind: 'green', spotId: 'kommetjie-long-beach', window: { peak: 6 } });
       expect(r.spots.find((s) => s.spotId === 'kommetjie-long-beach')!.hours[0].periodS).toBe(10.2);
       expect(warnSpy).toHaveBeenCalledOnce();
@@ -201,14 +201,14 @@ describe('buildReportList — several dates per profile (week ahead)', () => {
   const kom = (r: Report) => r.spots.find((s) => s.spotId === 'kommetjie-long-beach')!;
 
   it('returns one report per request, in request order, loading each region once for every date', async () => {
-    // mer 16 → mar 22 : 3,5 / 2,3 / 1,2 / 0,2 m, puis on recommence
+    // Wed 16 → Tue 22: 3,5 / 2,3 / 1,2 / 0,2 m, then it repeats
     const { fn, calls } = fakeFetch(openMeteoServer(weekData(GOLDEN_DATE, 9, (i) => [3.5, 2.3, 1.2, 0.2][i % 4])));
     const dates = Array.from({ length: 7 }, (_, i) => addDays(GOLDEN_DATE, i));
     const reports = await buildReportList(dates.map((date) => ({ profile: profile(), date, mode: 'evening' as const })), deps(fn), { forecastDays: 8 });
     expect(reports.map((r) => r.date)).toEqual(dates);
     expect(calls).toHaveLength(3);
     expect(calls.every((c) => c.url.includes('forecast_days=8'))).toBe(true);
-    // 6★ et 4★ font un 🟢 (le dimanche aussi, règle du week-end) ; 3★ et 0★ restent 🔴
+    // 6★ and 4★ make a 🟢 (Sunday too, the weekend rule); 3★ and 0★ stay 🔴
     expect(reports.map((r) => r.verdict.kind)).toEqual(['green', 'green', 'red', 'red', 'green', 'green', 'red']);
     expect(reports.map((r) => kom(r).maxScore)).toEqual([6, 4, 3, 0, 6, 4, 3]);
   });
@@ -219,7 +219,7 @@ describe('buildReportList — several dates per profile (week ahead)', () => {
       { profile: profile({ chatId: 1 }), date: GOLDEN_DATE, mode: 'evening' },
       { profile: profile({ chatId: 2, location: { lat: -34.12, lon: 18.46, source: 'custom' } }), date: GOLDEN_DATE, mode: 'evening' },
     ], deps(fn));
-    // les étoiles ne dépendent plus du profil : même évaluation, pas une seconde passe CPU
+    // stars no longer depend on the profile: the same evaluation, not a second CPU pass
     expect(kom(b).hours).toBe(kom(a).hours);
     expect(kom(b).distanceKm).not.toBe(kom(a).distanceKm);
   });
@@ -253,7 +253,7 @@ describe('buildReportList — several dates per profile (week ahead)', () => {
 
   it('buildWeek starts tomorrow when today has no usable data, and still returns seven days', async () => {
     const data = weekData(GOLDEN_DATE, 10);
-    // pas de lever/coucher pour aujourd'hui : le rapport du jour est noData, sans spot évalué
+    // no sunrise/sunset for today: today's report is noData, with no spot evaluated
     const { fn } = fakeFetch(openMeteoServer({ ...data, daily: data.daily.filter((d) => d.date !== GOLDEN_DATE) }));
     const week = await buildWeek(profile(), { ...deps(fn), now: `${GOLDEN_DATE}T08:30` });
     expect(week.map((r) => r.date)).toEqual(Array.from({ length: 7 }, (_, i) => addDays(GOLDEN_DATE, i + 1)));
@@ -268,16 +268,16 @@ describe('buildReportList — several dates per profile (week ahead)', () => {
   });
 });
 
-describe('swell at the spot cell (§ RAPPORT-surf-forecast.md 1.2)', () => {
+describe('swell at the spot cell (§ docs/rating.md 1.2)', () => {
   const series = (heightM: number, seaLevel = (h: SwellHour) => h.seaLevelM): SwellHour[] =>
     goldenSwell().map((h) => ({ ...h, primary: { ...h.primary, heightM }, seaLevelM: seaLevel(h), peakPeriodS: undefined }));
-  // marée des cellules de spots décalée de 3 h : si la marée venait d'un spot, ses pleines et basses mers bougeraient
+  // spot-cell tide shifted by 3 h: if the tide came from a spot, its highs and lows would move
   const shifted = (h: SwellHour): number => goldenSwell().find((g) => g.time === addHours(h.time, 3))?.seaLevelM ?? 0;
 
   /**
-   * Open-Meteo multi-points : le premier point est la référence régionale, les suivants les spots, dans
-   * l'ordre de la requête. Chaque point a ici sa propre hauteur et les spots leur propre marée, pour
-   * qu'un décalage d'index, un ordre inversé ou une marée lue au mauvais point se voie.
+   * Open-Meteo multi-point: the first point is the regional reference, the following ones are the spots,
+   * in request order. Here each point has its own height and the spots their own tide, so that an index
+   * shift, a reversed order, or a tide read at the wrong point would show up.
    */
   const perPointServer = (regional: SwellHour[], atSpot: (i: number) => unknown) => fakeFetch((url: string) => {
     const n = (new URL(url).searchParams.get('latitude') ?? '').split(',').length;
@@ -290,7 +290,7 @@ describe('swell at the spot cell (§ RAPPORT-surf-forecast.md 1.2)', () => {
     r.spots.find((s) => s.spotId === id)!.hours.find((h) => h.time === `${GOLDEN_DATE}T07:00`)!;
 
   it('rates each spot on its own cell, in request order: Muizenberg first (closest), then Kommetjie', async () => {
-    // point 0 régional plat, point 1 = Muizenberg 1,2 m, point 2 = Kommetjie 3,5 m
+    // point 0 flat regional, point 1 = Muizenberg 1,2 m, point 2 = Kommetjie 3,5 m
     const heights = [1.2, 3.5];
     const { fn } = perPointServer(series(0.5), (i) => marineJson(series(heights[i], shifted)));
     const r = await buildReport({ profile: profile(), date: GOLDEN_DATE, mode: 'evening' }, deps(fn));
@@ -320,13 +320,13 @@ describe('swell at the spot cell (§ RAPPORT-surf-forecast.md 1.2)', () => {
     };
     const { fn } = perPointServer(series(3.5), empty);
     const r = await buildReport({ profile: profile(), date: GOLDEN_DATE, mode: 'evening' }, deps(fn));
-    // Kommetjie : exposure 0,6 → 3,5 × 0,6 = 2,1 m, pas les 0 m d'une cellule vide
+    // Kommetjie: exposure 0,6 → 3,5 × 0,6 = 2,1 m, not the 0 m of an empty cell
     expect(at7(r, 'kommetjie-long-beach').heightM).toBeCloseTo(2.1, 6);
   });
 
   it('spotSwellSeries fills each empty hour from the region, and keeps every hour that has data', () => {
     const regional = series(3.5);
-    // valeurs jusqu'à midi le 16, puis plus rien : la cellule ne publie plus, ce n'est pas une mer d'huile
+    // values up to noon on the 16th, then nothing: the cell has stopped publishing, this isn't a case of glassy, flat water
     const atSpot = series(1.2).map((h) => (h.time >= `${GOLDEN_DATE}T12:00` ? { ...h, primary: { ...h.primary, heightM: 0 } } : h));
     const out = spotSwellSeries(atSpot, regional, 0.6);
     expect(out.find((h) => h.time === `${GOLDEN_DATE}T11:00`)!.primary.heightM).toBeCloseTo(1.2, 6);
@@ -338,10 +338,10 @@ describe('swell at the spot cell (§ RAPPORT-surf-forecast.md 1.2)', () => {
     const regional = series(3.5).map((h) => ({ ...h, seaTempC: 15 }));
     const flat = (h: SwellHour): SwellHour => ({ ...h, primary: { ...h.primary, heightM: 0 } });
     const atSpot = series(1.2).map((h) => {
-      if (h.time === `${GOLDEN_DATE}T07:00`) return { ...h, seaTempC: 13 }; // houle et eau à la cellule
-      if (h.time === `${GOLDEN_DATE}T08:00`) return { ...flat(h), seaTempC: 12 }; // l'eau à la cellule, la houle de la région
-      if (h.time === `${GOLDEN_DATE}T09:00`) return flat(h); // ni l'une ni l'autre
-      return h; // la houle, pas l'eau
+      if (h.time === `${GOLDEN_DATE}T07:00`) return { ...h, seaTempC: 13 }; // swell and water at the cell
+      if (h.time === `${GOLDEN_DATE}T08:00`) return { ...flat(h), seaTempC: 12 }; // water at the cell, swell from the region
+      if (h.time === `${GOLDEN_DATE}T09:00`) return flat(h); // neither one
+      return h; // the swell, not the water
     });
     const out = spotSwellSeries(atSpot, regional, 0.6);
     const tempAt = (hour: string) => out.find((h) => h.time === `${GOLDEN_DATE}T${hour}`)!.seaTempC;
@@ -352,7 +352,7 @@ describe('swell at the spot cell (§ RAPPORT-surf-forecast.md 1.2)', () => {
 
   it('gives each spot its water temperature from the same marine call, at its own cell or else the region', async () => {
     const warm = (t: number): SwellHour[] => series(3.5).map((h) => ({ ...h, seaTempC: t }));
-    // point 1 = Muizenberg, 13,4 °C à sa cellule ; point 2 = Kommetjie, cellule sans température → la région, 16 °C
+    // point 1 = Muizenberg, 13,4 °C at its cell; point 2 = Kommetjie, cell with no temperature → the region, 16 °C
     const { fn, calls } = perPointServer(warm(16), (i) => marineJson(i === 0 ? warm(13.4) : series(3.5)));
     const r = await buildReport({ profile: profile(), date: GOLDEN_DATE, mode: 'evening' }, deps(fn));
     const water = (id: string) => r.spots.find((s) => s.spotId === id)!.waterTempC;

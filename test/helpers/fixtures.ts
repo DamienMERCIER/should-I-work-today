@@ -1,7 +1,7 @@
 import type { SwellComponent, SwellHour, WindHour } from '../../src/types';
 import { addHours, hoursBetween } from '../../src/engine/time';
 
-/** Toutes les heures pleines de `from` à `to` inclus. */
+/** Every full hour from `from` to `to` inclusive. */
 export function hourlyTimes(from: string, to: string): string[] {
   const n = hoursBetween(from, to);
   const out: string[] = [];
@@ -27,7 +27,7 @@ export function windSeries(
   }));
 }
 
-/** Marée synthétique 0.5·cos(2π·(t−9)/12), t en heures depuis `date` 00:00 → hautes 09h/21h, basses 03h/15h. */
+/** Synthetic tide 0.5·cos(2π·(t−9)/12), t in hours since `date` 00:00 → highs at 09h/21h, lows at 03h/15h. */
 export function cosineTide(date: string): (time: string) => number {
   const origin = `${date}T00:00`;
   return (time) => 0.5 * Math.cos((2 * Math.PI * (hoursBetween(origin, time) - 9)) / 12);

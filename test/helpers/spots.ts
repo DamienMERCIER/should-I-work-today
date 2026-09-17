@@ -1,8 +1,8 @@
 import type { Spot } from '../../src/types';
 
-// `facing: 170` est volontairement figé à la valeur d'avant l'audit du 2026-09-16 (production : 150)
-// pour que l'arithmétique du scénario golden reste stable. Les deux donnent `onshore` sur le vent
-// golden (120°) ; si ce vent change de quadrant, remettre cette copie en phase avec spots.json.
+// `facing: 170` is deliberately pinned to the value from before the 2026-09-16 audit (production: 150)
+// so the golden scenario's arithmetic stays stable. Both give `onshore` on the golden wind (120°); if
+// that wind ever changes quadrant, bring this copy back in sync with spots.json.
 export const MUIZENBERG: Spot = {
   id: 'muizenberg', name: "Muizenberg – Surfer's Corner", short: 'Muizenberg', region: 'cape-peninsula',
   lat: -34.1085, lon: 18.4715, facing: 170, swellWindow: [150, 250], exposure: 0.35,

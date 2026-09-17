@@ -6,9 +6,9 @@ import { atTime, dateOf, isWeekend, toMs } from './time';
 export interface VerdictOptions {
   date: string;
   workHours: WorkHours;
-  /** 'now' = reste de la journée, règle week-end (§7.7). */
+  /** 'now' = rest of the day, weekend rule (§7.7). */
   mode: 'day' | 'now';
-  /** le seuil de l'ami : à partir de combien d'étoiles un créneau vaut la peine. Par défaut celui de tout le monde. */
+  /** the friend's threshold: how many stars it takes for a slot to be worth it. Defaults to everyone's threshold. */
   good?: number;
 }
 
@@ -16,7 +16,7 @@ interface Candidate extends SpotPick { distanceKm: number }
 
 const HOUR_MS = 3_600_000;
 
-/** Recouvrement (h) entre la fenêtre et [start, end) du même jour. */
+/** Overlap (h) between the window and [start, end) on the same day. */
 export function overlapHours(w: Window, start: string, end: string): number {
   const date = dateOf(w.start);
   const s = Math.max(toMs(w.start), toMs(atTime(date, start)));
@@ -43,7 +43,7 @@ function candidates(results: SpotResult[], good: number): Candidate[] {
     );
 }
 
-/** Pic le plus haut, puis durée, puis distance (§7.5). */
+/** Highest peak, then duration, then distance (§7.5). */
 function best(cands: Candidate[]): Candidate | undefined {
   return [...cands].sort(
     (a, b) =>
@@ -56,15 +56,15 @@ function best(cands: Candidate[]): Candidate | undefined {
 const hoursScoring = (r: SpotResult, test: (score: number) => boolean): number => r.hours.filter((h) => test(h.score)).length;
 
 /**
- * Le meilleur spot de la journée d'abord : le plus d'étoiles, puis, à égalité, celui qui les tient le plus
- * d'heures, puis celui qui a le plus d'heures à au moins une étoile, puis le plus proche. Sans ça, le plus
- * proche gagnait : The Hoek passait devant Long Beach pour 2 heures à 2★ contre 5 (/all, jeudi 17/09).
- * Sert au 🔴 (`bestSpotId`), à la tête de `/all` et à l'ordre des autres spots (src/render/messages.ts).
+ * The best spot of the day first: the most stars, then, if tied, whichever holds them the most hours,
+ * then whichever has the most hours at one star or better, then the closest. Without this, the closest
+ * one would win: The Hoek used to rank above Long Beach for 2 hours at 2★ versus 5 (/all, Thursday Sep 17).
+ * Used for 🔴 (`bestSpotId`), for the top of `/all`, and for the ordering of the other spots (src/render/messages.ts).
  */
 export function compareSpotDays(a: SpotResult, b: SpotResult): number {
   return (
     b.maxScore - a.maxScore ||
-    // score > 0 : un jour à 0★ partout, « le plus d'heures au meilleur niveau » compterait la nuit et avantagerait le spot le plus long à évaluer
+    // score > 0: on a day at 0★ everywhere, "the most hours at the best level" would count nighttime hours and favor whichever spot has the longest hour series to evaluate
     hoursScoring(b, (score) => score > 0 && score === b.maxScore) - hoursScoring(a, (score) => score > 0 && score === a.maxScore) ||
     hoursScoring(b, (score) => score > 0) - hoursScoring(a, (score) => score > 0) ||
     a.distanceKm - b.distanceKm

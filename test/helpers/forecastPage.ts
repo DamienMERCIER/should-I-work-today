@@ -3,8 +3,8 @@ import type { WindSlot } from '../../scripts/lib/windFacing';
 const HOURS = ['2 AM', '5 AM', '8 AM', '11 AM', '2 PM', '5 PM', '8 PM', '11 PM'];
 
 /**
- * Une table « hourly » de surf-forecast réduite à ce que `parseForecastTable` lit — un créneau par vent
- * donné, huit par jour — pour les tests de l'import, qui en tirent l'orientation (§windFacing.ts).
+ * An "hourly" surf-forecast table reduced to what `parseForecastTable` reads — one slot per given wind,
+ * eight per day — for the import tests, which derive the orientation from it (§windFacing.ts).
  */
 export function forecastTableHtml(winds: WindSlot[]): string {
   const n = winds.length;
@@ -22,7 +22,7 @@ export function forecastTableHtml(winds: WindSlot[]): string {
   ].join('\n');
 }
 
-/** Une semaine de sud-est à Muizenberg, onshore : 113°–134° l'expliquent, orientation 124° (§windFacing.test.ts). */
+/** A week of south-easterly wind at Muizenberg, onshore: 113°–134° explains it, orientation 124° (§windFacing.test.ts). */
 export const MUIZENBERG_WINDS: WindSlot[] = [
   ...Array.from({ length: 1 }, (): WindSlot => ({ windDir: 'SSE', state: 'on' })),
   ...Array.from({ length: 12 }, (): WindSlot => ({ windDir: 'SE', state: 'on' })),

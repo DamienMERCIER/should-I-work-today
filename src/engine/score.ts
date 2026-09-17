@@ -9,23 +9,23 @@ import { addHours, dateOf, hoursBetween, toMs } from './time';
 export interface EvaluateSpotInput {
   spot: Spot;
   date: string;
-  /** houle à la cellule du spot (`collect.ts` s'occupe du repli régional quand la cellule est vide) */
+  /** swell at the spot's cell (`collect.ts` handles the regional fallback when the cell is empty) */
   swell: SwellHour[];
   wind: WindHour[];
   sun: { sunrise: string; sunset: string };
   tide: TideInfo;
   distanceKm: number;
-  /** /now : ignorer les créneaux qui commencent avant cette heure. */
+  /** /now: ignore slots that start before this time. */
   fromTime?: string;
 }
 
 export const round1 = (x: number): number => Math.round(x * 10) / 10;
 
 /**
- * Note chaque heure comme surf-forecast : étoiles 0..10 sur la houle dirigée vers le spot et le vent,
- * rien d'autre (§ RAPPORT-surf-forecast.md). Niveau, planche, marée, période et rafale n'y entrent pas.
- * La lumière et l'orage ne touchent pas les étoiles : ils décident seulement si l'heure peut compter
- * pour une session, via `score`.
+ * Rates each hour like surf-forecast: stars 0..10 on the swell directed at the spot and the wind,
+ * nothing else (§ docs/rating.md). Skill level, board, tide, period and gusts don't factor in.
+ * Daylight and thunderstorms don't touch the star rating: they only decide whether the hour can count
+ * toward a session, via `score`.
  */
 export function evaluateSpot(input: EvaluateSpotInput): SpotResult {
   const { spot, date } = input;
@@ -67,7 +67,7 @@ export function evaluateSpot(input: EvaluateSpotInput): SpotResult {
   }
 
   const windows = findWindows(hours);
-  // l'eau des heures où l'on surfe ; la nuit seulement (un /now après le coucher), celle des heures qui restent
+  // water temperature from the hours we're surfing; at night only (a /now after sunset), from whatever hours remain
   const waterTempC = water.dayCount > 0 ? Math.round(water.daySum / water.dayCount) : water.count > 0 ? Math.round(water.sum / water.count) : undefined;
   return {
     spotId: spot.id, distanceKm: input.distanceKm, hours, windows,
@@ -77,7 +77,7 @@ export function evaluateSpot(input: EvaluateSpotInput): SpotResult {
   };
 }
 
-/** Créneaux consécutifs (heures qui se suivent) à score ≥ windowMin. */
+/** Consecutive slots (hours that follow one another) with score ≥ windowMin. */
 export function findWindows(hours: SpotHour[]): Window[] {
   const windows: Window[] = [];
   let run: SpotHour[] = [];
@@ -108,7 +108,7 @@ export function windowHours(w: Window): number {
   return hoursBetween(w.start, w.end);
 }
 
-/** Pic le plus haut, puis la plus longue. */
+/** Highest peak, then the longest. */
 export function pickBest(windows: Window[]): Window | undefined {
   return [...windows].sort((a, b) => b.peak - a.peak || windowHours(b) - windowHours(a))[0];
 }

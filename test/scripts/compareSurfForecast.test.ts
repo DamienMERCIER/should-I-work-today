@@ -3,9 +3,9 @@ import { parseForecastTable, SF_SLUGS } from '../../scripts/compare-surf-forecas
 import { SPOTS } from '../../src/data/index';
 
 /**
- * Fixture synthétique calquée sur le rendu texte de /breaks/Muizenberg/forecasts/latest (16/09/2026).
- * Le vrai balisage peut différer (classes, div dans les cellules) : ce test verrouille la logique du
- * parseur (colspan, AM/PM, changement de mois, « ! »), pas le HTML exact du site — voir --dump-html.
+ * Synthetic fixture modeled on the text rendering of /breaks/Muizenberg/forecasts/latest (16/09/2026).
+ * The real markup may differ (classes, divs inside cells): this test locks down the parser's logic
+ * (colspan, AM/PM, month change, "!"), not the site's exact HTML — see --dump-html.
  */
 const page = (issued: string, days: string, times: string, rating: string, wave: string, kj: string, wind: string, state: string): string => `
 <html><body>
@@ -23,7 +23,7 @@ const page = (issued: string, days: string, times: string, rating: string, wave:
 const cells = (...v: string[]): string => v.map((x) => `<td><div class="cell">${x}</div></td>`).join('');
 
 describe('parseForecastTable', () => {
-  it('lit note, houle, énergie, vent et état, heure par heure, avec les colspan des jours', () => {
+  it('reads rating, swell, energy, wind and state, hour by hour, following the days\' colspans', () => {
     const html = page(
       '7 am 16 Sep 2026',
       '<th colspan="3">Wednesday<br>16</th><th colspan="2">Thursday<br>17</th>',
@@ -41,7 +41,7 @@ describe('parseForecastTable', () => {
     expect(slots[4]).toMatchObject({ heightM: 3, periodS: 16, windKmh: 20, state: 'off' });
   });
 
-  it('passe au mois suivant quand le jour du mois redescend', () => {
+  it('rolls over to the next month when the day number drops back', () => {
     const html = page(
       '1 pm 30 Sep 2026',
       '<th colspan="1">Wed<br>30</th><th colspan="1">Thursday<br>1</th>',
@@ -55,13 +55,13 @@ describe('parseForecastTable', () => {
     expect(parseForecastTable(html).map((s) => s.time)).toEqual(['2026-09-30T23:00', '2026-10-01T02:00']);
   });
 
-  it('rend une liste vide plutôt que de planter quand la table manque', () => {
+  it('returns an empty list rather than crashing when the table is missing', () => {
     expect(parseForecastTable('<html><body>Go Pro</body></html>')).toEqual([]);
   });
 });
 
 describe('SF_SLUGS', () => {
-  it('ne référence que des spots curatés existants', () => {
+  it('only references curated spots that exist', () => {
     const ids = new Set(SPOTS.map((s) => s.id));
     for (const id of Object.keys(SF_SLUGS)) expect(ids.has(id), id).toBe(true);
   });

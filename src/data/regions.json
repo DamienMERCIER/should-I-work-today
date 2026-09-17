@@ -1,6 +1,6 @@
 [
-  { "id": "cape-peninsula", "name": "Péninsule du Cap & False Bay", "tz": "Africa/Johannesburg", "swellRef": { "lat": -34.5, "lon": 18.2 } },
-  { "id": "west-coast", "name": "Côte ouest", "tz": "Africa/Johannesburg", "swellRef": { "lat": -33.0, "lon": 17.7 } },
+  { "id": "cape-peninsula", "name": "Cape Peninsula & False Bay", "tz": "Africa/Johannesburg", "swellRef": { "lat": -34.5, "lon": 18.2 } },
+  { "id": "west-coast", "name": "West Coast", "tz": "Africa/Johannesburg", "swellRef": { "lat": -33.0, "lon": 17.7 } },
   { "id": "overberg", "name": "Overberg (Walker Bay)", "tz": "Africa/Johannesburg", "swellRef": { "lat": -34.7, "lon": 19.1 } },
   { "id": "garden-route", "name": "Garden Route", "tz": "Africa/Johannesburg", "swellRef": { "lat": -34.5, "lon": 22.5 } },
   { "id": "eastern-cape", "name": "Eastern Cape", "tz": "Africa/Johannesburg", "swellRef": { "lat": -34.4, "lon": 25.0 } },

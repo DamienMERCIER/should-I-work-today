@@ -4,7 +4,7 @@ import { rawStars } from './rating';
 import { hoursBetween } from './time';
 import { primaryPick } from './verdict';
 
-/** Les étoiles ne dépendent que du vent et de la houle : ce sont les deux seules causes possibles. */
+/** The star rating depends only on wind and swell: those are the only two possible causes. */
 export type Cause = 'wind' | 'size';
 export interface Delta { send: boolean; changed: boolean; cause?: Cause }
 
@@ -22,7 +22,7 @@ export function compareReports(evening: Report | undefined, morning: Report): De
   return cause ? { send: true, changed: true, cause } : { send: true, changed: true };
 }
 
-/** Verdict différent, spot principal différent, ou fenêtre décalée de ≥ 1 h. */
+/** Different verdict, different primary spot, or a window shifted by ≥ 1h. */
 export function hasChanged(prev: Verdict | undefined, next: Verdict): boolean {
   if (rank(prev) !== rank(next)) return true;
   const a = prev ? primaryPick(prev) : undefined;
@@ -43,11 +43,11 @@ function peakHourIn(r: SpotResult, start: string, end: string): SpotHour | undef
 }
 
 /**
- * Ce qui a le plus changé les étoiles à l'heure du pic du soir, sur le spot principal du soir : on
- * rejoue le pic avec le seul vent du matin, puis avec la seule houle du matin, et on garde l'écart le
- * plus grand s'il vaut au moins une étoile. Baisse si le verdict se dégrade, hausse s'il s'améliore,
- * n'importe quel sens sinon. En étoiles et pas en facteurs bruts : la houle y est une note de base
- * ramenée sur 0..1, le vent un multiplicateur, et 0,15 de l'un ne pèse pas 0,15 de l'autre.
+ * What changed the star rating the most at the evening's peak hour, on the evening's primary spot: we
+ * replay the peak with only the morning's wind, then with only the morning's swell, and keep whichever
+ * gap is larger, provided it's worth at least one star. Downward if the verdict gets worse, upward if
+ * it improves, either direction otherwise. In stars, not in raw factors: swell there is a base rating
+ * brought down to 0..1, wind is a multiplier, and 0.15 of one doesn't weigh the same as 0.15 of the other.
  */
 export function findCause(evening: Report, morning: Report): Cause | undefined {
   const pick = primaryPick(evening.verdict);

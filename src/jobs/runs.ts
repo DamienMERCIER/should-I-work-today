@@ -16,7 +16,7 @@ export interface JobDeps {
   fetchFn: FetchLike;
   radiusKm?: number;
   adminChatId?: number;
-  /** heure locale 'YYYY-MM-DDTHH:mm' */
+  /** local time 'YYYY-MM-DDTHH:mm' */
   now: () => string;
   sleep?: (ms: number) => Promise<void>;
 }
@@ -25,11 +25,11 @@ export interface JobResult { skipped: boolean; sent: number; failed: number; dat
 
 const KV_SAME_KEY_INTERVAL_MS = 1100;
 
-// Les boutons « 📍 Go to » du push portent des coordonnées figées à l'envoi : un message lu le
-// lendemain matin garde le lien tel quel, et rien ne permet de le corriger après coup (le bot
-// n'édite jamais un markup déjà envoyé). Accepté : une correction de coordonnée est rare et se
-// compte en centaines de mètres, alors que le push est justement le moment où le bouton sert le
-// plus. Le bouton 📋, lui, est un callback : il recalcule à chaque appui.
+// The "📍 Go to" buttons on a push carry coordinates fixed at send time: a message read the
+// next morning keeps the link as-is, and there's no way to fix it after the fact (the bot
+// never edits a markup it already sent). Accepted: a coordinate correction is rare and is
+// measured in hundreds of meters, whereas the push is precisely the moment the button is most
+// useful. The 📋 button, on the other hand, is a callback: it recalculates on every tap.
 
 export async function notifyAdmin(deps: Pick<JobDeps, 'telegram' | 'adminChatId'>, text: string): Promise<void> {
   if (deps.adminChatId === undefined) return;
@@ -37,9 +37,9 @@ export async function notifyAdmin(deps: Pick<JobDeps, 'telegram' | 'adminChatId'
 }
 
 /**
- * Requêtes externes prévues, les seules comptées dans les 50 du plan gratuit (KV a sa propre limite) :
- * 3 par région (marine + forecast + période pic) + 2 par position hors couverture (appels bruts, partagés par
- * les amis au même endroit, §buildReportList) + 1 envoi par profil.
+ * Planned external requests, the only ones counted against the 50 in the free plan (KV has its own limit):
+ * 3 per region (marine + forecast + peak period) + 2 per out-of-coverage location (raw calls, shared by
+ * friends at the same place, §buildReportList) + 1 send per profile.
  */
 export function estimateBudget(profiles: Profile[], deps: JobDeps): number {
   const nearbyAt = nearbyByPlace(deps.spots, deps.radiusKm ?? RADIUS_KM);
@@ -64,13 +64,13 @@ export async function runMorning(deps: JobDeps): Promise<JobResult> {
 const renderCtx = (lang: Lang, deps: JobDeps): RenderCtx => ({ lang, spots: new Map(deps.spots.map((s) => [s.id, s])) });
 
 /**
- * Même langue, même position, mêmes horaires : même rapport (§buildReportList), donc même message. Un envoi le
- * rédige une fois par groupe, pas une fois par ami. Le rendu ne lit rien d'autre du profil : ajouter un texte
- * personnel à ces messages demanderait d'élargir cette clé.
+ * Same language, same location, same work hours: same report (§buildReportList), so the same message. A send
+ * drafts it once per group, not once per friend. The rendering doesn't read anything else from the profile:
+ * adding personal text to these messages would require widening this key.
  */
 const messageKey = (p: Profile): string => `${p.lang}|${placeKey(p.location)}|${p.workHours.start}-${p.workHours.end}|${minStars(p)}`;
 
-/** Le premier appel calcule, les suivants avec la même clé reprennent le résultat. */
+/** The first call computes it, later calls with the same key reuse the result. */
 function memoized<T>(compute: (key: string) => T): (key: string) => T {
   const done = new Map<string, T>();
   return (key) => {
@@ -91,7 +91,7 @@ async function runJob(kind: 'evening' | 'morning', date: string, deps: JobDeps):
   const reqs: EvalRequest[] = profiles.map((profile) => ({ profile, date, mode: kind }));
   const reports = await buildReports(reqs, { spots: deps.spots, regions: deps.regions, fetchFn: deps.fetchFn, radiusKm: deps.radiusKm, now });
 
-  // 1. décider quoi envoyer et quoi stocker
+  // 1. decide what to send and what to store
   const toStore: Record<string, Report> = { ...previous };
   const outbox: { profile: Profile; text: string; markup?: ReplyMarkup }[] = [];
   const eveningMessages = new Map<string, { text: string; markup?: ReplyMarkup }>();
@@ -113,17 +113,17 @@ async function runJob(kind: 'evening' | 'morning', date: string, deps: JobDeps):
     }
     const evening = previous[key];
     const delta = compareReports(evening, report);
-    // un matin sans données garde le rapport du soir (§7.6)
+    // a morning with no data keeps the evening's report (§7.6)
     if (!(report.verdict.kind === 'noData' && evening)) toStore[key] = report;
-    // le matin passé au 🔴 dit « go to work » sans nommer de spot : pas de 🙋 pour un spot absent du message
+    // a morning that goes to 🔴 says "go to work" without naming a spot: no 🙋 for a spot that's absent from the message
     if (delta.send) outbox.push({ profile, text: renderMorning(report, delta, evening, ctx), markup: detailsMarkupFor(report, ctx, { redBestNamed: false }) });
   }
 
-  // 2. première écriture : le bouton 📋 fonctionne dès la réception
+  // 2. first write: the 📋 button works as soon as the message is received
   const firstWriteAt = Date.now();
   await deps.store.putReports(date, toStore);
 
-  // 3. envois
+  // 3. sends
   let sent = 0;
   let failed = 0;
   const blocked: number[] = [];
@@ -136,12 +136,12 @@ async function runJob(kind: 'evening' | 'morning', date: string, deps: JobDeps):
     } else {
       failed++;
       if (res.blocked) blocked.push(profile.chatId);
-      console.error(`[${kind} ${date}] envoi à ${profile.chatId} échoué — ${res.description}`);
-      await notifyAdmin(deps, `${kind} ${date}: envoi à ${profile.chatId} échoué — ${res.description}`);
+      console.error(`[${kind} ${date}] send to ${profile.chatId} failed — ${res.description}`);
+      await notifyAdmin(deps, `${kind} ${date}: send to ${profile.chatId} failed — ${res.description}`);
     }
   }
 
-  // 4. seconde écriture (sentAt), en respectant 1 écriture/s/clé — seulement si un envoi a eu lieu
+  // 4. second write (sentAt), respecting 1 write/s/key — only if a send actually happened
   if (sent > 0) {
     const elapsed = Date.now() - firstWriteAt;
     if (elapsed < KV_SAME_KEY_INTERVAL_MS) await sleep(KV_SAME_KEY_INTERVAL_MS - elapsed);
@@ -155,7 +155,7 @@ async function runJob(kind: 'evening' | 'morning', date: string, deps: JobDeps):
 const activeProfiles = (all: Record<string, Profile>): Profile[] =>
   Object.values(all).filter((p) => p.active).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
-/** Budget dépassé (§10.1) : reporter les profils les plus récents jusqu'à rentrer dans le budget. */
+/** Budget exceeded (§10.1): defer the most recent profiles until back within budget. */
 async function withinBudget(profiles: Profile[], deps: JobDeps, kind: RunKind, date: string): Promise<Profile[]> {
   const kept = [...profiles];
   let deferred = 0;
@@ -164,32 +164,33 @@ async function withinBudget(profiles: Profile[], deps: JobDeps, kind: RunKind, d
     deferred++;
   }
   if (deferred > 0) {
-    const text = `${kind} ${date}: budget dépassé — ${deferred} profil(s) reportés, fan-out nécessaire`;
+    const text = `${kind} ${date}: over budget — ${deferred} profile(s) deferred, fan-out needed`;
     console.warn(text);
     await notifyAdmin(deps, text);
   }
   return kept;
 }
 
-/** Un utilisateur qui a bloqué le bot ne reçoit plus rien : on le désactive plutôt que d'échouer à chaque envoi. */
+/** A user who has blocked the bot receives nothing further: we deactivate them rather than fail on every send. */
 async function deactivateBlocked(blocked: number[], deps: JobDeps): Promise<void> {
   for (const chatId of blocked) {
     try {
       const p = await deps.store.getProfile(chatId);
       if (p) await deps.store.putProfiles({ [String(chatId)]: { ...p, active: false, inactiveReason: 'blocked' } });
     } catch (err) {
-      // les messages sont partis : un échec ici ne doit pas faire passer tout l'envoi pour raté ; réessayé au prochain envoi
-      console.error(`désactivation de ${chatId} échouée — ${String(err)}`);
+      // the messages have already gone out: a failure here must not make the whole send look like it failed; retried on the next send
+      console.error(`could not switch ${chatId} off — ${String(err)}`);
     }
   }
 }
 
 /**
- * À midi, les grosses journées à venir : pour chaque ami actif proche d'un spot, J+2 et J+3. Un 🟢 epic (≥ 6★ assez
- * longtemps) qu'on ne lui a pas encore annoncé → un message, toutes ses dates dedans. Une date annoncée ne l'est plus,
- * même si elle passe de J+3 à J+2 le lendemain ; un envoi raté n'est pas noté, donc retenté le lendemain. Rien
- * n'est stocké d'autre : le verdict du soir, la veille, confirme ou non. Même partage du travail que les autres
- * envois : une charge par région, une évaluation par spot et par date, un message par groupe d'amis identique.
+ * At noon, the big days ahead: for every active friend near a spot, D+2 and D+3. A 🟢 epic (≥ 6★ for long
+ * enough) that hasn't been announced to them yet → one message, with all of their dates in it. An announced date
+ * stops being announced, even if it moves from D+3 to D+2 the next day; a failed send isn't recorded, so it's
+ * retried the next day. Nothing else is stored: the evening verdict, the day before, confirms it or not. Same
+ * work-sharing as the other sends: one load per region, one evaluation per spot and per date, one message per
+ * identical group of friends.
  */
 export async function runAlert(deps: JobDeps): Promise<JobResult> {
   const now = deps.now();
@@ -203,7 +204,7 @@ export async function runAlert(deps: JobDeps): Promise<JobResult> {
   const alerted = await Promise.all(dates.map((date) => deps.store.alertedChatIds(date)));
 
   const reqs: EvalRequest[] = profiles.flatMap((profile) => dates.map((date): EvalRequest => ({ profile, date, mode: 'evening' })));
-  // la marée du dernier jour lit jusqu'au lendemain 3 h : aujourd'hui, les jours d'avant, ce jour et le suivant
+  // the last day's tide reads through 3am the next day: today, the days before, this day and the next one
   const forecastDays = Math.max(...ALERT_DAYS_AHEAD) + 2;
   const reports = await buildReportList(reqs, { spots: deps.spots, regions: deps.regions, fetchFn: deps.fetchFn, radiusKm: deps.radiusKm, now }, { forecastDays });
   const ctxFor = memoized((lang) => renderCtx(lang as Lang, deps));
@@ -229,8 +230,8 @@ export async function runAlert(deps: JobDeps): Promise<JobResult> {
     if (!res.ok) {
       failed++;
       if (res.blocked) blocked.push(profile.chatId);
-      console.error(`[alert ${today}] envoi à ${profile.chatId} échoué — ${res.description}`);
-      await notifyAdmin(deps, `alert ${today}: envoi à ${profile.chatId} échoué — ${res.description}`);
+      console.error(`[alert ${today}] send to ${profile.chatId} failed — ${res.description}`);
+      await notifyAdmin(deps, `alert ${today}: send to ${profile.chatId} failed — ${res.description}`);
       continue;
     }
     sent++;
@@ -238,8 +239,8 @@ export async function runAlert(deps: JobDeps): Promise<JobResult> {
       try {
         await deps.store.markAlerted(report.date, profile.chatId);
       } catch (err) {
-        // le message est parti : au pire, la même date sera annoncée une seconde fois demain
-        console.error(`alerte du ${report.date} pour ${profile.chatId} non notée — ${String(err)}`);
+        // the message has gone out: worst case, the same date gets announced a second time tomorrow
+        console.error(`the alert for ${report.date} to ${profile.chatId} went unrecorded — ${String(err)}`);
       }
     }
   }
@@ -248,10 +249,10 @@ export async function runAlert(deps: JobDeps): Promise<JobResult> {
 }
 
 /**
- * Le dimanche soir, la semaine à venir, lundi → dimanche, à chaque profil actif proche d'un spot : les
- * profils loin de tout recevraient sept lignes vides, on les saute. Une seule charge par région pour
- * tous les profils et tous les jours ; les étoiles, identiques d'un profil à l'autre, ne sont évaluées
- * qu'une fois (`buildReportList`). Rien n'est stocké : la semaine se recalcule à la demande avec /week.
+ * On Sunday evening, the upcoming week, Monday → Sunday, to every active profile near a spot: profiles
+ * far from everything would get seven empty lines, so we skip them. A single load per region for all
+ * profiles and all days; the star rating, identical from one profile to another, is only evaluated
+ * once (`buildReportList`). Nothing is stored: the week gets recalculated on demand with /week.
  */
 export async function runWeek(deps: JobDeps): Promise<JobResult> {
   const now = deps.now();
@@ -285,8 +286,8 @@ export async function runWeek(deps: JobDeps): Promise<JobResult> {
     } else {
       failed++;
       if (res.blocked) blocked.push(profile.chatId);
-      console.error(`[week ${monday}] envoi à ${profile.chatId} échoué — ${res.description}`);
-      await notifyAdmin(deps, `week ${monday}: envoi à ${profile.chatId} échoué — ${res.description}`);
+      console.error(`[week ${monday}] send to ${profile.chatId} failed — ${res.description}`);
+      await notifyAdmin(deps, `week ${monday}: send to ${profile.chatId} failed — ${res.description}`);
     }
   }
   await deactivateBlocked(blocked, deps);

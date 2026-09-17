@@ -1,38 +1,38 @@
 import { windState, type WindState } from '../../src/engine/rating';
 
 /**
- * L'orientation qu'attribue surf-forecast à un spot, retrouvée dans sa propre page : pour chaque créneau,
- * la ligne « Wind » donne la direction et la ligne « Wind State » l'effet (offshore, cross-shore…),
- * calculé par le site depuis cette orientation. On l'inverse avec les mêmes secteurs que les étoiles
- * (`windState`) : aucune requête de plus que la page déjà lue, et des états de vent qui collent au site
- * par construction.
+ * The facing surf-forecast assigns to a spot, recovered from its own page: for each time slot,
+ * the "Wind" row gives the direction and the "Wind State" row the effect (offshore, cross-shore…),
+ * computed by the site from that facing. We invert it using the same sectors as the star rating
+ * (`windState`): no request beyond the page already fetched, and wind states that match the site
+ * by construction.
  */
 export interface WindSlot { windDir: string; state: WindState }
 
 export interface WindFacing {
-  /** milieu de l'arc des orientations qui expliquent le plus de créneaux, en degrés */
+  /** midpoint of the arc of facings that explain the most time slots, in degrees */
   facing: number;
-  /** largeur de cet arc, au degré près : la précision de l'orientation (une vingtaine de degrés au mieux, la résolution du compas) */
+  /** width of that arc, to the nearest degree: the precision of the facing (about twenty degrees at best, the compass's resolution) */
   widthDeg: number;
-  /** créneaux expliqués par ces orientations */
+  /** time slots explained by these facings */
   explained: number;
-  /** créneaux utilisables : direction connue du compas, et pas « glassy », qui ne dit rien de l'angle */
+  /** usable time slots: known compass direction, and not "glassy", which says nothing about the angle */
   usable: number;
 }
 
 export const WIND_FACING = {
   minSlots: 4,
-  /** en dessous, les états affichés ne tiennent dans aucune orientation : la page ne tranche pas */
+  /** below this, the displayed states don't fit within any single facing: the page doesn't decide it */
   minExplainedShare: 0.75,
-  /** au-delà, les créneaux laissent deux côtés possibles (un seul vent en cross-shore) ou presque tout */
+  /** beyond this, the time slots leave two possible sides open (a single wind direction read as cross-shore) or almost everything */
   maxArcDeg: 90,
 } as const;
 
 const COMPASS_16 = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
-/** assez de vent pour ne jamais être « glassy » : seul l'angle compte dans l'inversion */
+/** enough wind to never be "glassy": only the angle matters for the inversion */
 const NOT_GLASSY_KT = 99;
 
-/** L'orientation, ou `null` quand le vent de la page ne permet pas de trancher (§WIND_FACING). */
+/** The facing, or `null` when the page's wind doesn't allow deciding it (§WIND_FACING). */
 export function facingFromWind(slots: WindSlot[]): WindFacing | null {
   const usable = slots.flatMap((s) => {
     const i = COMPASS_16.indexOf(s.windDir.toUpperCase());
@@ -45,8 +45,8 @@ export function facingFromWind(slots: WindSlot[]): WindFacing | null {
   const explained = Math.max(...scores);
   if (explained < WIND_FACING.minExplainedShare * usable.length) return null;
 
-  // L'arc qui couvre toutes les meilleures orientations est le complément du plus grand écart entre
-  // deux d'entre elles, en faisant le tour du cadran : 349°…11° est centré sur 0°, pas sur 180°.
+  // The arc that covers all the best facings is the complement of the largest gap between
+  // two of them, going around the dial: 349°…11° is centered on 0°, not on 180°.
   const best = scores.flatMap((n, facing) => (n === explained ? [facing] : []));
   let largestGap = 0;
   let arcStart = best[0];
@@ -58,8 +58,8 @@ export function facingFromWind(slots: WindSlot[]): WindFacing | null {
     }
   });
   const widthDeg = 360 - largestGap;
-  // Des ex æquo séparés (315° et 0°, sans rien entre) ne forment pas un arc : leur milieu expliquerait moins de
-  // créneaux que chacun d'eux. Un vrai arc contient chaque degré entre ses bords.
+  // Separated ties (315° and 0°, with nothing in between) don't form an arc: their midpoint would explain fewer
+  // time slots than either one alone. A real arc contains every degree between its edges.
   if (best.length !== widthDeg + 1 || widthDeg > WIND_FACING.maxArcDeg) return null;
   return { facing: Math.round(arcStart + widthDeg / 2) % 360, widthDeg, explained, usable: usable.length };
 }

@@ -7,7 +7,7 @@ export interface Strings {
   cardinal: readonly [string, string, string, string, string, string, string, string];
   /** goTo: {spot} — the "go to this spot" map button, after its 📍, medal, 🌅 or 🌇 (`src/render/messages.ts` `goButtons`). */
   buttons: { useMyLocation: string; backHome: string; now: string; allSpots: string; goTo: string; going: string; notGoing: string };
-  /** les six états de vent de surf-forecast, du plus propre au pire */
+  /** the six surf-forecast wind states, from cleanest to worst */
   windStates: Record<WindState, string>;
   then: string;
   today: string;
@@ -24,36 +24,36 @@ export interface Strings {
     summary: string; askHours: string; badHours: string; saved: string;
     locationDefault: string; locationCustom: string;
     changeHours: string;
-    /** le bouton et la question du seuil d'étoiles (`STAR_CHOICES`) */
+    /** the button and the question for the star threshold (`STAR_CHOICES`) */
     changeStars: string; askStars: string;
   };
   lang: { ask: string; set: string };
   stopped: string;
   reactivated: string;
   locationSaved: string;
-  /** le bouton 📍 est arrivé en simple texte, sans position (localisation refusée ou coupée pour Telegram) : {button} */
+  /** the 📍 button arrived as plain text, with no position (location denied, or cut off for Telegram): {button} */
   locationNeeded: string;
   backHomeDone: string;
-  /** en tete d'un rapport « maintenant » bascule sur demain, faute de jour restant aujourd'hui */
+  /** heads a "now" report that switches to tomorrow, for lack of any day left today */
   dayIsDone: string;
-  /** titres : {date} ; redBody : {good} {radius} ; redTooShort : {radius} ; redBest : {spot} {stars} {reason} ; redRanked : {medal} {spot} {stars} {reason} */
+  /** titles: {date} ; redBody: {good} {radius} ; redTooShort: {radius} ; redBest: {spot} {stars} {reason} ; redRanked: {medal} {spot} {stars} {reason} */
   verdict: {
     green: string; greenEpicSuffix: string; greenWeekend: string; greenNow: string;
     dawn: string; dusk: string;
     red: string; redWeekend: string; redNow: string; redBody: string; redTooShort: string; redBest: string; redRanked: string;
   };
-  /** raison d'un 🔴 quand ce n'est pas le vent (qui se décrit lui-même) : size: {m} */
+  /** a 🔴's reason when it isn't the wind (which describes itself): size: {m} */
   reasons: { size: string; dark: string; storm: string };
   /** conditions: {m} {dir} {s} {wind} {tide} · sun: {temp} {sunrise} */
   spotLine: { conditions: string; sun: string };
   /** {mm} */
   rain: string;
-  /** la ligne 🌡️ du spot mis en avant : {temp} {suit} · suits : la combinaison conseillée (`src/engine/water.ts`) */
+  /** the 🌡️ line of the featured spot: {temp} {suit} · suits: the recommended wetsuit (`src/engine/water.ts`) */
   water: string;
   suits: Record<Wetsuit, string>;
   /** confirmed: {verdict} · changed: {from} {to} · cause: {cause} · noDataKeep: {verdict} */
   morning: { confirmed: string; changed: string; cause: string; noDataKeep: string };
-  /** les étoiles ne dépendent que du vent et de la houle */
+  /** stars depend only on wind and swell */
   causes: { wind: string; size: string };
   /** green/dawn/dusk: {spot} {window} */
   shortVerdict: { green: string; dawn: string; dusk: string; red: string };
@@ -74,24 +74,24 @@ export interface Strings {
     /** /all only, when a dense cluster of open spots exceeds `ALL_SPOTS_CAP` (`src/render/messages.ts`): {n} */
     moreSpots: string;
     sun: string;
-    /** les étoiles ne dépendent que du vent et de la houle ; la lumière dit quand ça s'arrête */
+    /** stars depend only on wind and swell; light says when it stops */
     reasons: {
       windDrops: string;
       windBuilds: string;
-      /** le vent du pic quand il est plus propre qu'ailleurs dans la journée : « offshore wind » */
+      /** the peak's wind when it's cleaner than elsewhere in the day: "offshore wind" */
       windIs: string;
-      /** le vent de la chute quand il est devenu moins propre : « wind turns onshore » */
+      /** the fade hour's wind when it has become less clean: "wind turns onshore" */
       windTurns: string;
       swellPeaks: string;
       swellDrops: string;
       getsDark: string;
     };
   };
-  /** 🙋 qui va surfer ce jour-là. title: {date} · cancelled: {date} ; `buttons.going` : {spot} */
+  /** 🙋 who's surfing that day. title: {date} · cancelled: {date} ; `buttons.going`: {spot} */
   going: { title: string; you: string; someone: string; cancelled: string };
-  /** L'alerte de midi, une grosse journée à J+2 ou J+3. title: {date} */
+  /** The midday alert, a big day at D+2 or D+3. title: {date} */
   alert: { title: string; footer: string };
-  /** La semaine à venir (`/week`, envoi du dimanche). best: {day} {spot} {stars} · trend: {day} */
+  /** The week ahead (`/week`, the Sunday send). best: {day} {spot} {stars} · trend: {day} */
   week: { title: string; best: string; today: string; nothing: string; noData: string; trend: string };
   /** none: {radius} · raw: {swell} {s} {dir} {kt} {windDir} · nearest: {list} · nearestItem: {spot} {km} · farFromCoast: {km} */
   coverage: { none: string; raw: string; nearest: string; nearestItem: string; farFromCoast: string };

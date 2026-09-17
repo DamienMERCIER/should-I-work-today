@@ -2,7 +2,7 @@ export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 
 export const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Comparaison à temps constant sur la longueur commune (la longueur elle-même n'est pas secrète). */
+/** Constant-time comparison over the common length (the length itself isn't secret). */
 export function safeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;

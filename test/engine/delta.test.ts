@@ -10,7 +10,7 @@ const spot = (spotId: string, hours: SpotResult['hours'], windows: Window[] = []
 });
 const eveningKom = (windAt9 = 1) => makeReport({
   verdict: green('kom', W('07:00', '12:00', 5)),
-  // le pic du soir est 09:00 (5★ = base 5 × vent 1) sans ambiguïté : c'est l'heure que findCause compare
+  // the evening peak is 09:00 (5★ = base 5 × wind 1) unambiguously: that's the hour findCause compares
   spots: [spot('kom', [makeHour(`${DATE}T07:00`, 4, { swell: 0.5, wind: 0.8 }), makeHour(`${DATE}T09:00`, 5, { swell: 0.5, wind: windAt9 }), makeHour(`${DATE}T11:00`, 4, { swell: 0.5, wind: 0.8 })], [W('07:00', '12:00', 5)])],
 });
 const morning = (verdict: Verdict, spots: SpotResult[] = []): Report => makeReport({ mode: 'morning', verdict, spots });
@@ -34,12 +34,12 @@ describe('compareReports', () => {
     expect(compareReports(eveningKom(), m)).toEqual({ send: true, changed: false });
   });
   it('a window shifted by ≥ 1 h is a change, with the factor that moved most as cause', () => {
-    // vent seul : 5 × 0,5 = 2,5 (−2,5★) ; houle seule : 4,5 × 1 (−0,5★)
+    // wind alone: 5 × 0,5 = 2,5 (−2,5★); swell alone: 4,5 × 1 (−0,5★)
     const m = morning(green('kom', W('07:00', '11:00', 4)), [spot('kom', [makeHour(`${DATE}T09:00`, 2, { wind: 0.5, swell: 0.45 })])]);
     expect(compareReports(eveningKom(), m)).toEqual({ send: true, changed: true, cause: 'wind' });
   });
   it('🟢 → 🌅 is a change; the cause must be a decrease', () => {
-    // la houle monte (+1★) mais le verdict se dégrade : seule une baisse peut l'expliquer, donc le vent (−2★)
+    // the swell rises (+1★) but the verdict gets worse: only a drop can explain that, so it's the wind (−2★)
     const m = morning({ kind: 'yellow', dawn: { spotId: 'muizenberg', window: W('07:00', '09:00', 4) } }, [
       spot('kom', [makeHour(`${DATE}T09:00`, 4, { wind: 0.6, swell: 0.6 })]),
     ]);
@@ -63,8 +63,8 @@ describe('compareReports', () => {
     expect(hasChanged(e.verdict, m.verdict)).toBe(true);
   });
   it('weighs each change in stars: a smaller swell that costs 1.5★ beats a stronger wind that costs 0.9★', () => {
-    // soir 3,2 m offshore 10 kt (5★) ; matin 2,3 m et offshore 18 kt (3★). Houle seule : 5,35 → 3,88 (−1,5★) ;
-    // vent seul : ×1 → ×0,83 (−0,9★). En facteurs bruts, le vent bougeait plus (0,17 contre 0,15).
+    // evening 3,2 m offshore 10 kt (5★); morning 2,3 m and offshore 18 kt (3★). Swell alone: 5,35 → 3,88 (−1,5★);
+    // wind alone: ×1 → ×0,83 (−0,9★). In raw factors, the wind actually moved more (0,17 vs 0,15).
     const e = makeReport({
       verdict: green('kom', W('07:00', '12:00', 5)),
       spots: [spot('kom', [makeHour(`${DATE}T09:00`, 5, { swell: 0.535, wind: 1 })], [W('07:00', '12:00', 5)])],
@@ -77,7 +77,7 @@ describe('compareReports', () => {
     expect(compareReports(eveningKom(), m)).toEqual({ send: true, changed: true, cause: 'size' });
   });
   it('a change worth less than one star yields no cause', () => {
-    // 5 × 0,9 = 4,5 : un demi-point, pas une étoile
+    // 5 × 0,9 = 4,5: half a point, not a full star
     const m = morning(green('kom', W('08:00', '12:00', 4)), [spot('kom', [makeHour(`${DATE}T09:00`, 4, { swell: 0.5, wind: 0.9 })])]);
     expect(findCause(eveningKom(), m)).toBeUndefined();
   });

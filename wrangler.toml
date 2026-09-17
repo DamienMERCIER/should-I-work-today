@@ -9,6 +9,8 @@ enabled = true
 [triggers]
 crons = ["0 17 * * *", "0 4 * * *", "5 17 * * SUN", "0 10 * * *"]
 
+# Your own namespace: `npx wrangler kv namespace create KV`, then copy this file to wrangler.local.toml
+# (git-ignored), put the id there, and deploy with `npx wrangler deploy --config wrangler.local.toml`.
 [[kv_namespaces]]
 binding = "KV"
-id = "1e1ee58b328d4f6ca80bb12ba5aae26b"
+id = "<your kv namespace id>"

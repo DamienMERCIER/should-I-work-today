@@ -3,7 +3,7 @@ import { decideVerdict, overlapHours, hoursBefore, hoursAfter, primaryPick } fro
 import type { SpotResult, Window } from '../../src/types';
 import { makeSpotDay } from '../helpers/reports';
 
-const DATE = '2026-09-16'; // mercredi
+const DATE = '2026-09-16'; // Wednesday
 const SAT = '2026-09-19';
 const WORK = { start: '09:00', end: '18:00' };
 
@@ -41,7 +41,7 @@ describe('the bar each friend sets', () => {
   it('the bar moves the dawn and dusk windows too, and never the epic flag', () => {
     expect(at(5, [W(DATE, '07:00', '09:00', 4)])).toEqual({ kind: 'red', bestSpotId: 'kommetjie-long-beach' });
     expect(at(3, [W(DATE, '07:00', '09:00', 3)])).toMatchObject({ kind: 'yellow' });
-    // epic reste le 6★ du barème commun, quel que soit le seuil
+    // epic stays the shared scale's 6★, whatever the threshold is
     expect(at(3, [W(DATE, '07:00', '12:00', 6)])).toMatchObject({ kind: 'green', epic: true });
     expect(at(6, [W(DATE, '07:00', '12:00', 6)])).toMatchObject({ kind: 'green', epic: true });
   });
@@ -84,7 +84,7 @@ describe('weekday verdict', () => {
   const spotDay = (spotId: string, distanceKm: number, scores: number[]): SpotResult => makeSpotDay(spotId, distanceKm, scores, DATE);
 
   it('🔴 two spots at the same stars: the one holding them for more hours wins, not the nearer one', () => {
-    // The Hoek a même plus d'heures à au moins une étoile : les heures au meilleur niveau passent avant.
+    // The Hoek even has more hours at one star or better: hours at the higher level are weighed first.
     const v = day([spotDay('noordhoek', 13, [1, 2, 2, 1, 1, 1, 1, 1]), spotDay('kommetjie-long-beach', 15, [0, 2, 2, 2, 2, 2, 0, 0])]);
     expect(v).toEqual({ kind: 'red', bestSpotId: 'kommetjie-long-beach' });
   });

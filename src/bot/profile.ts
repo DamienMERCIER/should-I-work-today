@@ -21,7 +21,7 @@ function toHhmm(h: string, m?: string): string | null {
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
 
-/** « 9h-18h », « 09:30 – 17:00 », « 9-18 » → { start, end } ; null si invalide ou start ≥ end. */
+/** "9h-18h", "09:30 – 17:00", "9-18" → { start, end }; null if invalid or start ≥ end. */
 export function parseHours(text: string): WorkHours | null {
   const m = HOURS_RE.exec(text.trim());
   if (!m) return null;
