@@ -47,9 +47,9 @@ Nothing ≥ 4★ within 20 km.
 🥈 Llandudno ⭐⭐⭐ (swell 1.6 m)
 ```
 
-Reading it: **⭐ yellow stars** are clean waves, **☆ white** ones are spoilt by onshore wind — the distinction
-surf-forecast makes. Under a spot, `🕐` is the hour ruler, `🌊` the level of each hour, and `⭐` marks the hours whose
-stars are yellow.
+Reading it: **⭐ yellow stars** are clean waves, **☆ white** ones are spoilt by a cross or onshore wind — the
+distinction surf-forecast makes. Under a spot, `🕐` is the hour ruler, `🌊` the level of each hour, and `⭐` marks
+the hours whose stars are yellow.
 
 ## What it does
 

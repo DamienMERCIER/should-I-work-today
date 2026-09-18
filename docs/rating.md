@@ -64,14 +64,23 @@ rating; the comparison script stores it as it is.
 ## 4. Gold and white
 
 According to the FAQ and the app's release notes, gold means clean waves (glassy, off, cross-off) and white a
-rating spoilt by an onshore component (cross-on, on). It is not a second score — it is the colour of the same one.
-Pure cross sits with the white ones here: the site says cross winds can be good offshore and bad onshore, so a
-cross that costs stars is not clean.
+rating spoilt by the wind. It is not a second score — it is the colour of the same one.
 
-Checked again on 17/09/2026 across 7 Cape spot pages (693 stars): the web page now draws a single star per slot
-with the rating in its centre, white at 0 and yellow from 1★ on, deepening from a pale `hsl(57, 100%, 79%)` at 1★
-to a gold `hsl(48, 100%, 56%)` at 9★, one colour per rating. The tooltip legend ("Gold = surfable, White =
-marginal wind or wrong tide") and the app keep the older distinction, and that is the one the bot follows.
+The web page draws a single star per slot, with the rating in its centre. On 18/09/2026, across 264 slots on 11
+Cape spot pages, its colour followed the wind state without exception: yellow under off and cross-off winds, white
+under cross and on winds, and white at 0 whatever the wind. Pure cross is white too — Bali Bay (Glen Reef, the site's page for
+Glen Beach) showed 1★, 2★ and 3★ under a cross wind, all white, next to yellow ones of the same rating under
+cross-off. (No cross-on hour was
+rated above 0 that day.) The yellow deepens with the rating, from a pale `hsl(57, 100%, 79%)` at 1★ to a gold
+`hsl(48, 100%, 56%)` at 9★.
+
+A first check, on 17/09, had concluded that the colour followed the rating alone: none of the pages read that day
+had a rated hour under a cross or onshore wind, so every star above 0 was yellow.
+
+The bot applies the same rule, with its own wind state. Where its state lands one 45° sector away from the site's
+— usually cross-off against the site's cross, when the spot's facing or the forecast wind direction differ from
+the site's — the colours differ: 54 of 255 rated slots on 18/09, most of them at Sunset Beach, Witsands, Outer
+Kom and Scarborough. `npm run compare:sf` measures that agreement spot by spot.
 
 Telegram text has no colour, so the bot spells it out: ⭐ (the emoji, yellow on every client) for gold, ☆ for
 white, `0★` for nothing at all, and a ⭐ line under the day chart marking the hours whose stars are gold.
