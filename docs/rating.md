@@ -79,8 +79,15 @@ had a rated hour under a cross or onshore wind, so every star above 0 was yellow
 
 The bot applies the same rule, with its own wind state. Where its state lands one 45° sector away from the site's
 — usually cross-off against the site's cross, when the spot's facing or the forecast wind direction differ from
-the site's — the colours differ: 54 of 255 rated slots on 18/09, most of them at Sunset Beach, Witsands, Outer
-Kom and Scarborough. `npm run compare:sf` measures that agreement spot by spot.
+the site's — the colours differ: 54 of 255 rated slots on the morning of 18/09, most of them at Sunset Beach,
+Witsands, Outer Kom and Scarborough. `npm run compare:sf` measures that agreement spot by spot.
+
+Three facings were corrected the same day, each where Surfline's map data sided with the site against our first
+estimate: Noordhoek – The Hoek 270° → 300°, Sunset Beach 280° → 260°, Witsands 190° → 235°. Over the same 24
+slots, the stars now take the site's colour 22 times instead of 18, 17 instead of 10, and 6 of 14 instead of 2.
+Outer Kom kept its 280°: the site says 236°, Surfline 315°, and nothing settles it. What remains mostly comes
+from the forecast wind itself — at Glen Beach the site reads SSE where Open-Meteo gives SE — which no facing
+can fix.
 
 Telegram text has no colour, so the bot spells it out: ⭐ (the emoji, yellow on every client) for gold, ☆ for
 white, `0★` for nothing at all, and a ⭐ line under the day chart marking the hours whose stars are gold.
