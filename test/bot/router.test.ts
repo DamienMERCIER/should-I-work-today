@@ -19,10 +19,14 @@ const TOMORROW = '2026-09-17';
 
 const ADMIN = 999;
 
-function setup(opts: { inviteCode?: string; adminChatId?: number; spots?: Spot[]; now?: string; data?: ServerData; worldTuples?: SpotTuple[] } = {}) {
+function setup(opts: {
+  inviteCode?: string; adminChatId?: number; spots?: Spot[]; now?: string; data?: ServerData; worldTuples?: SpotTuple[];
+  /** Telegram's answer to each call; every call succeeds by default */
+  tgHandler?: (url: string, init?: RequestInit) => Response;
+} = {}) {
   const kv = new MemoryKV();
   const store = new Store(kv);
-  const tg = fakeFetch(() => jsonResponse({ ok: true }));
+  const tg = fakeFetch(opts.tgHandler ?? (() => jsonResponse({ ok: true })));
   // Wind for both today AND tomorrow: a report that rolls over to the next day (§nowReport) only has
   // data if the series covers it, otherwise it falls back to noData and the test proves nothing.
   const wind = [...goldenWind(), ...goldenWind(TOMORROW)];
@@ -617,6 +621,119 @@ describe('/friends — the admin sees who is in', () => {
     const updated = await store.getProfile(1);
     expect(updated?.name).toBe('Ivan Petrov');
     expect(updated).not.toHaveProperty('username');
+  });
+});
+
+describe('✅ Let in — the admin lets someone in without the link', () => {
+  const letIn = (id: number, lang = 'en') => ({ inline_keyboard: [[{ text: '✅ Let in', callback_data: `admit:${id}:${lang}` }]] });
+  const USAGE = '⚙️ Usage: /letin &lt;id&gt; [en|ru] — the id is in the notification.';
+
+  it('puts the button under every refusal and every message from a stranger, in the language their Telegram speaks', async () => {
+    const { deps, sent } = setup({ inviteCode: 'surf', adminChatId: ADMIN });
+    await handleUpdate(msg('/start', { from: { id: 2, first_name: 'Olga', language_code: 'ru' } }, 2), deps);
+    await handleUpdate(msg('/start nope', { from: { id: 2, first_name: 'Olga', language_code: 'ru' } }, 2), deps);
+    await handleUpdate(msg('hello', { from: { id: 3, first_name: 'Sasha' } }, 3), deps);
+    expect(sent().filter((m) => m.chat_id === ADMIN).map((m) => m.reply_markup)).toEqual([letIn(2, 'ru'), letIn(2, 'ru'), letIn(3)]);
+  });
+
+  it('one tap makes them a friend: the same profile and welcome as the invite link, then the admin is told', async () => {
+    const { deps, store, sent } = setup({ inviteCode: 'surf', adminChatId: ADMIN });
+    await handleUpdate(msg('/start surf', { from: { id: 7, language_code: 'ru' } }, 7), deps);
+    const viaLink = sent().find((m) => m.chat_id === 7)!;
+    await handleUpdate(cb('admit:404202094:ru', ADMIN), deps);
+    expect(await store.getProfile(404202094)).toEqual({ ...(await store.getProfile(7)), chatId: 404202094 });
+    const welcome = sent().find((m) => m.chat_id === 404202094)!;
+    expect(welcome.text).toBe(viaLink.text);
+    expect(welcome.reply_markup).toEqual(viaLink.reply_markup);
+    expect(sent().at(-1)).toMatchObject({ chat_id: ADMIN, text: '⚙️ id 404202094 let in — welcome sent.' });
+  });
+
+  it('answers only the admin: the same button, forged by a friend or by the stranger, does nothing', async () => {
+    const { deps, store, sent, kv } = setup({ adminChatId: ADMIN });
+    await store.putProfiles({ '1': ready() });
+    kv.writes.length = 0;
+    await handleUpdate(cb('admit:1234:en', 1), deps);
+    await handleUpdate(cb('admit:1234:en', 1234), deps);
+    expect(await store.getProfile(1234)).toBeUndefined();
+    expect(kv.writes).toEqual([]);
+    expect(sent()).toEqual([]);
+  });
+
+  it('lets nobody in when no admin is configured', async () => {
+    const { deps, store, sent } = setup();
+    await handleUpdate(cb('admit:5:en', ADMIN), deps);
+    await handleUpdate(msg('/letin 5', {}, ADMIN), deps);
+    expect(await store.getProfile(5)).toBeUndefined();
+    expect(sent()).toEqual([]);
+  });
+
+  it('works without a profile of the admin\'s own, and leaves a friend already in untouched', async () => {
+    const { deps, store, sent, kv } = setup({ adminChatId: ADMIN });
+    await store.putProfiles({ '5': ready({ chatId: 5, lang: 'ru', name: 'Olga' }) });
+    kv.writes.length = 0;
+    await handleUpdate(cb('admit:5:en', ADMIN), deps);
+    expect(await store.getProfile(5)).toMatchObject({ lang: 'ru', name: 'Olga' });
+    expect(kv.writes).toEqual([]);
+    expect(sent().map((m) => [m.chat_id, m.text])).toEqual([[ADMIN, '⚙️ id 5 is already in.']]);
+  });
+
+  it('never resets a profile that appeared in the meantime — the invite link used at the same moment', async () => {
+    const { deps, store, kv, sent } = setup({ adminChatId: ADMIN });
+    const olga = ready({ chatId: 6, name: 'Olga', minStars: 5 });
+    const get = kv.get.bind(kv);
+    let reads = 0;
+    // Olga's own /start lands between the admin's check and the write
+    kv.get = async (key, type) => {
+      if (key === 'profile:6' && ++reads === 2) await store.putProfiles({ '6': olga });
+      return get(key, type);
+    };
+    await handleUpdate(cb('admit:6:en', ADMIN), deps);
+    expect(await store.getProfile(6)).toMatchObject({ name: 'Olga', minStars: 5 });
+    expect(sent().map((m) => [m.chat_id, m.text])).toEqual([[ADMIN, '⚙️ id 6 is already in.']]);
+  });
+
+  it('ignores an id no Telegram user can have, and falls back to English for a language it does not speak', async () => {
+    const { deps, store, sent } = setup({ adminChatId: ADMIN });
+    for (const data of ['admit:__proto__:en', 'admit:-5:en', 'admit:1.5:en', 'admit::en', 'admit:99999999999999999:en']) {
+      await handleUpdate(cb(data, ADMIN), deps);
+    }
+    expect(sent()).toEqual([]);
+    await handleUpdate(cb('admit:8:xx', ADMIN), deps);
+    expect((await store.getProfile(8))?.lang).toBe('en');
+  });
+
+  it('tells the admin when the welcome could not reach them, keeping the profile for the next send', async () => {
+    const { deps, store, sent } = setup({
+      adminChatId: ADMIN,
+      tgHandler: (_url, init) => (JSON.parse(String(init?.body)).chat_id === 404202094
+        ? jsonResponse({ ok: false, description: 'Forbidden: bot was blocked by the user' }, 403)
+        : jsonResponse({ ok: true })),
+    });
+    await handleUpdate(cb('admit:404202094:en', ADMIN), deps);
+    expect(await store.getProfile(404202094)).toBeDefined();
+    expect(sent().at(-1)).toMatchObject({
+      chat_id: ADMIN, text: '⚙️ id 404202094 let in, but the welcome did not go through: Forbidden: bot was blocked by the user.',
+    });
+  });
+
+  it('/letin <id> [en|ru] does the same from the admin\'s chat, for a notification that came without the button', async () => {
+    const { deps, store, sent } = setup({ adminChatId: ADMIN });
+    await handleUpdate(msg('/letin 404202094 ru', {}, ADMIN), deps);
+    expect((await store.getProfile(404202094))?.lang).toBe('ru');
+    expect(sent().map((m) => m.chat_id)).toEqual([404202094, ADMIN]);
+    await handleUpdate(msg('/letin 777', {}, ADMIN), deps);
+    expect((await store.getProfile(777))?.lang).toBe('en');
+  });
+
+  it('/letin without a usable id says how to use it; from anyone else it is just an unknown command', async () => {
+    const { deps, store, sent } = setup({ adminChatId: ADMIN });
+    await store.putProfiles({ '1': ready() });
+    await handleUpdate(msg('/letin', {}, ADMIN), deps);
+    await handleUpdate(msg('/letin abc', {}, ADMIN), deps);
+    expect(sent().map((m) => m.text)).toEqual([USAGE, USAGE]);
+    await handleUpdate(msg('/letin 55'), deps);
+    expect(await store.getProfile(55)).toBeUndefined();
+    expect(sent().at(-1)!.text.startsWith('Commands:')).toBe(true);
   });
 });
 

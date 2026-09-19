@@ -14,7 +14,7 @@ import {
   spotMarkupFor, spotName, withSpotButtons, type RenderCtx,
 } from '../render/messages';
 import type { Lang, Profile, Region, Report, Spot } from '../types';
-import { langKeyboard, persistentKeyboard, profileKeyboard, starsKeyboard } from './keyboards';
+import { langKeyboard, letInKeyboard, persistentKeyboard, profileKeyboard, starsKeyboard } from './keyboards';
 import { renderFriends, telegramName } from './friends';
 import { renderGoing } from './going';
 import { newProfile, parseHours, profileSummary, welcomeText } from './profile';
@@ -28,7 +28,7 @@ export interface BotDeps {
   regions: Region[];
   fetchFn: FetchLike;
   inviteCode?: string;
-  /** notified of every arrival, refusal and message from a stranger */
+  /** notified of every arrival, refusal and message from a stranger — and the one who can let a stranger in */
   adminChatId?: number;
   radiusKm?: number;
   /** spots imported for `/<spot>` and `/about`; defaults to the whole `spots-world.json` (tests pass the list they need) */
@@ -51,6 +51,14 @@ const isButton = (text: string, key: 'backHome' | 'now' | 'useMyLocation'): bool
 
 /** A Telegram chat_id is always an integer; reject any other value (e.g. "__proto__") before any access to the store. */
 const isChatId = (x: unknown): x is number => Number.isInteger(x);
+
+/** A user id typed or carried by a button: digits only, positive (group chats are negative), and exact in a JS number. */
+const userIdFrom = (text: string): number | undefined => {
+  const id = Number(text);
+  return /^\d+$/.test(text) && Number.isSafeInteger(id) && id > 0 ? id : undefined;
+};
+
+const isAdmin = (id: number, deps: BotDeps): boolean => deps.adminChatId !== undefined && id === deps.adminChatId;
 
 const isValidLocation = (loc: { latitude: number; longitude: number }): boolean =>
   Number.isFinite(loc.latitude) && Number.isFinite(loc.longitude) && Math.abs(loc.latitude) <= 90 && Math.abs(loc.longitude) <= 180;
@@ -157,12 +165,15 @@ export async function handleUpdate(update: TgUpdate, deps: BotDeps): Promise<voi
 
   if (text.startsWith('/start')) return handleStart(msg, profile, deps);
   // `/amis` is the name this command was born with; it keeps working for the admin who has it in muscle memory.
-  if ((text.startsWith('/friends') || text.startsWith('/amis')) && deps.adminChatId !== undefined && chatId === deps.adminChatId) {
+  if ((text.startsWith('/friends') || text.startsWith('/amis')) && isAdmin(chatId, deps)) {
     if (profile) await refreshName(chatId, profile, msg.from, deps);
     return handleFriends(chatId, deps);
   }
-  // a stranger without /start: silence for them (private bot), but the admin sees who's knocking
-  if (!profile) return notifyAdmin(deps, `${who(msg)} wrote to the bot without joining it.`);
+  if (text.startsWith('/letin') && isAdmin(chatId, deps)) return handleLetInCommand(text, deps);
+  // a stranger without /start: silence for them (private bot), but the admin sees who's knocking, and can let them in
+  if (!profile) {
+    return notifyAdmin(deps, `${who(msg)} wrote to the bot without joining it.`, letInKeyboard(chatId, detectLang(msg.from?.language_code)));
+  }
   profile = await refreshName(chatId, profile, msg.from, deps);
   const s = STRINGS[profile.lang];
   const { telegram, store } = deps;
@@ -250,7 +261,7 @@ async function handleStart(msg: TgMessage, profile: Profile | undefined, deps: B
       console.warn(`invite refused for chat ${chatId}`);
       await deps.telegram.sendMessage(chatId, STRINGS[lang].privateBot);
       const why = !deps.inviteCode ? 'INVITE_CODE is not set' : code ? 'wrong invite code' : '/start without an invite code';
-      await notifyAdmin(deps, `Access refused for ${who(msg)}: ${why}.`);
+      await notifyAdmin(deps, `Access refused for ${who(msg)}: ${why}.`, letInKeyboard(chatId, lang));
       return;
     }
     // No more questions: the rating depends on neither skill level nor board, so the profile is ready right away.
@@ -267,6 +278,35 @@ async function handleStart(msg: TgMessage, profile: Profile | undefined, deps: B
     return next;
   });
   await deps.telegram.sendMessage(chatId, `${s.reactivated}\n${profileSummary(p, s)}`, persistentKeyboard(s));
+}
+
+/**
+ * In on the admin's word, without the invite link: the same profile and welcome as `/start <code>`. Someone
+ * already in stays as they are. The name arrives with their first message or tap (`refreshName`). A welcome
+ * Telegram refuses leaves the profile in place: the next send finds out whether they blocked the bot.
+ */
+async function letIn(target: number, langText: string, deps: BotDeps): Promise<void> {
+  // a read first, so that someone already in costs no write…
+  if (await deps.store.getProfile(target)) return notifyAdmin(deps, `id ${target} is already in.`);
+  const lang: Lang = LANGS.includes(langText as Lang) ? (langText as Lang) : 'en';
+  // …and a profile that appeared since (their own /start at the same moment) is kept, never reset to the defaults
+  let joinedMeanwhile = false;
+  const created = await deps.store.updateProfile(target, (current) => {
+    joinedMeanwhile = current !== undefined;
+    return current ?? newProfile(target, lang, deps.now());
+  });
+  if (joinedMeanwhile) return notifyAdmin(deps, `id ${target} is already in.`);
+  const s = STRINGS[created.lang];
+  const sent = await deps.telegram.sendMessage(target, welcomeText(created, s), persistentKeyboard(s));
+  await notifyAdmin(deps, sent.ok ? `id ${target} let in — welcome sent.` : `id ${target} let in, but the welcome did not go through: ${sent.description}.`);
+}
+
+/** `/letin <id> [en|ru]`, for the admin: the ✅ Let in button, for a notification that arrived without one. */
+async function handleLetInCommand(text: string, deps: BotDeps): Promise<void> {
+  const [, idText = '', lang = 'en'] = text.split(/\s+/);
+  const target = userIdFrom(idText);
+  if (target === undefined) return notifyAdmin(deps, 'Usage: /letin <id> [en|ru] — the id is in the notification.');
+  await letIn(target, lang, deps);
 }
 
 /** `/friends`, for the admin only: who's registered, where, at what hours, and who has paused or blocked the bot. */
@@ -312,11 +352,17 @@ async function handleCallback(cb: TgCallbackQuery, deps: BotDeps): Promise<void>
   if (cb.message && cb.message.chat.type !== 'private') return;
   const chatId = cb.message?.chat.id ?? cb.from.id;
   if (!isChatId(chatId)) return;
+  const [kind, value = '', rest = ''] = (cb.data ?? '').split(':');
+  // ✅ Let in: before any profile (the admin needs none), and for the admin alone — a button's data can be forged
+  if (kind === 'admit') {
+    const target = userIdFrom(value);
+    if (isAdmin(cb.from.id, deps) && target !== undefined) await letIn(target, rest, deps);
+    return;
+  }
   const stored = await deps.store.getProfile(chatId);
   if (!stored) return;
   const profile = await refreshName(chatId, stored, cb.from, deps);
   const s = STRINGS[profile.lang];
-  const [kind, value = '', rest = ''] = (cb.data ?? '').split(':');
   const { telegram, store } = deps;
 
   // `lvl:*`, `board:*`, `prof:level` and `prof:board` came from the old onboarding: their buttons

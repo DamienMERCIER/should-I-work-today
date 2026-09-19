@@ -31,9 +31,9 @@ const KV_SAME_KEY_INTERVAL_MS = 1100;
 // measured in hundreds of meters, whereas the push is precisely the moment the button is most
 // useful. The 📋 button, on the other hand, is a callback: it recalculates on every tap.
 
-export async function notifyAdmin(deps: Pick<JobDeps, 'telegram' | 'adminChatId'>, text: string): Promise<void> {
+export async function notifyAdmin(deps: Pick<JobDeps, 'telegram' | 'adminChatId'>, text: string, markup?: ReplyMarkup): Promise<void> {
   if (deps.adminChatId === undefined) return;
-  await deps.telegram.sendMessage(deps.adminChatId, `⚙️ ${esc(text)}`);
+  await deps.telegram.sendMessage(deps.adminChatId, `⚙️ ${esc(text)}`, markup);
 }
 
 /**

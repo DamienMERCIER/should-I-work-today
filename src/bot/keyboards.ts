@@ -1,6 +1,15 @@
 import type { ReplyMarkup } from '../adapters/telegram';
 import type { Strings } from '../render/i18n';
 import { STAR_CHOICES } from '../config';
+import type { Lang } from '../types';
+
+/**
+ * Under a refusal or a stranger's message, for the admin alone: one tap lets them in, in the language their
+ * Telegram speaks. `admit:<id>:<lang>` stays far under Telegram's 64 bytes (a user id has at most 16 digits).
+ */
+export const letInKeyboard = (chatId: number, lang: Lang): ReplyMarkup => ({
+  inline_keyboard: [[{ text: '✅ Let in', callback_data: `admit:${chatId}:${lang}` }]],
+});
 
 export const persistentKeyboard = (s: Strings): ReplyMarkup => ({
   // "Right now" takes the full-width row: it's by far the most used button.

@@ -10,7 +10,7 @@
   <img alt="Cloudflare Workers" src="https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white">
   <img alt="Runtime dependencies" src="https://img.shields.io/badge/runtime%20deps-0-4c1">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-641-4c1">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-651-4c1">
   <img alt="Licence" src="https://img.shields.io/badge/licence-MIT-black">
 </p>
 
@@ -79,6 +79,7 @@ another. The bot speaks English and Russian, picked from the Telegram client and
 | `/about` | What the bot is, and where its data comes from. |
 | `/stop` | No more messages; `/start` brings them back. |
 | `/friends` | Admin only: who is in, where, with which hours, and who left. |
+| `/letin <id> [en\|ru]` | Admin only: let someone in without the invite link — the id is in the notification. |
 
 ## How the stars are decided
 
@@ -117,7 +118,7 @@ inside the ceilings below.
 ```bash
 nvm use             # Node 22 — wrangler 4 needs it
 npm install
-npm test            # 641 tests, no network
+npm test            # 651 tests, no network
 npm run typecheck
 npm run check:spots # the spots and regions, validated
 npm run report      # tonight's message, on live data, printed in the terminal
@@ -126,7 +127,7 @@ npm run dev         # wrangler dev --test-scheduled
 
 Then, once:
 
-1. **The bot.** BotFather → `/newbot` → token. `/setcommands` with the list above, leaving `/friends` out — it is yours.
+1. **The bot.** BotFather → `/newbot` → token. `/setcommands` with the list above, leaving `/friends` and `/letin` out — they are yours.
 2. **Storage.** `npx wrangler login`, then `npx wrangler kv namespace create KV`, and put the id it prints in
    `wrangler.toml`. To keep it out of git — the way this repository does — copy the file to `wrangler.local.toml`
    (git-ignored) instead, and pass `--config wrangler.local.toml` when you deploy.
@@ -144,7 +145,8 @@ them instead.
 ## Operating it
 
 - **The 19:00 push is the heartbeat.** Any failure in a run reaches `ADMIN_CHAT_ID` on Telegram, as does every friend
-  who joins, every refused invite, and every stranger who writes without one.
+  who joins, every refused invite, and every stranger who writes without one. The last two carry a **✅ Let in**
+  button: one tap, and they get the same profile and welcome as the invite link would have given them.
 - **Logs**: `npx wrangler tail`.
 - **A run that died holding its lock**: `npx wrangler kv key delete --binding KV "run:<date>:evening"` (or `morning`,
   `week`, `alert`) before running it again.
@@ -177,7 +179,7 @@ src/
   render/     the messages, in English and Russian, and the day chart
   data/       spots, regions, and the imported world list
 scripts/      the spot import, the surf-forecast comparison, one-off tools
-test/         641 tests, no network: a golden day, fixtures, and every message asserted
+test/         651 tests, no network: a golden day, fixtures, and every message asserted
 docs/         how the rating was reconstructed
 ```
 
