@@ -80,6 +80,18 @@ export class Telegram {
     };
   }
 
+  /**
+   * Who a user is today, as their private chat with the bot shows it. Undefined when Telegram won't say —
+   * someone who never started the bot, or any failure: the caller carries on without the name.
+   */
+  async getChat(chatId: number): Promise<TgUser | undefined> {
+    const { json } = await this.call('getChat', { chat_id: chatId });
+    const chat = (json.ok ? json.result : undefined) as Record<string, unknown> | undefined;
+    if (!chat || typeof chat.id !== 'number') return undefined;
+    const text = (key: string): string | undefined => (typeof chat[key] === 'string' ? (chat[key] as string) : undefined);
+    return { id: chat.id, first_name: text('first_name'), last_name: text('last_name'), username: text('username') };
+  }
+
   async answerCallbackQuery(callbackQueryId: string): Promise<void> {
     await this.call('answerCallbackQuery', { callback_query_id: callbackQueryId });
   }

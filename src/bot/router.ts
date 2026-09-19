@@ -38,13 +38,15 @@ export interface BotDeps {
 }
 
 /** "Ivan Petrov (@ivan, id 42)" for messages to the admin: the id tells apart two people sharing a name, and shows up in the logs. */
-function who(msg: TgMessage): string {
-  const name = oneLine(`${msg.from?.first_name ?? ''} ${msg.from?.last_name ?? ''}`);
-  const handle = oneLine(msg.from?.username);
-  const id = `id ${msg.chat.id}`;
+function whoIs(user: TgUser | undefined, chatId: number): string {
+  const name = oneLine(`${user?.first_name ?? ''} ${user?.last_name ?? ''}`);
+  const handle = oneLine(user?.username);
+  const id = `id ${chatId}`;
   if (name) return `${name} (${handle ? `@${handle}, ` : ''}${id})`;
   return handle ? `@${handle} (${id})` : id;
 }
+
+const who = (msg: TgMessage): string => whoIs(msg.from, msg.chat.id);
 
 const isButton = (text: string, key: 'backHome' | 'now' | 'useMyLocation'): boolean =>
   text === STRINGS.en.buttons[key] || text === STRINGS.ru.buttons[key];
@@ -281,24 +283,26 @@ async function handleStart(msg: TgMessage, profile: Profile | undefined, deps: B
 }
 
 /**
- * In on the admin's word, without the invite link: the same profile and welcome as `/start <code>`. Someone
- * already in stays as they are. The name arrives with their first message or tap (`refreshName`). A welcome
- * Telegram refuses leaves the profile in place: the next send finds out whether they blocked the bot.
+ * In on the admin's word, without the invite link: the same profile and welcome as `/start <code>`, with the
+ * name Telegram gives for them (none of their messages carries it here). Someone already in stays as they are.
+ * A welcome Telegram refuses leaves the profile in place: the next send finds out whether they blocked the bot.
  */
 async function letIn(target: number, langText: string, deps: BotDeps): Promise<void> {
   // a read first, so that someone already in costs no write…
   if (await deps.store.getProfile(target)) return notifyAdmin(deps, `id ${target} is already in.`);
   const lang: Lang = LANGS.includes(langText as Lang) ? (langText as Lang) : 'en';
+  const user = await deps.telegram.getChat(target);
   // …and a profile that appeared since (their own /start at the same moment) is kept, never reset to the defaults
   let joinedMeanwhile = false;
   const created = await deps.store.updateProfile(target, (current) => {
     joinedMeanwhile = current !== undefined;
-    return current ?? newProfile(target, lang, deps.now());
+    return current ?? { ...newProfile(target, lang, deps.now()), ...telegramName(user) };
   });
   if (joinedMeanwhile) return notifyAdmin(deps, `id ${target} is already in.`);
   const s = STRINGS[created.lang];
   const sent = await deps.telegram.sendMessage(target, welcomeText(created, s), persistentKeyboard(s));
-  await notifyAdmin(deps, sent.ok ? `id ${target} let in — welcome sent.` : `id ${target} let in, but the welcome did not go through: ${sent.description}.`);
+  const label = whoIs(user, target);
+  await notifyAdmin(deps, sent.ok ? `${label} let in — welcome sent.` : `${label} let in, but the welcome did not go through: ${sent.description}.`);
 }
 
 /** `/letin <id> [en|ru]`, for the admin: the ✅ Let in button, for a notification that arrived without one. */
@@ -309,9 +313,20 @@ async function handleLetInCommand(text: string, deps: BotDeps): Promise<void> {
   await letIn(target, lang, deps);
 }
 
+/**
+ * A friend known only by an id — joined before names were kept, or let in by hand and silent since — is asked
+ * about to Telegram, at most this many per `/friends`: one subrequest each, and a write only once a name is found.
+ */
+const NAME_LOOKUPS_PER_LIST = 10;
+
 /** `/friends`, for the admin only: who's registered, where, at what hours, and who has paused or blocked the bot. */
 async function handleFriends(chatId: number, deps: BotDeps): Promise<void> {
   const profiles = Object.values(await deps.store.getProfiles()).filter((p): p is Profile => Boolean(p) && typeof p === 'object');
+  for (const p of profiles.filter((p) => !p.name && !p.username).slice(0, NAME_LOOKUPS_PER_LIST)) {
+    const user = await deps.telegram.getChat(p.chatId);
+    if (!user?.first_name) continue;
+    profiles[profiles.indexOf(p)] = await deps.store.updateProfile(p.chatId, (cur) => withName(cur ?? p, user));
+  }
   for (const text of renderFriends(profiles, deps.spots, deps.radiusKm ?? RADIUS_KM)) await deps.telegram.sendMessage(chatId, text);
 }
 

@@ -65,3 +65,29 @@ describe('other methods', () => {
     });
   });
 });
+
+describe('Telegram.getChat', () => {
+  it('reads the name a user shows today', async () => {
+    const { fn, calls } = fakeFetch(() => jsonResponse({
+      ok: true, result: { id: 42, type: 'private', first_name: 'Elzana', last_name: 'Mirsaitova', username: 'ElzanaMir', bio: 'surf' },
+    }));
+    await expect(new Telegram(TOKEN, fn).getChat(42)).resolves.toEqual({ id: 42, first_name: 'Elzana', last_name: 'Mirsaitova', username: 'ElzanaMir' });
+    expect(calls[0].url).toBe('https://api.telegram.org/bot123:abc/getChat');
+    expect(body(calls[0])).toEqual({ chat_id: 42 });
+  });
+  it('keeps only the text fields it knows, and nothing that is not text', async () => {
+    const { fn } = fakeFetch(() => jsonResponse({ ok: true, result: { id: 42, type: 'private', first_name: 'Olga', last_name: 7, username: null } }));
+    await expect(new Telegram(TOKEN, fn).getChat(42)).resolves.toEqual({ id: 42, first_name: 'Olga', last_name: undefined, username: undefined });
+  });
+  it('says nothing when Telegram refuses, answers oddly, or cannot be reached', async () => {
+    const answers = [
+      () => jsonResponse({ ok: false, description: 'Bad Request: chat not found' }, 400),
+      () => jsonResponse({ ok: true }),
+      () => jsonResponse({ ok: true, result: 'Olga' }),
+      () => jsonResponse({ ok: true, result: { id: '42', first_name: 'Olga' } }),
+      () => new Response('<html>502</html>', { status: 502 }),
+      () => { throw new TypeError('fetch failed'); },
+    ];
+    for (const answer of answers) await expect(new Telegram(TOKEN, fakeFetch(answer).fn).getChat(42)).resolves.toBeUndefined();
+  });
+});

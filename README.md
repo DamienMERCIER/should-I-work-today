@@ -10,7 +10,7 @@
   <img alt="Cloudflare Workers" src="https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white">
   <img alt="Runtime dependencies" src="https://img.shields.io/badge/runtime%20deps-0-4c1">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-651-4c1">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-658-4c1">
   <img alt="Licence" src="https://img.shields.io/badge/licence-MIT-black">
 </p>
 
@@ -118,7 +118,7 @@ inside the ceilings below.
 ```bash
 nvm use             # Node 22 — wrangler 4 needs it
 npm install
-npm test            # 651 tests, no network
+npm test            # 658 tests, no network
 npm run typecheck
 npm run check:spots # the spots and regions, validated
 npm run report      # tonight's message, on live data, printed in the terminal
@@ -179,7 +179,7 @@ src/
   render/     the messages, in English and Russian, and the day chart
   data/       spots, regions, and the imported world list
 scripts/      the spot import, the surf-forecast comparison, one-off tools
-test/         651 tests, no network: a golden day, fixtures, and every message asserted
+test/         658 tests, no network: a golden day, fixtures, and every message asserted
 docs/         how the rating was reconstructed
 ```
 

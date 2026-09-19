@@ -716,6 +716,73 @@ describe('✅ Let in — the admin lets someone in without the link', () => {
     });
   });
 
+  it('asks Telegram for their name, so the admin and /friends see who it is from the start', async () => {
+    const { deps, store, sent } = setup({
+      adminChatId: ADMIN,
+      tgHandler: (url) => (url.endsWith('/getChat')
+        ? jsonResponse({ ok: true, result: { id: 404202094, type: 'private', first_name: 'Elzana', last_name: 'Mirsaitova', username: 'ElzanaMir' } })
+        : jsonResponse({ ok: true })),
+    });
+    await handleUpdate(cb('admit:404202094:ru', ADMIN), deps);
+    expect(await store.getProfile(404202094)).toMatchObject({ name: 'Elzana Mirsaitova', username: 'ElzanaMir' });
+    expect(sent().at(-1)!.text).toBe('⚙️ Elzana Mirsaitova (@ElzanaMir, id 404202094) let in — welcome sent.');
+  });
+
+  it('/friends fills in, once, the name of a friend who has none — let in by hand, or joined before names were kept', async () => {
+    const getChats: number[] = [];
+    const { deps, store, sent, kv } = setup({
+      adminChatId: ADMIN,
+      tgHandler: (url, init) => {
+        if (!url.endsWith('/getChat')) return jsonResponse({ ok: true });
+        const id = JSON.parse(String(init?.body)).chat_id as number;
+        getChats.push(id);
+        return id === 404202094
+          ? jsonResponse({ ok: true, result: { id, type: 'private', first_name: 'Elzana', username: 'ElzanaMir' } })
+          : jsonResponse({ ok: false, description: 'Bad Request: chat not found' }, 400);
+      },
+    });
+    await store.putProfiles({
+      '404202094': ready({ chatId: 404202094, createdAt: '2026-09-19T21:45' }),
+      '744696809': ready({ chatId: 744696809, createdAt: '2026-09-16T19:24' }),
+      '5': ready({ chatId: 5, name: 'Olga', createdAt: '2026-09-17T10:00' }),
+    });
+    kv.writes.length = 0;
+    await handleUpdate(msg('/friends', {}, ADMIN), deps);
+    const list = sent().find((m) => m.chat_id === ADMIN)!.text;
+    expect(list).toContain('Elzana (@ElzanaMir)');
+    expect(list).toContain('id 744696809');
+    expect(getChats.sort()).toEqual([404202094, 744696809]);
+    expect(kv.writes).toEqual(['profile:404202094']);
+    getChats.length = 0;
+    await handleUpdate(msg('/friends', {}, ADMIN), deps);
+    expect(getChats).toEqual([744696809]);
+  });
+
+  it('/friends asks about ten nameless friends at most per list — each is a subrequest, and a run has 50', async () => {
+    const getChats: number[] = [];
+    const { deps, store } = setup({
+      adminChatId: ADMIN,
+      tgHandler: (url, init) => {
+        if (url.endsWith('/getChat')) getChats.push(JSON.parse(String(init?.body)).chat_id);
+        return jsonResponse({ ok: false, description: 'Bad Request: chat not found' }, 400);
+      },
+    });
+    await store.putProfiles(Object.fromEntries(Array.from({ length: 12 }, (_, i) => [String(100 + i), ready({ chatId: 100 + i })])));
+    await handleUpdate(msg('/friends', {}, ADMIN), deps);
+    expect(getChats).toHaveLength(10);
+  });
+
+  it('keeps a hostile name from Telegram on one escaped line in the admin\'s confirmation', async () => {
+    const { deps, sent } = setup({
+      adminChatId: ADMIN,
+      tgHandler: (url) => (url.endsWith('/getChat')
+        ? jsonResponse({ ok: true, result: { id: 9, type: 'private', first_name: 'Eve\n\n⚙️ <b>Olga</b> let in‮' } })
+        : jsonResponse({ ok: true })),
+    });
+    await handleUpdate(cb('admit:9:en', ADMIN), deps);
+    expect(sent().at(-1)!.text).toBe('⚙️ Eve ⚙️ &lt;b&gt;Olga&lt;/b&gt; let in (id 9) let in — welcome sent.');
+  });
+
   it('/letin <id> [en|ru] does the same from the admin\'s chat, for a notification that came without the button', async () => {
     const { deps, store, sent } = setup({ adminChatId: ADMIN });
     await handleUpdate(msg('/letin 404202094 ru', {}, ADMIN), deps);
